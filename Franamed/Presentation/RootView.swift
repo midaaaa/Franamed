@@ -11,16 +11,16 @@ struct RootView: View {
     @StateObject private var coordinator = AppCoordinator()
 
     var body: some View {
-        NavigationStack(path: $coordinator.path) {
-            Button("Start Round") {
-                coordinator.showRound()
-            }
-            .navigationDestination(for: Route.self) { route in
-                switch route {
-                case .round:
-                    Text("Round placeholder")
-                }
-            }
+        TabView {
+            GameView(coordinator: coordinator)
+                .tabItem { Label("Game", systemImage: "gamecontroller") }
+
+            CurationView(coordinator: coordinator)
+                .tabItem { Label("Curation", systemImage: "checkmark.seal") }
         }
     }
+}
+
+#Preview {
+    RootView()
 }

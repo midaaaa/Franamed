@@ -35,3 +35,6 @@ Pods/
 
 # Simulator / test artifacts
 *.xcresult
+
+# Cloudflare Wrangler local dev state (account id, TLS session cache, sqlite)
+.wrangler/

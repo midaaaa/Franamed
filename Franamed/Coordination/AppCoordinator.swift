@@ -10,9 +10,14 @@ import Combine
 
 @MainActor
 final class AppCoordinator: ObservableObject {
-    @Published var path = NavigationPath()
+    @Published var gamePath = NavigationPath()
+    @Published var curationPath = NavigationPath()
 
     func showRound() {
-        path.append(Route.round)
+        gamePath.append(Route.round)
+    }
+
+    func showCurationQueue() {
+        curationPath.append(CurationRoute.queue)
     }
 }

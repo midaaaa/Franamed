@@ -10,3 +10,7 @@ import Foundation
 enum Route: Hashable {
     case round
 }
+
+enum CurationRoute: Hashable {
+    case queue
+}

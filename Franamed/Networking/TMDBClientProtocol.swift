@@ -9,4 +9,6 @@ import Foundation
 
 protocol TMDBClientProtocol {
     func fetchRandomMovie(filters: MovieFilters) async throws -> Movie
+    func fetchMovieBackdrops(movieID: Int) async throws -> [Backdrop]
+    func searchMovies(query: String, language: String) async throws -> [Movie]
 }

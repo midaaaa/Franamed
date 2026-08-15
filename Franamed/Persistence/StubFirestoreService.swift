@@ -9,6 +9,6 @@ import Foundation
 
 final class StubFirestoreService: FirestoreServiceProtocol {
     func fetchMovieBackdrops(id: Int) async throws -> [Backdrop] {
-        return [.init(filePath: "https://example.com/image.jpg")]
+        return [.init(filePath: "https://picsum.photos/1280/720")]
     }
 }

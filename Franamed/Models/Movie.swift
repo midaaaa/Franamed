@@ -12,4 +12,5 @@ struct Movie: Codable, Identifiable {
     let title: String
     let releaseDate: String?
     let overview: String?
+    let originalTitle: String
 }
