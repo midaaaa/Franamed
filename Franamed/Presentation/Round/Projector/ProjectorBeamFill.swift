@@ -7,6 +7,8 @@
 
 import SwiftUI
 
+private typealias ApexGeometry = (center: UnitPoint, startAngle: Angle, endAngle: Angle, maxRadius: CGFloat)
+
 struct ProjectorBeamFill: View {
     var stripTints: [ProjectorStripTint] = []
     private let topWidthFraction: CGFloat = 1.0
@@ -15,14 +17,16 @@ struct ProjectorBeamFill: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let geometry = apexGeometry(size: proxy.size)
+
             ZStack(alignment: .top) {
                 ProjectorBeamShape(topWidthFraction: topWidthFraction, bottomWidthFraction: bottomWidthFraction)
-                    .fill(fillStyle(size: proxy.size))
-                    .mask(sourceFalloffMask(size: proxy.size))
-                    .mask(centerBrightnessMask(size: proxy.size))
+                    .fill(fillStyle(size: proxy.size, geometry: geometry))
+                    .mask(sourceFalloffMask(geometry: geometry))
+                    .mask(centerBrightnessMask(geometry: geometry))
 
                 Rectangle()
-                    .fill(fillStyle(size: proxy.size))
+                    .fill(fillStyle(size: proxy.size, geometry: geometry))
                     .opacity(topEdgeFloor)
                     .frame(width: proxy.size.width * topWidthFraction, height: 14)
                     .offset(y: -14)
@@ -31,9 +35,8 @@ struct ProjectorBeamFill: View {
         .blur(radius: 3)
     }
 
-    private func sourceFalloffMask(size: CGSize) -> some View {
-        let geometry = apexGeometry(size: size)
-        return RadialGradient(
+    private func sourceFalloffMask(geometry: ApexGeometry) -> some View {
+        RadialGradient(
             stops: [
                 .init(color: .white.opacity(1.0), location: 0.0),
                 .init(color: .white.opacity(0.85), location: 0.15),
@@ -49,9 +52,8 @@ struct ProjectorBeamFill: View {
         )
     }
 
-    private func centerBrightnessMask(size: CGSize) -> some View {
-        let geometry = apexGeometry(size: size)
-        return AngularGradient(
+    private func centerBrightnessMask(geometry: ApexGeometry) -> some View {
+        AngularGradient(
             gradient: Gradient(stops: [
                 .init(color: .white.opacity(0.35), location: 0.0),
                 .init(color: .white.opacity(1.0), location: 0.5),
@@ -63,7 +65,7 @@ struct ProjectorBeamFill: View {
         )
     }
 
-    private func apexGeometry(size: CGSize) -> (center: UnitPoint, startAngle: Angle, endAngle: Angle, maxRadius: CGFloat) {
+    private func apexGeometry(size: CGSize) -> ApexGeometry {
         let topHalf = size.width * topWidthFraction / 2
         let bottomHalf = size.width * bottomWidthFraction / 2
         let midX = size.width / 2
@@ -83,7 +85,7 @@ struct ProjectorBeamFill: View {
         return (center, angle(atXFraction: 0), angle(atXFraction: 1), maxRadius)
     }
 
-    private func fillStyle(size: CGSize) -> AnyShapeStyle {
+    private func fillStyle(size: CGSize, geometry: ApexGeometry) -> AnyShapeStyle {
         guard stripTints.count >= 2, size.width > 0, size.height > 0 else {
             return AnyShapeStyle(
                 LinearGradient(
@@ -93,7 +95,6 @@ struct ProjectorBeamFill: View {
             )
         }
 
-        let geometry = apexGeometry(size: size)
         return AnyShapeStyle(
             AngularGradient(
                 gradient: Gradient(stops: rayStops(tints: stripTints)),

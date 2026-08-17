@@ -16,7 +16,7 @@ struct ProjectorStripTint {
 }
 
 enum ProjectorFrameTint {
-    static func averageStripTints(from image: UIImage, stripCount: Int) -> [ProjectorStripTint] {
+    nonisolated static func averageStripTints(from image: UIImage, stripCount: Int) -> [ProjectorStripTint] {
         guard stripCount > 0, let cgImage = image.cgImage else { return [] }
         let ciImage = CIImage(cgImage: cgImage)
         let context = CIContext()
@@ -56,7 +56,7 @@ enum ProjectorFrameTint {
         }
     }
 
-    static func loadAndSample(url: URL, stripCount: Int) async -> [ProjectorStripTint] {
+    nonisolated static func loadAndSample(url: URL, stripCount: Int) async -> [ProjectorStripTint] {
         if let cached = ImageCache.shared.image(for: url) {
             return averageStripTints(from: cached, stripCount: stripCount)
         }

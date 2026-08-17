@@ -146,7 +146,11 @@ struct RoundView: View {
 
         if let cachedImage = ImageCache.shared.image(for: url) {
             displayedURL = url
-            stripTints = ProjectorFrameTint.averageStripTints(from: cachedImage, stripCount: 14)
+            let tints = await Task.detached(priority: .userInitiated) {
+                ProjectorFrameTint.averageStripTints(from: cachedImage, stripCount: 14)
+            }.value
+            guard !Task.isCancelled, url == currentBackdropURL else { return }
+            stripTints = tints
             isBeamFillLit = true
             isWaitingForFrame = false
             return

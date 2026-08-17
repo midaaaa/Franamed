@@ -8,15 +8,15 @@
 import Foundation
 import UIKit
 
-final class ImageCache {
-    static let shared = ImageCache()
-    private let cache = NSCache<NSURL, UIImage>()
+final class ImageCache: @unchecked Sendable {
+    nonisolated static let shared = ImageCache()
+    private nonisolated(unsafe) let cache = NSCache<NSURL, UIImage>()
 
-    func image(for url: URL) -> UIImage? {
+    nonisolated func image(for url: URL) -> UIImage? {
         cache.object(forKey: url as NSURL)
     }
 
-    func store(_ image: UIImage, for url: URL) {
+    nonisolated func store(_ image: UIImage, for url: URL) {
         cache.setObject(image, forKey: url as NSURL)
     }
 }
