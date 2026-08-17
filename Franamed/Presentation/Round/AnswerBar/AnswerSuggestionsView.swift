@@ -7,17 +7,6 @@
 
 import SwiftUI
 
-private struct NothingFoundRow: View {
-    var body: some View {
-        Text("Nothing found")
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: suggestionRowHeight)
-            .padding(.leading, suggestionsLeadingInset)
-            .padding(.trailing, 12)
-    }
-}
-
 private let suggestionFadeHeight: CGFloat = 16
 
 private struct SuggestionsRevealMask: View {
@@ -64,20 +53,25 @@ struct AnswerSuggestionsView: View {
         revealedHeight < totalContentHeight
     }
 
+    private var rows: [SuggestionRow] {
+        if movies.isEmpty {
+            return hasSearched ? [.empty] : []
+        }
+        return movies.map(SuggestionRow.movie)
+    }
+
     var body: some View {
         FixedHeightSlot {
-            if movies.isEmpty {
-                if hasSearched {
-                    NothingFoundRow()
-                        .onAppear { withAnimation(.snappy) { revealedHeight = suggestionRowHeight } }
-                } else {
-                    Color.clear
-                        .onAppear { withAnimation(.snappy) { revealedHeight = 0 } }
-                }
+            if rows.isEmpty {
+                Color.clear
+                    .onAppear {
+                        guard revealedHeight != 0 else { return }
+                        withAnimation(.snappy) { revealedHeight = 0 }
+                    }
             } else {
                 ZStack(alignment: .top) {
                     SuggestionsScrollView(
-                        movies: movies,
+                        rows: rows,
                         onSelect: onSelect,
                         revealedHeight: $revealedHeight,
                         totalContentHeight: $totalContentHeight,

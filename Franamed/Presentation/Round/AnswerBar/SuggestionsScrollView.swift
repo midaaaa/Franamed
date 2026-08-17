@@ -21,7 +21,7 @@ final class SelfSizingScrollView: UIScrollView {
 }
 
 struct SuggestionsScrollView: UIViewRepresentable {
-    let movies: [Movie]
+    let rows: [SuggestionRow]
     let onSelect: (Movie) -> Void
     @Binding var revealedHeight: CGFloat
     @Binding var totalContentHeight: CGFloat
@@ -39,6 +39,7 @@ struct SuggestionsScrollView: UIViewRepresentable {
         scrollView.isOpaque = false
 
         let hosting = UIHostingController(rootView: AnyView(EmptyView()))
+        hosting.safeAreaRegions.remove(.keyboard)
         hosting.view.backgroundColor = .clear
         hosting.view.isOpaque = false
         context.coordinator.hostingController = hosting
@@ -62,9 +63,9 @@ struct SuggestionsScrollView: UIViewRepresentable {
         let minBudget = suggestionsContentHeight(rows: minVisibleSuggestions)
         coordinator.frameHeight = frameHeight
 
-        coordinator.hostingController?.rootView = AnyView(rows)
+        coordinator.hostingController?.rootView = AnyView(rowsContent)
 
-        let estimatedHeight = suggestionsContentHeight(rows: movies.count)
+        let estimatedHeight = suggestionsContentHeight(rows: rows.count)
         var measuredHeight = estimatedHeight
         if availableWidth > 0, let hosting = coordinator.hostingController {
             let fitting = hosting.sizeThatFits(in: CGSize(width: availableWidth, height: .greatestFiniteMagnitude))
@@ -81,12 +82,14 @@ struct SuggestionsScrollView: UIViewRepresentable {
         scrollView.layoutIfNeeded()
 
         let inset = max(0, frameHeight - minHeight)
-        let movieIDs = movies.map(\.id)
-        if coordinator.lastMovieIDs != movieIDs {
-            coordinator.lastMovieIDs = movieIDs
+        let rowIDs = rows.map(\.id)
+        if coordinator.lastRowIDs != rowIDs {
+            coordinator.lastRowIDs = rowIDs
             let targetReveal = min(max(revealedHeight, minHeight), revealCap)
             scrollView.contentInset = UIEdgeInsets(top: inset, left: 0, bottom: 0, right: 0)
+            coordinator.isProgrammaticScroll = true
             scrollView.contentOffset = CGPoint(x: 0, y: targetReveal - frameHeight)
+            coordinator.isProgrammaticScroll = false
             DispatchQueue.main.async {
                 withAnimation(.snappy) { revealedHeight = targetReveal }
                 totalContentHeight = measuredHeight
@@ -99,24 +102,15 @@ struct SuggestionsScrollView: UIViewRepresentable {
         }
     }
 
-    private var rows: some View {
+    private var rowsContent: some View {
         VStack(spacing: 0) {
-            ForEach(Array(movies.enumerated()), id: \.element.id) { index, movie in
-                Button {
-                    onSelect(movie)
-                } label: {
-                    Text(movie.title)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.vertical, 12)
-                .padding(.leading, suggestionsLeadingInset)
-                .padding(.trailing, 12)
+            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                rowView(for: row)
+                    .padding(.vertical, 12)
+                    .padding(.leading, suggestionsLeadingInset)
+                    .padding(.trailing, 12)
 
-                if index != movies.count - 1 {
+                if index != rows.count - 1 {
                     Divider()
                         .frame(height: suggestionDividerHeight)
                         .padding(.leading, suggestionsLeadingInset)
@@ -125,19 +119,74 @@ struct SuggestionsScrollView: UIViewRepresentable {
         }
     }
 
+    @ViewBuilder
+    private func rowView(for row: SuggestionRow) -> some View {
+        switch row {
+        case .movie(let movie):
+            Button {
+                onSelect(movie)
+            } label: {
+                Text(movie.title)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        case .empty:
+            Text("Nothing found")
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     final class Coordinator: NSObject, UIScrollViewDelegate {
         var hostingController: UIHostingController<AnyView>?
         let revealedHeightBinding: Binding<CGFloat>
         var frameHeight: CGFloat = 0
-        var lastMovieIDs: [Int] = []
+        var lastRowIDs: [AnyHashable] = []
+        var isProgrammaticScroll = false
 
         init(revealedHeight: Binding<CGFloat>) {
             self.revealedHeightBinding = revealedHeight
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard !isProgrammaticScroll else { return }
             let revealed = frameHeight + scrollView.contentOffset.y
-            revealedHeightBinding.wrappedValue = min(frameHeight, max(0, revealed))
+            let clamped = min(frameHeight, max(0, revealed))
+            revealedHeightBinding.wrappedValue = clamped
         }
     }
+}
+
+private struct SuggestionsScrollViewPreviewContainer: View {
+    let rows: [SuggestionRow]
+    @State private var revealedHeight: CGFloat = suggestionsContentHeight(rows: maxVisibleSuggestions)
+    @State private var totalContentHeight: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { proxy in
+            SuggestionsScrollView(
+                rows: rows,
+                onSelect: { _ in },
+                revealedHeight: $revealedHeight,
+                totalContentHeight: $totalContentHeight,
+                availableWidth: proxy.size.width
+            )
+        }
+        .frame(height: suggestionsContentHeight(rows: maxVisibleSuggestions))
+        .background(.thinMaterial)
+        .padding()
+    }
+}
+
+#Preview("Scroll list") {
+    SuggestionsScrollViewPreviewContainer(rows: PreviewSuggestions.mixed.map(SuggestionRow.movie))
+}
+
+#Preview("Nothing found") {
+    SuggestionsScrollViewPreviewContainer(rows: [.empty])
 }

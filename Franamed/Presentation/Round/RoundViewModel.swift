@@ -90,15 +90,16 @@ final class RoundViewModel: ObservableObject {
 
     func searchAnswer() async {
         let trimmedQuery = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
-            searchResults = []
-            hasSearched = false
-            return
-        }
 
         do {
             try await Task.sleep(for: .milliseconds(400))
         } catch {
+            return
+        }
+
+        guard !trimmedQuery.isEmpty else {
+            searchResults = []
+            hasSearched = false
             return
         }
 

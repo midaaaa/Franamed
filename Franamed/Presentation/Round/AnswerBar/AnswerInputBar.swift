@@ -15,6 +15,9 @@ struct AnswerInputBar: View {
     let onSelectSuggestion: (Movie) -> Void
     let onSubmit: () -> Void
     let onAnswerTextChange: () async -> Void
+    var onVisibleHeightChange: ((CGFloat) -> Void)? = nil
+    var showsSubmitButton: Bool = false
+    var hasOutcome: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var revealedHeight: CGFloat = 0
@@ -28,6 +31,7 @@ struct AnswerInputBar: View {
                 .compositingGroup()
                 .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
                 .id(colorScheme)  // forces full theme switch redraw
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onVisibleHeightChange?($0) }
 
             VStack(spacing: 0) {
                 AnswerSuggestionsView(
@@ -49,25 +53,32 @@ struct AnswerInputBar: View {
                         .padding(.trailing, 44)
                         .frame(height: suggestionRowHeight)
 
-                    Button(action: onSubmit) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Circle())
+                    if showsSubmitButton {
+                        Button(action: onSubmit) {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Circle())
+                        }
+                        .glassEffect(.regular.tint(.accentColor), in: Circle())
+                        .padding(.trailing, 6)
                     }
-                    .glassEffect(.regular.tint(.accentColor), in: Circle())
-                    .padding(.trailing, 6)
                 }
             }
         }
         .frame(maxWidth: .infinity)
+        .onChange(of: hasOutcome) { _, newValue in
+            guard newValue, revealedHeight != 0 else { return }
+            withAnimation(.snappy) { revealedHeight = 0 }
+        }
     }
 }
 
 private struct AnswerInputBarPreviewContainer: View {
     let searchResults: [Movie]
     let hasSearched: Bool
+    var showsSubmitButton: Bool = false
     @State private var answerText = ""
     @FocusState private var isFocused: Bool
 
@@ -79,7 +90,8 @@ private struct AnswerInputBarPreviewContainer: View {
             isFocused: $isFocused,
             onSelectSuggestion: { answerText = $0.title },
             onSubmit: {},
-            onAnswerTextChange: {}
+            onAnswerTextChange: {},
+            showsSubmitButton: showsSubmitButton
         )
         .padding()
     }
@@ -95,4 +107,8 @@ private struct AnswerInputBarPreviewContainer: View {
 
 #Preview("Nothing found") {
     AnswerInputBarPreviewContainer(searchResults: [], hasSearched: true)
+}
+
+#Preview("Standalone (with submit button)") {
+    AnswerInputBarPreviewContainer(searchResults: PreviewSuggestions.mixed, hasSearched: true, showsSubmitButton: true)
 }
