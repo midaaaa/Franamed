@@ -11,6 +11,7 @@ struct AnswerBarActionShape: View, Animatable {
     var progress: Double
     let width: CGFloat
     var isBlocked: Bool
+    let isTransitioning: Bool
     let onSubmit: () -> Void
     let onNewGame: () -> Void
 
@@ -45,11 +46,11 @@ struct AnswerBarActionShape: View, Animatable {
         let expandedCenterX = width / 2
         let shapeCenterX = collapsedCenterX + (expandedCenterX - collapsedCenterX) * progress
 
+        let isAtRest = progress == 0 || progress == 1
         let glassShape: AnyShape = progress < 0.02
             ? AnyShape(Circle())
             : AnyShape(RoundedRectangle(cornerRadius: cornerRadius))
 
-        let isAtRest = progress == 0 || progress == 1
         let glassStyle = isAtRest
             ? Glass.regular.tint(isBlocked ? .gray : .accentColor).interactive()
             : Glass.regular.tint(isBlocked ? .gray : .accentColor)
@@ -70,14 +71,14 @@ struct AnswerBarActionShape: View, Animatable {
         .buttonStyle(.plain)
         .glassEffect(glassStyle, in: glassShape)
         .animation(.snappy, value: isBlocked)
-        .allowsHitTesting(isAtRest)
+        .allowsHitTesting(!isTransitioning)
         .position(x: shapeCenterX, y: barHeight / 2)
     }
 }
 
 #Preview {
     GeometryReader { proxy in
-        AnswerBarActionShape(progress: 0, width: proxy.size.width, isBlocked: false, onSubmit: {}, onNewGame: {})
+        AnswerBarActionShape(progress: 0, width: proxy.size.width, isBlocked: false, isTransitioning: false, onSubmit: {}, onNewGame: {})
     }
     .frame(height: suggestionRowHeight)
     .padding()
@@ -85,7 +86,7 @@ struct AnswerBarActionShape: View, Animatable {
 
 #Preview("Blocked (loading)") {
     GeometryReader { proxy in
-        AnswerBarActionShape(progress: 0, width: proxy.size.width, isBlocked: true, onSubmit: {}, onNewGame: {})
+        AnswerBarActionShape(progress: 0, width: proxy.size.width, isBlocked: true, isTransitioning: false, onSubmit: {}, onNewGame: {})
     }
     .frame(height: suggestionRowHeight)
     .padding()
@@ -93,7 +94,7 @@ struct AnswerBarActionShape: View, Animatable {
 
 #Preview("Mid-morph (progress 0.5)") {
     GeometryReader { proxy in
-        AnswerBarActionShape(progress: 0.5, width: proxy.size.width, isBlocked: false, onSubmit: {}, onNewGame: {})
+        AnswerBarActionShape(progress: 0.5, width: proxy.size.width, isBlocked: false, isTransitioning: true, onSubmit: {}, onNewGame: {})
     }
     .frame(height: suggestionRowHeight)
     .padding()
@@ -101,7 +102,7 @@ struct AnswerBarActionShape: View, Animatable {
 
 #Preview("New Game (progress 1)") {
     GeometryReader { proxy in
-        AnswerBarActionShape(progress: 1, width: proxy.size.width, isBlocked: false, onSubmit: {}, onNewGame: {})
+        AnswerBarActionShape(progress: 1, width: proxy.size.width, isBlocked: false, isTransitioning: false, onSubmit: {}, onNewGame: {})
     }
     .frame(height: suggestionRowHeight)
     .padding()

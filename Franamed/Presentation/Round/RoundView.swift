@@ -14,13 +14,12 @@ struct RoundView: View {
     @State private var frameHeight: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
-    @State private var isInputReady = false
-    @State private var readyTask: Task<Void, Never>?
     @State private var stripTints: [ProjectorStripTint] = []
     @State private var displayedURL: URL?
     @State private var isBeamFillLit = true
     @State private var isWaitingForFrame = false
     @State private var morphProgress: Double = 0
+    @State private var isMorphAnimating = false
 
     private var beamGap: CGFloat { (containerHeight - 8 - answerBarHeight) - frameHeight }
     private var beamMaxExpectedGap: CGFloat { max(containerHeight * 0.25, 1) }
@@ -102,24 +101,21 @@ struct RoundView: View {
                 }
             }
         )
-        .onChange(of: viewModel.isLoading) { _, isLoading in
-            readyTask?.cancel()
-            if isLoading {
-                isInputReady = false
-            } else {
-                readyTask = Task {
-                    try? await Task.sleep(for: .milliseconds(250))
-                    guard !Task.isCancelled else { return }
-                    isInputReady = true
-                }
-            }
-        }
         .onChange(of: viewModel.outcome) { _, newOutcome in
+            isMorphAnimating = true
             if newOutcome != nil {
                 isAnswerFieldFocused = false
-                withAnimation(.smooth) { morphProgress = 1 }
+                withAnimation(.smooth, completionCriteria: .logicallyComplete) {
+                    morphProgress = 1
+                } completion: {
+                    isMorphAnimating = false
+                }
             } else {
-                withAnimation(.smooth) { morphProgress = 0 }
+                withAnimation(.smooth, completionCriteria: .logicallyComplete) {
+                    morphProgress = 0
+                } completion: {
+                    isMorphAnimating = false
+                }
             }
         }
     }
@@ -213,14 +209,15 @@ struct RoundView: View {
                 showsSubmitButton: false,
                 hasOutcome: viewModel.outcome != nil
             )
-            .opacity((1 - morphProgress) * (viewModel.isLoading ? 0.5 : 1))
+            .opacity((1 - morphProgress) * (isInputBlocked ? 0.5 : 1))
             .allowsHitTesting(morphProgress < 0.5)
 
             GeometryReader { proxy in
                 AnswerBarActionShape(
                     progress: morphProgress,
                     width: proxy.size.width,
-                    isBlocked: viewModel.isLoading || !isInputReady,
+                    isBlocked: isInputBlocked,
+                    isTransitioning: isMorphAnimating,
                     onSubmit: { viewModel.submitAnswer() },
                     onNewGame: startNewRound
                 )
@@ -229,7 +226,11 @@ struct RoundView: View {
         }
         .padding(.horizontal)
         .padding(.bottom, 8)
-        .disabled(viewModel.isLoading || !isInputReady)
+        .disabled(isInputBlocked)
+    }
+
+    private var isInputBlocked: Bool {
+        viewModel.isLoading
     }
 
     private func updateAnswerBarHeight(_ newHeight: CGFloat) {
