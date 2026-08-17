@@ -1,0 +1,240 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : "system-light"
+    },
+    {
+      "appearance" : "dark",
+      "value" : "system-dark"
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode-specializations" : [
+            {
+              "value" : "plus-lighter"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "plus-lighter"
+            }
+          ],
+          "fill" : "automatic",
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "lens-flare-png-6937.png",
+          "name" : "lens flare",
+          "opacity-specializations" : [
+            {
+              "value" : 1
+            },
+            {
+              "appearance" : "dark",
+              "value" : 1
+            }
+          ],
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              683.4139714972183,
+              -201.99956460221182
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.90000,0.90000,0.90000,1.00000",
+              "extended-gray:1.00000,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.6991853529872253,
+                "y" : 0.7389075555738377
+              },
+              "stop" : {
+                "x" : 0.17114013523279756,
+                "y" : 0.18277435493021632
+              }
+            }
+          },
+          "glass" : true,
+          "image-name" : "magnifying-glass-bold-svgrepo-com.svg",
+          "name" : "magnifying glass",
+          "position" : {
+            "scale" : 0.62,
+            "translation-in-points" : [
+              0.21877076147950447,
+              0.2074869246146136
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "automatic-gradient" : "extended-gray:1.00000,1.00000"
+          },
+          "hidden" : true,
+          "image-name" : "question-mark-svgrepo-com-2.svg",
+          "name" : "question mark",
+          "position" : {
+            "scale" : 0.52,
+            "translation-in-points" : [
+              -18.915135169448376,
+              -0.0008751213765663124
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.90000,0.90000,0.90000,1.00000",
+              "extended-gray:1.00000,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.5,
+                "y" : 0.9542711614146074
+              },
+              "stop" : {
+                "x" : 0.5,
+                "y" : 0.20962794550589536
+              }
+            }
+          },
+          "hidden" : true,
+          "image-name" : "question-mark-svgrepo-com.svg",
+          "name" : "question mark worse",
+          "position" : {
+            "scale" : 0.58,
+            "translation-in-points" : [
+              -0.0009085027817263835,
+              13.416087011956847
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "automatic-gradient" : "extended-gray:1.00000,1.00000",
+            "orientation" : {
+              "start" : {
+                "x" : 0.11637015433824932,
+                "y" : 0.15353100721020424
+              },
+              "stop" : {
+                "x" : 0.8116460753463407,
+                "y" : 0.8386372202133978
+              }
+            }
+          },
+          "glass" : false,
+          "hidden" : true,
+          "image-name" : "fingerprint-with-question-mark-svgrepo-com.svg",
+          "name" : "question mark inside fingerprint",
+          "position" : {
+            "scale" : 0.51,
+            "translation-in-points" : [
+              0,
+              0.0008751213764526256
+            ]
+          }
+        },
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "extended-srgb:0.79608,0.18824,0.87843,1.00000",
+              "extended-srgb:0.38039,0.33333,0.96078,1.00000"
+            ],
+            "orientation" : {
+              "start" : {
+                "x" : 0.7253361305091912,
+                "y" : 0.209343652119011
+              },
+              "stop" : {
+                "x" : 0.20534686087533316,
+                "y" : 0.8226854063813273
+              }
+            }
+          },
+          "image-name" : "image.svg",
+          "name" : "image",
+          "position" : {
+            "scale" : 1.88,
+            "translation-in-points" : [
+              0,
+              -18.799999999999955
+            ]
+          }
+        },
+        {
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : {
+                "linear-gradient" : [
+                  "extended-srgb:0.38039,0.33333,0.96078,1.00000",
+                  "extended-gray:0.00000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.7505472141456501,
+                    "y" : 0.674946910685958
+                  },
+                  "stop" : {
+                    "x" : 0.2564025872128936,
+                    "y" : 0.1785958730594056
+                  }
+                }
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "linear-gradient" : [
+                  "extended-gray:0.25000,1.00000",
+                  "extended-gray:0.75000,1.00000"
+                ],
+                "orientation" : {
+                  "start" : {
+                    "x" : 0.5641146009017362,
+                    "y" : 0.5564895045011368
+                  },
+                  "stop" : {
+                    "x" : 0.2564025872128936,
+                    "y" : 0.1785958730594056
+                  }
+                }
+              }
+            }
+          ],
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "frame.svg",
+          "name" : "frame",
+          "position" : {
+            "scale" : 1.85,
+            "translation-in-points" : [
+              0,
+              -18.500000000000114
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

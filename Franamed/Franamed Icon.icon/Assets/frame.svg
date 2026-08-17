@@ -1,0 +1,29 @@
+<svg width="680" height="500" viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="cutouts">
+      <rect x="140" y="60" width="400" height="400" rx="48" fill="#ffffff"/>
+      <g fill="#000000">
+        <rect x="180" y="83" width="18" height="14" rx="5"/>
+        <rect x="218" y="83" width="18" height="14" rx="5"/>
+        <rect x="256" y="83" width="18" height="14" rx="5"/>
+        <rect x="294" y="83" width="18" height="14" rx="5"/>
+        <rect x="332" y="83" width="18" height="14" rx="5"/>
+        <rect x="370" y="83" width="18" height="14" rx="5"/>
+        <rect x="408" y="83" width="18" height="14" rx="5"/>
+        <rect x="446" y="83" width="18" height="14" rx="5"/>
+        <rect x="484" y="83" width="18" height="14" rx="5"/>
+        <rect x="180" y="423" width="18" height="14" rx="5"/>
+        <rect x="218" y="423" width="18" height="14" rx="5"/>
+        <rect x="256" y="423" width="18" height="14" rx="5"/>
+        <rect x="294" y="423" width="18" height="14" rx="5"/>
+        <rect x="332" y="423" width="18" height="14" rx="5"/>
+        <rect x="370" y="423" width="18" height="14" rx="5"/>
+        <rect x="408" y="423" width="18" height="14" rx="5"/>
+        <rect x="446" y="423" width="18" height="14" rx="5"/>
+        <rect x="484" y="423" width="18" height="14" rx="5"/>
+        <rect x="160" y="120" width="360" height="280" rx="12"/>
+      </g>
+    </mask>
+  </defs>
+  <rect x="140" y="60" width="400" height="400" rx="48" fill="#1b1b1d" mask="url(#cutouts)"/>
+</svg>
