@@ -28,8 +28,8 @@ struct RoundView: View {
         return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
     }
 
-    init(movieFacade: MovieFacadeProtocol) {
-        _viewModel = StateObject(wrappedValue: RoundViewModel(movieFacade: movieFacade))
+    init(movieFacade: MovieFacadeProtocol, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
+        _viewModel = StateObject(wrappedValue: RoundViewModel(movieFacade: movieFacade, filters: filters, frameCount: frameCount))
     }
 
     var body: some View {
@@ -75,11 +75,12 @@ struct RoundView: View {
                             revealedCount: viewModel.revealedCount,
                             currentFrameIndex: viewModel.currentFrameIndex,
                             answeredFrameIndex: viewModel.answeredFrameIndex,
-                            outcome: viewModel.outcome
+                            outcome: viewModel.outcome,
+                            totalFrames: viewModel.frameCount
                         )
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Text("\(viewModel.attemptsRemaining)/\(RoundViewModel.maxAttempts)")
+                        Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
                     }
                 }
             }
@@ -122,7 +123,8 @@ struct RoundView: View {
 
     private var visibleBackdrops: [Backdrop] {
         guard !viewModel.isLoading, let movieWithBackdrops = viewModel.movieWithBackdrops else { return [] }
-        return Array(movieWithBackdrops.backdrops.prefix(RoundViewModel.maxAttempts))
+        return Array(movieWithBackdrops.backdrops.prefix(viewModel
+            .frameCount))
     }
 
     private var currentBackdropURL: URL? {

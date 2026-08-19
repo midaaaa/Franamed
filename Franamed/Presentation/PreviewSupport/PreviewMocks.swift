@@ -14,11 +14,23 @@ struct PreviewMovieFacade: MovieFacadeProtocol {
         Movie(id: 2, title: "Movie 2", releaseDate: "2026-04-05", overview: "Preview overview 2", originalTitle: "Movie 2")
     ]}
 
-    func fetchRandomMovieAndBackdrops(filters: MovieFilters) async throws -> MovieWithBackdrops {
+    func fetchRandomMovieAndBackdrops(filters: MovieFilters, frameCount: Int) async throws -> MovieWithBackdrops {
         MovieWithBackdrops(
             movie: Movie(id: 1, title: "Preview Movie", releaseDate: "2024-01-01", overview: "Preview overview", originalTitle: "Preview Movie"),
             backdrops: (1...6).map { Backdrop(filePath: "https://picsum.photos/seed/backdrop\($0)/1280/720") }
         )
+    }
+
+    func fetchGenres() async throws -> [Genre] {
+        [
+            Genre(id: 1, name: "Драма"),
+            Genre(id: 2, name: "Комедия"),
+            Genre(id: 3, name: "Фантастика")
+        ]
+    }
+
+    func fetchResultsCount(filters: MovieFilters) async throws -> Int {
+        124
     }
 }
 

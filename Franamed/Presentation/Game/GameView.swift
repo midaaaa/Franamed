@@ -10,6 +10,9 @@ import SwiftUI
 struct GameView: View {
     @ObservedObject var coordinator: AppCoordinator
     @State private var isShowingProfile = false
+    @State private var isShowingFilters = false
+    @State private var filters = MovieFilters()
+    @State private var frameCount: Int = 6
 
     var body: some View {
         NavigationStack(path: $coordinator.gamePath) {
@@ -17,11 +20,24 @@ struct GameView: View {
                 Button("Start Round") {
                     coordinator.showRound()
                 }
+
+                Button {
+                    isShowingFilters = true
+                } label: {
+                    HStack {
+                        Text("Фильтры")
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .foregroundStyle(.primary)
             }
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .round:
-                    RoundView(movieFacade: AppFactory.makeMovieFacade())
+                    RoundView(movieFacade: AppFactory.makeMovieFacade(), filters: filters, frameCount: frameCount)
                 }
             }
             .toolbar {
@@ -35,6 +51,16 @@ struct GameView: View {
             }
             .sheet(isPresented: $isShowingProfile) {
                 Text("Profile placeholder")
+            }
+            .sheet(isPresented: $isShowingFilters) {
+                RoundFiltersView(
+                    movieFacade: AppFactory.makeMovieFacade(),
+                    filters: filters,
+                    frameCount: frameCount
+                ) { newFilters, newFrameCount in
+                    filters = newFilters
+                    frameCount = newFrameCount
+                }
             }
         }
     }

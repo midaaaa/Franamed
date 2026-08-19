@@ -10,7 +10,8 @@ import Combine
 
 @MainActor
 final class RoundViewModel: ObservableObject {
-    static let maxAttempts = 6
+    let frameCount: Int
+    private let filters: MovieFilters
 
     @Published private(set) var movieWithBackdrops: MovieWithBackdrops?
     @Published private(set) var isLoading = true
@@ -19,15 +20,18 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var hasSearched = false
 
     @Published var answerText = ""
-    @Published private(set) var attemptsRemaining = RoundViewModel.maxAttempts
+    @Published private(set) var attemptsRemaining: Int
     @Published private(set) var outcome: RoundOutcome?
     @Published private(set) var revealedCount = 1
     @Published private(set) var currentFrameIndex = 0
     @Published private(set) var answeredFrameIndex: Int?
     private let movieFacade: MovieFacadeProtocol
 
-    init(movieFacade: MovieFacadeProtocol) {
+    init(movieFacade: MovieFacadeProtocol, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
         self.movieFacade = movieFacade
+        self.filters = filters
+        self.frameCount = frameCount
+        self.attemptsRemaining = frameCount
     }
 
     func loadRound() async {
@@ -40,14 +44,14 @@ final class RoundViewModel: ObservableObject {
         outcome = nil
         searchResults = []
         hasSearched = false
-        attemptsRemaining = Self.maxAttempts
+        attemptsRemaining = frameCount
         answerText = ""
         revealedCount = 1
         currentFrameIndex = 0
         answeredFrameIndex = nil
 
         do {
-            movieWithBackdrops = try await movieFacade.fetchRandomMovieAndBackdrops(filters: MovieFilters())
+            movieWithBackdrops = try await movieFacade.fetchRandomMovieAndBackdrops(filters: filters, frameCount: frameCount)
         } catch {
             self.error = error
         }
@@ -63,12 +67,12 @@ final class RoundViewModel: ObservableObject {
         if isCorrect {
             answeredFrameIndex = currentFrameIndex
             outcome = .correct
-            revealedCount = Self.maxAttempts
+            revealedCount = frameCount
         } else {
             answerText = ""
             attemptsRemaining -= 1
 
-            if revealedCount < Self.maxAttempts {
+            if revealedCount < frameCount {
                 revealedCount += 1
                 currentFrameIndex = revealedCount - 1
             }

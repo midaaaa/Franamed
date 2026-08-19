@@ -12,7 +12,7 @@ struct FrameIndicatorDots: View {
     let currentFrameIndex: Int
     let answeredFrameIndex: Int?
     let outcome: RoundOutcome?
-    private let totalFrames = RoundViewModel.maxAttempts
+    let totalFrames: Int
 
     private enum DotState {
         case unseen, wrong, active, correct
@@ -69,19 +69,19 @@ struct FrameIndicatorDots: View {
 #Preview("Indicator dots") {
     VStack(alignment: .leading, spacing: 20) {
         Text("First attempt").font(.caption)
-        FrameIndicatorDots(revealedCount: 1, currentFrameIndex: 0, answeredFrameIndex: nil, outcome: nil)
+        FrameIndicatorDots(revealedCount: 1, currentFrameIndex: 0, answeredFrameIndex: nil, outcome: nil, totalFrames: 6)
 
         Text("3 wrong guesses so far, on the 4th").font(.caption)
-        FrameIndicatorDots(revealedCount: 4, currentFrameIndex: 3, answeredFrameIndex: nil, outcome: nil)
+        FrameIndicatorDots(revealedCount: 4, currentFrameIndex: 3, answeredFrameIndex: nil, outcome: nil, totalFrames: 6)
 
         Text("Correct on the 3rd attempt (1–2 wrong, 4–6 never attempted)").font(.caption)
-        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, answeredFrameIndex: 2, outcome: .correct)
+        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, answeredFrameIndex: 2, outcome: .correct, totalFrames: 6)
 
         Text("Wrong on the 6th (final) attempt").font(.caption)
-        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 5, answeredFrameIndex: 5, outcome: .incorrect)
+        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 5, answeredFrameIndex: 5, outcome: .incorrect, totalFrames: 6)
 
         Text("Wrong on the 6th, submitted while browsing back to frame 3").font(.caption)
-        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, answeredFrameIndex: 2, outcome: .incorrect)
+        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, answeredFrameIndex: 2, outcome: .incorrect, totalFrames: 6)
     }
     .padding()
 }

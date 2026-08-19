@@ -8,6 +8,8 @@
 import Foundation
 
 protocol MovieFacadeProtocol {
-    func fetchRandomMovieAndBackdrops(filters: MovieFilters) async throws -> MovieWithBackdrops
+    func fetchRandomMovieAndBackdrops(filters: MovieFilters, frameCount: Int) async throws -> MovieWithBackdrops
     func searchMovies(query: String, language: String) async throws -> [Movie]
+    func fetchGenres() async throws -> [Genre]
+    func fetchResultsCount(filters: MovieFilters) async throws -> Int
 }
