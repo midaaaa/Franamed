@@ -15,8 +15,9 @@ struct PreviewMovieFacade: MovieFacadeProtocol {
     ]}
 
     func fetchRandomMovieAndBackdrops(filters: MovieFilters, frameCount: Int) async throws -> MovieWithBackdrops {
-        MovieWithBackdrops(
-            movie: Movie(id: 1, title: "Preview Movie", releaseDate: "2024-01-01", overview: "Preview overview", originalTitle: "Preview Movie"),
+        let randomId = Int.random(in: 1...1_000_000)
+        return MovieWithBackdrops(
+            movie: Movie(id: randomId, title: "Preview Movie", releaseDate: "2024-01-01", overview: "Preview overview", originalTitle: "Preview Movie"),
             backdrops: (1...6).map { Backdrop(filePath: "https://picsum.photos/seed/backdrop\($0)/1280/720") }
         )
     }

@@ -7,10 +7,13 @@
 
 import Foundation
 import Combine
+import SwiftData
 
 @MainActor
 final class RoundViewModel: ObservableObject {
     let frameCount: Int
+    private let modelContext: ModelContext
+    private var attemptsMade = 0
     private let filters: MovieFilters
 
     @Published private(set) var movieWithBackdrops: MovieWithBackdrops?
@@ -27,8 +30,9 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var answeredFrameIndex: Int?
     private let movieFacade: MovieFacadeProtocol
 
-    init(movieFacade: MovieFacadeProtocol, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
+    init(movieFacade: MovieFacadeProtocol, modelContext: ModelContext, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
         self.movieFacade = movieFacade
+        self.modelContext = modelContext
         self.filters = filters
         self.frameCount = frameCount
         self.attemptsRemaining = frameCount
@@ -49,6 +53,7 @@ final class RoundViewModel: ObservableObject {
         revealedCount = 1
         currentFrameIndex = 0
         answeredFrameIndex = nil
+        attemptsMade = 0
 
         do {
             movieWithBackdrops = try await movieFacade.fetchRandomMovieAndBackdrops(filters: filters, frameCount: frameCount)
@@ -60,13 +65,19 @@ final class RoundViewModel: ObservableObject {
     func submitAnswer() {
         guard outcome == nil, let movieWithBackdrops else { return }
         answerText = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let submittedAnswer = answerText
         let movie = movieWithBackdrops.movie
+        attemptsMade += 1
+        if attemptsMade == 1 {
+            modelContext.insert(WatchedMovieCache(tmdbId: movie.id, addedAt: .now))
+        }
         let isCorrect = [movie.title, movie.originalTitle].contains {
             $0.caseInsensitiveCompare(answerText) == .orderedSame
         }
         if isCorrect {
             answeredFrameIndex = currentFrameIndex
             outcome = .correct
+            modelContext.insert(RoundRecord(tmdbId: movie.id, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
             revealedCount = frameCount
         } else {
             answerText = ""
@@ -80,6 +91,7 @@ final class RoundViewModel: ObservableObject {
             if attemptsRemaining == 0 {
                 answeredFrameIndex = currentFrameIndex
                 outcome = .incorrect
+                modelContext.insert(RoundRecord(tmdbId: movie.id, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
             }
         }
     }

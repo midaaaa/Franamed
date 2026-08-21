@@ -6,13 +6,24 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct GameView: View {
     @ObservedObject var coordinator: AppCoordinator
+    @Environment(\.modelContext) private var modelContext
     @State private var isShowingProfile = false
     @State private var isShowingFilters = false
     @State private var filters = MovieFilters()
     @State private var frameCount: Int = 6
+
+    @State private var isShowingResetConfirmation = false
+
+    private func resetWatchedMovies() {
+        do {
+            try modelContext.delete(model: WatchedMovieCache.self)
+        } catch {
+        }
+    }
 
     var body: some View {
         NavigationStack(path: $coordinator.gamePath) {
@@ -37,7 +48,7 @@ struct GameView: View {
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .round:
-                    RoundView(movieFacade: AppFactory.makeMovieFacade(), filters: filters, frameCount: frameCount)
+                    RoundView(movieFacade: AppFactory.makeMovieFacade(), modelContext: modelContext, filters: filters, frameCount: frameCount)
                 }
             }
             .toolbar {
@@ -50,7 +61,26 @@ struct GameView: View {
                 }
             }
             .sheet(isPresented: $isShowingProfile) {
-                Text("Profile placeholder")
+                List {
+                    if isShowingResetConfirmation {
+                        Text("Удалить всю историю просмотренных фильмов? Это нельзя отменить.")
+                            .foregroundStyle(.secondary)
+                        Button("Подтвердить удаление", role: .destructive) {
+                            resetWatchedMovies()
+                            isShowingResetConfirmation = false
+                        }
+                        Button("Отмена") {
+                            isShowingResetConfirmation = false
+                        }
+                    } else {
+                        Button("Сбросить просмотренные фильмы", role: .destructive) {
+                            isShowingResetConfirmation = true
+                        }
+                    }
+                }
+                .onDisappear {
+                    isShowingResetConfirmation = false
+                }
             }
             .sheet(isPresented: $isShowingFilters) {
                 RoundFiltersView(
@@ -68,4 +98,5 @@ struct GameView: View {
 
 #Preview {
     GameView(coordinator: AppCoordinator())
+        .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
 }

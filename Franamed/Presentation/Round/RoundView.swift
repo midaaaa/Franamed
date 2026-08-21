@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct RoundView: View {
     @StateObject private var viewModel: RoundViewModel
@@ -28,8 +29,8 @@ struct RoundView: View {
         return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
     }
 
-    init(movieFacade: MovieFacadeProtocol, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
-        _viewModel = StateObject(wrappedValue: RoundViewModel(movieFacade: movieFacade, filters: filters, frameCount: frameCount))
+    init(movieFacade: MovieFacadeProtocol, modelContext: ModelContext, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
+        _viewModel = StateObject(wrappedValue: RoundViewModel(movieFacade: movieFacade, modelContext: modelContext, filters: filters, frameCount: frameCount))
     }
 
     var body: some View {
@@ -245,6 +246,15 @@ struct RoundView: View {
     }
 }
 
+private struct RoundViewPreviewHost: View {
+    @Environment(\.modelContext) private var modelContext
+
+    var body: some View {
+        RoundView(movieFacade: PreviewMovieFacade(), modelContext: modelContext)
+    }
+}
+
 #Preview {
-    RoundView(movieFacade: PreviewMovieFacade())
+    RoundViewPreviewHost()
+        .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
 }
