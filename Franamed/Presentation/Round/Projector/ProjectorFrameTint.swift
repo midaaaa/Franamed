@@ -15,26 +15,35 @@ struct ProjectorStripTint: Sendable {
     let brightness: Double
 }
 
-private actor ProjectorTintCache {
+private final class ProjectorTintBox {
+    let tints: [ProjectorStripTint]
+    init(_ tints: [ProjectorStripTint]) { self.tints = tints }
+}
+
+private final class ProjectorTintCache: @unchecked Sendable {
     static let shared = ProjectorTintCache()
-    private var storage: [URL: [ProjectorStripTint]] = [:]
+    private let cache = NSCache<NSURL, ProjectorTintBox>()
+
+    private init() {
+        cache.countLimit = 60
+    }
 
     func tints(for url: URL) -> [ProjectorStripTint]? {
-        storage[url]
+        cache.object(forKey: url as NSURL)?.tints
     }
 
     func store(_ tints: [ProjectorStripTint], for url: URL) {
-        storage[url] = tints
+        cache.setObject(ProjectorTintBox(tints), forKey: url as NSURL)
     }
 }
 
 enum ProjectorFrameTint {
     nonisolated static func cachedTints(for url: URL) async -> [ProjectorStripTint]? {
-        await ProjectorTintCache.shared.tints(for: url)
+        ProjectorTintCache.shared.tints(for: url)
     }
 
     nonisolated static func storeTints(_ tints: [ProjectorStripTint], for url: URL) async {
-        await ProjectorTintCache.shared.store(tints, for: url)
+        ProjectorTintCache.shared.store(tints, for: url)
     }
 
     nonisolated static func averageStripTints(from image: UIImage, stripCount: Int) -> [ProjectorStripTint] {
