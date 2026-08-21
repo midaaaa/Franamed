@@ -10,12 +10,33 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import UIKit
 
-struct ProjectorStripTint {
+struct ProjectorStripTint: Sendable {
     let color: Color
     let brightness: Double
 }
 
+private actor ProjectorTintCache {
+    static let shared = ProjectorTintCache()
+    private var storage: [URL: [ProjectorStripTint]] = [:]
+
+    func tints(for url: URL) -> [ProjectorStripTint]? {
+        storage[url]
+    }
+
+    func store(_ tints: [ProjectorStripTint], for url: URL) {
+        storage[url] = tints
+    }
+}
+
 enum ProjectorFrameTint {
+    nonisolated static func cachedTints(for url: URL) async -> [ProjectorStripTint]? {
+        await ProjectorTintCache.shared.tints(for: url)
+    }
+
+    nonisolated static func storeTints(_ tints: [ProjectorStripTint], for url: URL) async {
+        await ProjectorTintCache.shared.store(tints, for: url)
+    }
+
     nonisolated static func averageStripTints(from image: UIImage, stripCount: Int) -> [ProjectorStripTint] {
         guard stripCount > 0, let cgImage = image.cgImage else { return [] }
         let ciImage = CIImage(cgImage: cgImage)
@@ -57,12 +78,22 @@ enum ProjectorFrameTint {
     }
 
     nonisolated static func loadAndSample(url: URL, stripCount: Int) async -> [ProjectorStripTint] {
-        if let cached = ImageCache.shared.image(for: url) {
-            return averageStripTints(from: cached, stripCount: stripCount)
+        if let cachedTints = await cachedTints(for: url) {
+            return cachedTints
         }
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = UIImage(data: data) else { return [] }
-        ImageCache.shared.store(image, for: url)
-        return averageStripTints(from: image, stripCount: stripCount)
+
+        let image: UIImage
+        if let cached = ImageCache.shared.image(for: url) {
+            image = cached
+        } else {
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let downloaded = UIImage(data: data) else { return [] }
+            ImageCache.shared.store(downloaded, for: url)
+            image = downloaded
+        }
+
+        let tints = averageStripTints(from: image, stripCount: stripCount)
+        await storeTints(tints, for: url)
+        return tints
     }
 }
