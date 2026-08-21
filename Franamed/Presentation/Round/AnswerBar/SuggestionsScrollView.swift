@@ -22,7 +22,7 @@ final class SelfSizingScrollView: UIScrollView {
 
 struct SuggestionsScrollView: UIViewRepresentable {
     let rows: [SuggestionRow]
-    let onSelect: (Movie) -> Void
+    let onSelect: (MediaItem) -> Void
     @Binding var revealedHeight: CGFloat
     @Binding var totalContentHeight: CGFloat
     let availableWidth: CGFloat
@@ -122,11 +122,11 @@ struct SuggestionsScrollView: UIViewRepresentable {
     @ViewBuilder
     private func rowView(for row: SuggestionRow) -> some View {
         switch row {
-        case .movie(let movie):
+        case .media(let item):
             Button {
-                onSelect(movie)
+                onSelect(item)
             } label: {
-                Text(movie.title)
+                Text(item.title)
                     .lineLimit(3)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -184,7 +184,7 @@ private struct SuggestionsScrollViewPreviewContainer: View {
 }
 
 #Preview("Scroll list") {
-    SuggestionsScrollViewPreviewContainer(rows: PreviewSuggestions.mixed.map(SuggestionRow.movie))
+    SuggestionsScrollViewPreviewContainer(rows: PreviewSuggestions.mixed.map(SuggestionRow.media))
 }
 
 #Preview("Nothing found") {

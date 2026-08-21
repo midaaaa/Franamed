@@ -10,12 +10,19 @@ import SwiftData
 
 @Model
 final class WatchedMovieCache {
-    #Unique<WatchedMovieCache>([\.tmdbId])
+    #Unique<WatchedMovieCache>([\.tmdbId, \.mediaTypeRawValue])
     var tmdbId: Int
+    var mediaTypeRawValue: String = MediaType.movie.rawValue
     var addedAt: Date
 
-    init(tmdbId: Int, addedAt: Date) {
+    var mediaType: MediaType {
+        get { MediaType(rawValue: mediaTypeRawValue) ?? .movie }
+        set { mediaTypeRawValue = newValue.rawValue }
+    }
+
+    init(tmdbId: Int, mediaType: MediaType, addedAt: Date) {
         self.tmdbId = tmdbId
+        self.mediaTypeRawValue = mediaType.rawValue
         self.addedAt = addedAt
     }
 }

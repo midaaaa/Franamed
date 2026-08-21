@@ -13,10 +13,15 @@ struct GameView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var isShowingProfile = false
     @State private var isShowingFilters = false
-    @State private var filters = MovieFilters()
+    @State private var selectedMode: MediaType = .movie
+    @State private var filtersByMode: [MediaType: MediaFilters] = [:]
     @State private var frameCount: Int = 6
 
     @State private var isShowingResetConfirmation = false
+
+    private func filters(for mediaType: MediaType) -> MediaFilters {
+        filtersByMode[mediaType] ?? MediaFilters()
+    }
 
     private func resetWatchedMovies() {
         do {
@@ -27,28 +32,32 @@ struct GameView: View {
 
     var body: some View {
         NavigationStack(path: $coordinator.gamePath) {
-            List {
-                Button("Start Round") {
-                    coordinator.showRound()
+            TabView(selection: $selectedMode) {
+                ForEach(MediaType.allCases) { mode in
+                    GameModeList(
+                        selectedMode: $selectedMode,
+                        onStartRound: { coordinator.showRound(mediaType: mode) },
+                        onOpenFilters: {
+                            selectedMode = mode
+                            isShowingFilters = true
+                        }
+                    )
+                    .tag(mode)
                 }
-
-                Button {
-                    isShowingFilters = true
-                } label: {
-                    HStack {
-                        Text("Фильтры")
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .foregroundStyle(.primary)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .navigationTitle(selectedMode.displayName)
             .navigationDestination(for: Route.self) { route in
                 switch route {
-                case .round:
-                    RoundView(movieFacade: AppFactory.makeMovieFacade(), modelContext: modelContext, filters: filters, frameCount: frameCount)
+                case .round(let mediaType):
+                    RoundView(
+                        mediaFacade: AppFactory.makeMediaFacade(),
+                        modelContext: modelContext,
+                        mediaType: mediaType,
+                        filters: filters(for: mediaType),
+                        frameCount: frameCount
+                    )
                 }
             }
             .toolbar {
@@ -63,7 +72,7 @@ struct GameView: View {
             .sheet(isPresented: $isShowingProfile) {
                 List {
                     if isShowingResetConfirmation {
-                        Text("Удалить всю историю просмотренных фильмов? Это нельзя отменить.")
+                        Text("Удалить всю историю просмотренных фильмов и сериалов? Это нельзя отменить.")
                             .foregroundStyle(.secondary)
                         Button("Подтвердить удаление", role: .destructive) {
                             resetWatchedMovies()
@@ -73,7 +82,7 @@ struct GameView: View {
                             isShowingResetConfirmation = false
                         }
                     } else {
-                        Button("Сбросить просмотренные фильмы", role: .destructive) {
+                        Button("Сбросить историю просмотров", role: .destructive) {
                             isShowingResetConfirmation = true
                         }
                     }
@@ -84,14 +93,49 @@ struct GameView: View {
             }
             .sheet(isPresented: $isShowingFilters) {
                 RoundFiltersView(
-                    movieFacade: AppFactory.makeMovieFacade(),
-                    filters: filters,
+                    mediaFacade: AppFactory.makeMediaFacade(),
+                    mediaType: selectedMode,
+                    filters: filters(for: selectedMode),
                     frameCount: frameCount
                 ) { newFilters, newFrameCount in
-                    filters = newFilters
+                    filtersByMode[selectedMode] = newFilters
                     frameCount = newFrameCount
                 }
             }
+        }
+    }
+}
+
+private struct GameModeList: View {
+    @Binding var selectedMode: MediaType
+    let onStartRound: () -> Void
+    let onOpenFilters: () -> Void
+
+    var body: some View {
+        List {
+            Picker("Режим", selection: $selectedMode) {
+                ForEach(MediaType.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .listRowInsets(EdgeInsets())
+            .padding(.horizontal)
+            .padding(.vertical, 4)
+            .listRowBackground(Color.clear)
+
+            Button("Start Round", action: onStartRound)
+
+            Button(action: onOpenFilters) {
+                HStack {
+                    Text("Фильтры")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .foregroundStyle(.primary)
         }
     }
 }

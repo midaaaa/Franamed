@@ -10,17 +10,19 @@ import Combine
 
 @MainActor
 final class RoundFiltersViewModel: ObservableObject {
-    @Published var filters: MovieFilters
+    let mediaType: MediaType
+    @Published var filters: MediaFilters
     @Published var frameCount: Int
     @Published private(set) var genres: [Genre] = []
     @Published private(set) var isLoadingGenres = false
     @Published private(set) var previewResultsCount: Int?
     @Published private(set) var isCheckingPreview = false
 
-    private let movieFacade: MovieFacadeProtocol
+    private let mediaFacade: MediaFacadeProtocol
 
-    init(movieFacade: MovieFacadeProtocol, filters: MovieFilters, frameCount: Int) {
-        self.movieFacade = movieFacade
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, filters: MediaFilters, frameCount: Int) {
+        self.mediaFacade = mediaFacade
+        self.mediaType = mediaType
         self.filters = filters
         self.frameCount = frameCount
     }
@@ -30,7 +32,7 @@ final class RoundFiltersViewModel: ObservableObject {
     }
 
     var applyButtonTitle: String {
-        MoviesCountFormatter.applyButtonTitle(for: previewResultsCount)
+        MoviesCountFormatter.applyButtonTitle(for: previewResultsCount, mediaType: mediaType)
     }
 
     func loadGenres() async {
@@ -40,13 +42,13 @@ final class RoundFiltersViewModel: ObservableObject {
         defer { isLoadingGenres = false }
 
         do {
-            genres = try await movieFacade.fetchGenres()
+            genres = try await mediaFacade.fetchGenres(mediaType: mediaType)
         } catch {
             genres = []
         }
     }
 
-    func refreshPreview(filters: MovieFilters) async {
+    func refreshPreview(filters: MediaFilters) async {
         isCheckingPreview = true
 
         do {
@@ -57,7 +59,7 @@ final class RoundFiltersViewModel: ObservableObject {
         guard !Task.isCancelled else { return }
 
         do {
-            previewResultsCount = try await movieFacade.fetchResultsCount(filters: filters)
+            previewResultsCount = try await mediaFacade.fetchResultsCount(mediaType: mediaType, filters: filters)
         } catch {
             previewResultsCount = 0
         }

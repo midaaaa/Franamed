@@ -8,21 +8,21 @@
 import Foundation
 
 #if DEBUG
-struct PreviewMovieFacade: MovieFacadeProtocol {
-    func searchMovies(query: String, language: String) async throws -> [Movie] {[
-        Movie(id: 1, title: "Movie 1", releaseDate: "2025-04-05", overview: "Preview overview 1", originalTitle: "Movie 1"),
-        Movie(id: 2, title: "Movie 2", releaseDate: "2026-04-05", overview: "Preview overview 2", originalTitle: "Movie 2")
+struct PreviewMediaFacade: MediaFacadeProtocol {
+    func searchMedia(mediaType: MediaType, query: String, language: String) async throws -> [MediaItem] {[
+        MediaItem(id: 1, mediaType: mediaType, title: "Movie 1", originalTitle: "Movie 1", releaseDate: "2025-04-05", overview: "Preview overview 1"),
+        MediaItem(id: 2, mediaType: mediaType, title: "Movie 2", originalTitle: "Movie 2", releaseDate: "2026-04-05", overview: "Preview overview 2")
     ]}
 
-    func fetchRandomMovieAndBackdrops(filters: MovieFilters, frameCount: Int) async throws -> MovieWithBackdrops {
+    func fetchRandomMediaItemAndBackdrops(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> MediaItemWithBackdrops {
         let randomId = Int.random(in: 1...1_000_000)
-        return MovieWithBackdrops(
-            movie: Movie(id: randomId, title: "Preview Movie", releaseDate: "2024-01-01", overview: "Preview overview", originalTitle: "Preview Movie"),
+        return MediaItemWithBackdrops(
+            item: MediaItem(id: randomId, mediaType: mediaType, title: "Preview Movie", originalTitle: "Preview Movie", releaseDate: "2024-01-01", overview: "Preview overview"),
             backdrops: (1...6).map { Backdrop(filePath: "https://picsum.photos/seed/backdrop\($0)/1280/720") }
         )
     }
 
-    func fetchGenres() async throws -> [Genre] {
+    func fetchGenres(mediaType: MediaType) async throws -> [Genre] {
         [
             Genre(id: 1, name: "Драма"),
             Genre(id: 2, name: "Комедия"),
@@ -30,19 +30,19 @@ struct PreviewMovieFacade: MovieFacadeProtocol {
         ]
     }
 
-    func fetchResultsCount(filters: MovieFilters) async throws -> Int {
+    func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
         124
     }
 }
 
-extension Movie {
-    static func preview(_ id: Int, _ title: String) -> Movie {
-        Movie(id: id, title: title, releaseDate: "2024-01-01", overview: nil, originalTitle: title)
+extension MediaItem {
+    static func preview(_ id: Int, _ title: String, mediaType: MediaType = .movie) -> MediaItem {
+        MediaItem(id: id, mediaType: mediaType, title: title, originalTitle: title, releaseDate: "2024-01-01", overview: nil)
     }
 }
 
 enum PreviewSuggestions {
-    static let oneLine: [Movie] = [
+    static let oneLine: [MediaItem] = [
         .preview(1, "Up"),
         .preview(2, "Her"),
         .preview(3, "It"),
@@ -50,19 +50,19 @@ enum PreviewSuggestions {
         .preview(5, "Coco")
     ]
 
-    static let twoLine: [Movie] = [
+    static let twoLine: [MediaItem] = [
         .preview(1, "The Lord of the Rings: The Fellowship of the Ring"),
         .preview(2, "Star Wars: Episode V — The Empire Strikes Back"),
         .preview(3, "Pirates of the Caribbean: The Curse of the Black Pearl"),
         .preview(4, "Harry Potter and the Prisoner of Azkaban")
     ]
 
-    static let threeLine: [Movie] = [
+    static let threeLine: [MediaItem] = [
         .preview(1, "Everything Everywhere All at Once: An Absurdist Multiverse Adventure About Taxes and Family"),
         .preview(2, "The Lord of the Rings: The Return of the King — Extended Special Edition Director's Cut")
     ]
 
-    static let mixed: [Movie] = [
+    static let mixed: [MediaItem] = [
         .preview(1, "Up"),
         .preview(2, "The Lord of the Rings: The Fellowship of the Ring"),
         .preview(3, "Inception"),
@@ -71,7 +71,7 @@ enum PreviewSuggestions {
         .preview(6, "Everything Everywhere All at Once: An Absurdist Multiverse Adventure")
     ]
 
-    static let few: [Movie] = [
+    static let few: [MediaItem] = [
         .preview(1, "Up"),
         .preview(2, "Her")
     ]

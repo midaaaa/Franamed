@@ -9,10 +9,10 @@ import SwiftUI
 
 struct AnswerInputBar: View {
     @Binding var answerText: String
-    let searchResults: [Movie]
+    let searchResults: [MediaItem]
     let hasSearched: Bool
     var isFocused: FocusState<Bool>.Binding
-    let onSelectSuggestion: (Movie) -> Void
+    let onSelectSuggestion: (MediaItem) -> Void
     let onSubmit: () -> Void
     let onAnswerTextChange: () async -> Void
     var onVisibleHeightChange: ((CGFloat) -> Void)? = nil
@@ -35,7 +35,7 @@ struct AnswerInputBar: View {
 
             VStack(spacing: 0) {
                 AnswerSuggestionsView(
-                    movies: searchResults,
+                    items: searchResults,
                     hasSearched: hasSearched,
                     revealedHeight: $revealedHeight,
                     onSelect: onSelectSuggestion
@@ -76,7 +76,7 @@ struct AnswerInputBar: View {
 }
 
 private struct AnswerInputBarPreviewContainer: View {
-    let searchResults: [Movie]
+    let searchResults: [MediaItem]
     let hasSearched: Bool
     var showsSubmitButton: Bool = false
     @State private var answerText = ""

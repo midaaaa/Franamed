@@ -29,8 +29,8 @@ struct RoundView: View {
         return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
     }
 
-    init(movieFacade: MovieFacadeProtocol, modelContext: ModelContext, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
-        _viewModel = StateObject(wrappedValue: RoundViewModel(movieFacade: movieFacade, modelContext: modelContext, filters: filters, frameCount: frameCount))
+    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
+        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, modelContext: modelContext, mediaType: mediaType, filters: filters, frameCount: frameCount))
     }
 
     var body: some View {
@@ -55,10 +55,10 @@ struct RoundView: View {
                             .allowsHitTesting(false)
                     }
 
-                    if let outcome = viewModel.outcome, let movieWithBackdrops = viewModel.movieWithBackdrops {
+                    if let outcome = viewModel.outcome, let mediaItemWithBackdrops = viewModel.mediaItemWithBackdrops {
                         ResultBanner(
                             outcome: outcome,
-                            movieTitle: movieWithBackdrops.movie.originalTitle
+                            movieTitle: mediaItemWithBackdrops.item.originalTitle
                         )
                         .padding(.top, 16)
                     }
@@ -84,6 +84,7 @@ struct RoundView: View {
                         Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
                     }
                 }
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
         .task { await viewModel.loadRound() }
@@ -123,8 +124,8 @@ struct RoundView: View {
     }
 
     private var visibleBackdrops: [Backdrop] {
-        guard !viewModel.isLoading, let movieWithBackdrops = viewModel.movieWithBackdrops else { return [] }
-        return Array(movieWithBackdrops.backdrops.prefix(viewModel
+        guard !viewModel.isLoading, let mediaItemWithBackdrops = viewModel.mediaItemWithBackdrops else { return [] }
+        return Array(mediaItemWithBackdrops.backdrops.prefix(viewModel
             .frameCount))
     }
 
@@ -259,7 +260,7 @@ private struct RoundViewPreviewHost: View {
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
-        RoundView(movieFacade: PreviewMovieFacade(), modelContext: modelContext)
+        RoundView(mediaFacade: PreviewMediaFacade(), modelContext: modelContext)
     }
 }
 

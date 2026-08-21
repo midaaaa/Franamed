@@ -8,7 +8,7 @@
 import Foundation
 
 enum Route: Hashable {
-    case round
+    case round(MediaType)
 }
 
 enum CurationRoute: Hashable {

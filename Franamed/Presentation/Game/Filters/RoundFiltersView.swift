@@ -16,9 +16,9 @@ struct RoundFiltersView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: RoundFiltersViewModel
-    let onApply: (MovieFilters, Int) -> Void
+    let onApply: (MediaFilters, Int) -> Void
 
-    private let initialFilters: MovieFilters
+    private let initialFilters: MediaFilters
     private let initialFrameCount: Int
 
     @State private var limitYears: Bool
@@ -28,8 +28,8 @@ struct RoundFiltersView: View {
     @State private var limitRating: Bool
     @State private var limitVoteCount: Bool
 
-    init(movieFacade: MovieFacadeProtocol, filters: MovieFilters, frameCount: Int, onApply: @escaping (MovieFilters, Int) -> Void) {
-        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(movieFacade: movieFacade, filters: filters, frameCount: frameCount))
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, filters: MediaFilters, frameCount: Int, onApply: @escaping (MediaFilters, Int) -> Void) {
+        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, mediaType: mediaType, filters: filters, frameCount: frameCount))
         self.onApply = onApply
         self.initialFilters = filters
         self.initialFrameCount = frameCount
@@ -41,7 +41,7 @@ struct RoundFiltersView: View {
         _limitVoteCount = State(initialValue: filters.minVoteCount != nil)
     }
 
-    private var previewFilters: MovieFilters {
+    private var previewFilters: MediaFilters {
         var result = viewModel.filters
         result.yearRange = limitYears ? min(yearFrom, yearTo)...max(yearFrom, yearTo) : nil
         result.minRating = limitRating ? viewModel.filters.minRating : nil
@@ -67,6 +67,27 @@ struct RoundFiltersView: View {
         )
     }
 
+    private var mediaWordCapitalized: String {
+        switch viewModel.mediaType {
+        case .movie: "Фильмы"
+        case .tv: "Сериалы"
+        }
+    }
+
+    private var mediaWordGenitivePlural: String {
+        switch viewModel.mediaType {
+        case .movie: "фильмы"
+        case .tv: "сериалы"
+        }
+    }
+
+    private var yearSectionFooterText: String {
+        switch viewModel.mediaType {
+        case .movie: "Диапазон года выхода фильма."
+        case .tv: "Диапазон года начала показа сериала."
+        }
+    }
+
     private var selectedGenreNamesSummary: String {
         guard let selectedIds = viewModel.filters.genres, !selectedIds.isEmpty else {
             return "Все жанры"
@@ -89,6 +110,7 @@ struct RoundFiltersView: View {
                 YearRangeFilterSection(
                     earliestYear: Self.earliestYear,
                     currentYear: Self.currentYear,
+                    footerText: yearSectionFooterText,
                     isEnabled: $limitYears,
                     yearFrom: $yearFrom,
                     yearTo: $yearTo
@@ -98,7 +120,7 @@ struct RoundFiltersView: View {
 
                 OptionalThresholdFilterSection(
                     title: "Рейтинг",
-                    footer: "Фильмы с рейтингом не ниже указанного.",
+                    footer: "\(mediaWordCapitalized) с рейтингом не ниже указанного.",
                     range: 0...10,
                     step: 0.5,
                     defaultValue: Self.defaultMinRating,
@@ -123,7 +145,7 @@ struct RoundFiltersView: View {
                 Section {
                     Toggle("18+", isOn: $viewModel.filters.includeAdult)
                 } footer: {
-                    Text("Показывать фильмы с рейтингом 18+.")
+                    Text("Показывать \(mediaWordGenitivePlural) с рейтингом 18+.")
                 }
             }
             .navigationTitle("Фильтры")
@@ -192,7 +214,7 @@ struct RoundFiltersView: View {
         } header: {
             Text("Сортировка")
         } footer: {
-            Text("Определяет, из каких фильмов собирается раунд: самых популярных, высокооценённых или новых.")
+            Text("Определяет, из каких \(mediaWordGenitivePlural) собирается раунд: самых популярных, высокооценённых или новых.")
         }
     }
 
@@ -247,7 +269,7 @@ struct RoundFiltersView: View {
     }
 
     private func resetAll() {
-        viewModel.filters = MovieFilters()
+        viewModel.filters = MediaFilters()
         viewModel.frameCount = 6
         limitYears = false
         yearFrom = Self.defaultYearFrom
@@ -275,5 +297,5 @@ struct RoundFiltersView: View {
 }
 
 #Preview {
-    RoundFiltersView(movieFacade: PreviewMovieFacade(), filters: MovieFilters(), frameCount: 6) { _, _ in }
+    RoundFiltersView(mediaFacade: PreviewMediaFacade(), mediaType: .movie, filters: MediaFilters(), frameCount: 6) { _, _ in }
 }

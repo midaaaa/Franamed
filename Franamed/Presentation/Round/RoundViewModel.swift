@@ -11,15 +11,16 @@ import SwiftData
 
 @MainActor
 final class RoundViewModel: ObservableObject {
+    let mediaType: MediaType
     let frameCount: Int
     private let modelContext: ModelContext
     private var attemptsMade = 0
-    private let filters: MovieFilters
+    private let filters: MediaFilters
 
-    @Published private(set) var movieWithBackdrops: MovieWithBackdrops?
+    @Published private(set) var mediaItemWithBackdrops: MediaItemWithBackdrops?
     @Published private(set) var isLoading = true
     @Published private(set) var error: Error?
-    @Published private(set) var searchResults: [Movie] = []
+    @Published private(set) var searchResults: [MediaItem] = []
     @Published private(set) var hasSearched = false
 
     @Published var answerText = ""
@@ -28,11 +29,12 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var revealedCount = 1
     @Published private(set) var currentFrameIndex = 0
     @Published private(set) var answeredFrameIndex: Int?
-    private let movieFacade: MovieFacadeProtocol
+    private let mediaFacade: MediaFacadeProtocol
 
-    init(movieFacade: MovieFacadeProtocol, modelContext: ModelContext, filters: MovieFilters = MovieFilters(), frameCount: Int = 6) {
-        self.movieFacade = movieFacade
+    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
+        self.mediaFacade = mediaFacade
         self.modelContext = modelContext
+        self.mediaType = mediaType
         self.filters = filters
         self.frameCount = frameCount
         self.attemptsRemaining = frameCount
@@ -56,28 +58,28 @@ final class RoundViewModel: ObservableObject {
         attemptsMade = 0
 
         do {
-            movieWithBackdrops = try await movieFacade.fetchRandomMovieAndBackdrops(filters: filters, frameCount: frameCount)
+            mediaItemWithBackdrops = try await mediaFacade.fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
         } catch {
             self.error = error
         }
     }
 
     func submitAnswer() {
-        guard outcome == nil, let movieWithBackdrops else { return }
+        guard outcome == nil, let mediaItemWithBackdrops else { return }
         answerText = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
         let submittedAnswer = answerText
-        let movie = movieWithBackdrops.movie
+        let item = mediaItemWithBackdrops.item
         attemptsMade += 1
         if attemptsMade == 1 {
-            modelContext.insert(WatchedMovieCache(tmdbId: movie.id, addedAt: .now))
+            modelContext.insert(WatchedMovieCache(tmdbId: item.id, mediaType: mediaType, addedAt: .now))
         }
-        let isCorrect = [movie.title, movie.originalTitle].contains {
+        let isCorrect = [item.title, item.originalTitle].contains {
             $0.caseInsensitiveCompare(answerText) == .orderedSame
         }
         if isCorrect {
             answeredFrameIndex = currentFrameIndex
             outcome = .correct
-            modelContext.insert(RoundRecord(tmdbId: movie.id, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
+            modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
             revealedCount = frameCount
         } else {
             answerText = ""
@@ -91,7 +93,7 @@ final class RoundViewModel: ObservableObject {
             if attemptsRemaining == 0 {
                 answeredFrameIndex = currentFrameIndex
                 outcome = .incorrect
-                modelContext.insert(RoundRecord(tmdbId: movie.id, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
+                modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
             }
         }
     }
@@ -121,7 +123,7 @@ final class RoundViewModel: ObservableObject {
 
         do {
             let language = detectTMDBLanguage(from: trimmedQuery)
-            let results = try await movieFacade.searchMovies(query: trimmedQuery, language: language)
+            let results = try await mediaFacade.searchMedia(mediaType: mediaType, query: trimmedQuery, language: language)
 
             var seenTitles = Set<String>()
             searchResults = results.filter { seenTitles.insert($0.title).inserted }

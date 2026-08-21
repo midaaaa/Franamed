@@ -8,12 +8,12 @@
 import Foundation
 
 enum SuggestionRow: Identifiable {
-    case movie(Movie)
+    case media(MediaItem)
     case empty
 
     var id: AnyHashable {
         switch self {
-        case .movie(let movie): movie.id
+        case .media(let item): item.id
         case .empty: "empty"
         }
     }

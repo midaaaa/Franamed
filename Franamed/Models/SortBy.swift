@@ -7,16 +7,30 @@
 
 import Foundation
 
-enum SortBy: String, CaseIterable {
-    case popularityDesc = "popularity.desc"
-    case voteAverageDesc = "vote_average.desc"
-    case releaseDateDesc = "primary_release_date.desc"
+enum SortBy: Hashable, CaseIterable {
+    case popularityDesc
+    case ratingDesc
+    case releaseDateDesc
 
     var displayName: String {
         switch self {
         case .popularityDesc: "По популярности"
-        case .voteAverageDesc: "По рейтингу"
+        case .ratingDesc: "По рейтингу"
         case .releaseDateDesc: "По дате выхода"
+        }
+    }
+
+    func tmdbValue(for mediaType: MediaType) -> String {
+        switch self {
+        case .popularityDesc:
+            return "popularity.desc"
+        case .ratingDesc:
+            return "vote_average.desc"
+        case .releaseDateDesc:
+            switch mediaType {
+            case .movie: return "primary_release_date.desc"
+            case .tv: return "first_air_date.desc"
+            }
         }
     }
 }

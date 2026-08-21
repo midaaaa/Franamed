@@ -20,10 +20,10 @@ enum AppFactory {
         return StubFirestoreService()
     }
 
-    static func makeMovieFacade() -> MovieFacadeProtocol {
+    static func makeMediaFacade() -> MediaFacadeProtocol {
         let tmdbClient = makeTMDBClient()
         let firestoreService = makeFirestoreService()
 
-        return MovieFacade(tmdbClient: tmdbClient, firestoreService: firestoreService)
+        return MediaFacade(tmdbClient: tmdbClient, firestoreService: firestoreService)
     }
 }

@@ -12,7 +12,7 @@ enum MoviesCountFormatter {
     private static let resultsPerPage = 20
     static let maxReachableResults = maxReachablePages * resultsPerPage
 
-    static func applyButtonTitle(for resultsCount: Int?) -> String {
+    static func applyButtonTitle(for resultsCount: Int?, mediaType: MediaType) -> String {
         guard let resultsCount else {
             return "Применить"
         }
@@ -23,21 +23,26 @@ enum MoviesCountFormatter {
         }
 
         let countText = cappedCount >= maxReachableResults ? "10 000+" : cappedCount.formatted()
-        return "Применить (~\(countText) \(pluralizedMoviesWord(for: cappedCount)))"
+        return "Применить (~\(countText) \(pluralizedWord(for: cappedCount, mediaType: mediaType)))"
     }
 
-    private static func pluralizedMoviesWord(for count: Int) -> String {
+    private static func pluralizedWord(for count: Int, mediaType: MediaType) -> String {
         let remainder100 = count % 100
         let remainder10 = count % 10
 
+        let forms: (one: String, few: String, many: String) = switch mediaType {
+        case .movie: ("фильм", "фильма", "фильмов")
+        case .tv: ("сериал", "сериала", "сериалов")
+        }
+
         if (11...14).contains(remainder100) {
-            return "фильмов"
+            return forms.many
         }
 
         switch remainder10 {
-        case 1: return "фильм"
-        case 2, 3, 4: return "фильма"
-        default: return "фильмов"
+        case 1: return forms.one
+        case 2, 3, 4: return forms.few
+        default: return forms.many
         }
     }
 }

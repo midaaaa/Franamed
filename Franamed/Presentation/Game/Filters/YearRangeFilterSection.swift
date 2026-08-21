@@ -12,6 +12,8 @@ struct YearRangeFilterSection: View {
 
     let earliestYear: Int
     let currentYear: Int
+    var headerTitle: String = "Годы выхода"
+    var footerText: String = "Диапазон года выхода."
 
     @Binding var isEnabled: Bool
     @Binding var yearFrom: Int
@@ -32,9 +34,9 @@ struct YearRangeFilterSection: View {
                 .frame(height: Self.wheelHeight)
             }
         } header: {
-            Text("Годы выхода")
+            Text(headerTitle)
         } footer: {
-            Text("Диапазон года выхода фильма.")
+            Text(footerText)
         }
     }
 

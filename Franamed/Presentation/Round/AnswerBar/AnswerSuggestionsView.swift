@@ -41,10 +41,10 @@ private struct FixedHeightSlot<Content: View>: View {
 }
 
 struct AnswerSuggestionsView: View {
-    let movies: [Movie]
+    let items: [MediaItem]
     let hasSearched: Bool
     @Binding var revealedHeight: CGFloat
-    let onSelect: (Movie) -> Void
+    let onSelect: (MediaItem) -> Void
 
     @State private var totalContentHeight: CGFloat = 0
     @State private var availableWidth: CGFloat = 0
@@ -54,10 +54,10 @@ struct AnswerSuggestionsView: View {
     }
 
     private var rows: [SuggestionRow] {
-        if movies.isEmpty {
+        if items.isEmpty {
             return hasSearched ? [.empty] : []
         }
-        return movies.map(SuggestionRow.movie)
+        return items.map(SuggestionRow.media)
     }
 
     var body: some View {
@@ -88,46 +88,46 @@ struct AnswerSuggestionsView: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
-        .allowsHitTesting(!movies.isEmpty)
+        .allowsHitTesting(!items.isEmpty)
     }
 }
 
 private struct AnswerSuggestionsPreviewContainer: View {
-    let movies: [Movie]
+    let items: [MediaItem]
     let hasSearched: Bool
     @State private var revealedHeight: CGFloat = 0
 
     var body: some View {
-        AnswerSuggestionsView(movies: movies, hasSearched: hasSearched, revealedHeight: $revealedHeight, onSelect: { _ in })
+        AnswerSuggestionsView(items: items, hasSearched: hasSearched, revealedHeight: $revealedHeight, onSelect: { _ in })
             .padding()
             .background(.thinMaterial)
     }
 }
 
 #Preview("One-line titles") {
-    AnswerSuggestionsPreviewContainer(movies: PreviewSuggestions.oneLine, hasSearched: true)
+    AnswerSuggestionsPreviewContainer(items: PreviewSuggestions.oneLine, hasSearched: true)
 }
 
 #Preview("Two-line titles") {
-    AnswerSuggestionsPreviewContainer(movies: PreviewSuggestions.twoLine, hasSearched: true)
+    AnswerSuggestionsPreviewContainer(items: PreviewSuggestions.twoLine, hasSearched: true)
 }
 
 #Preview("Three-line titles") {
-    AnswerSuggestionsPreviewContainer(movies: PreviewSuggestions.threeLine, hasSearched: true)
+    AnswerSuggestionsPreviewContainer(items: PreviewSuggestions.threeLine, hasSearched: true)
 }
 
 #Preview("Mixed lengths") {
-    AnswerSuggestionsPreviewContainer(movies: PreviewSuggestions.mixed, hasSearched: true)
+    AnswerSuggestionsPreviewContainer(items: PreviewSuggestions.mixed, hasSearched: true)
 }
 
 #Preview("Few results") {
-    AnswerSuggestionsPreviewContainer(movies: PreviewSuggestions.few, hasSearched: true)
+    AnswerSuggestionsPreviewContainer(items: PreviewSuggestions.few, hasSearched: true)
 }
 
 #Preview("Nothing found") {
-    AnswerSuggestionsPreviewContainer(movies: [], hasSearched: true)
+    AnswerSuggestionsPreviewContainer(items: [], hasSearched: true)
 }
 
 #Preview("Idle") {
-    AnswerSuggestionsPreviewContainer(movies: [], hasSearched: false)
+    AnswerSuggestionsPreviewContainer(items: [], hasSearched: false)
 }

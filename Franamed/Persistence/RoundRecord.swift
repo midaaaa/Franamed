@@ -12,6 +12,7 @@ import SwiftData
 final class RoundRecord {
     var id: UUID
     var tmdbId: Int
+    var mediaType: MediaType = MediaType.movie
     var playedAt: Date
     var attemptsUsed: Int
     var wasCorrect: Bool
@@ -22,6 +23,7 @@ final class RoundRecord {
     init(
         id: UUID = UUID(),
         tmdbId: Int,
+        mediaType: MediaType,
         playedAt: Date,
         attemptsUsed: Int,
         wasCorrect: Bool,
@@ -31,6 +33,7 @@ final class RoundRecord {
     ) {
         self.id = id
         self.tmdbId = tmdbId
+        self.mediaType = mediaType
         self.playedAt = playedAt
         self.attemptsUsed = attemptsUsed
         self.wasCorrect = wasCorrect

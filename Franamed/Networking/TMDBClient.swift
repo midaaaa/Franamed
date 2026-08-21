@@ -23,8 +23,15 @@ final class TMDBClient: TMDBClientProtocol {
         self.decoder.keyDecodingStrategy = .convertFromSnakeCase
     }
 
-    private func discoverURL(page: Int, filters: MovieFilters) throws -> URL {
-        guard var components = URLComponents(string: "\(baseURL)/3/discover/movie") else {
+    private func dateFilterParam(for mediaType: MediaType) -> String {
+        switch mediaType {
+        case .movie: return "primary_release_date"
+        case .tv: return "first_air_date"
+        }
+    }
+
+    private func discoverURL(mediaType: MediaType, page: Int, filters: MediaFilters) throws -> URL {
+        guard var components = URLComponents(string: "\(baseURL)/3/discover/\(mediaType.rawValue)") else {
             throw TMDBError.invalidResponse
         }
 
@@ -33,7 +40,7 @@ final class TMDBClient: TMDBClientProtocol {
             URLQueryItem(name: "page", value: "\(page)"),
             URLQueryItem(name: "language", value: "ru-RU"),
             URLQueryItem(name: "include_adult", value: String(filters.includeAdult)),
-            URLQueryItem(name: "sort_by", value: filters.sortBy.rawValue)
+            URLQueryItem(name: "sort_by", value: filters.sortBy.tmdbValue(for: mediaType))
         ]
 
         if let genres = filters.genres, !genres.isEmpty {
@@ -41,8 +48,9 @@ final class TMDBClient: TMDBClientProtocol {
         }
 
         if let yearRange = filters.yearRange {
-            components.queryItems?.append(URLQueryItem(name: "primary_release_date.gte", value: "\(yearRange.lowerBound)-01-01"))
-            components.queryItems?.append(URLQueryItem(name: "primary_release_date.lte", value: "\(yearRange.upperBound)-12-31"))
+            let param = dateFilterParam(for: mediaType)
+            components.queryItems?.append(URLQueryItem(name: "\(param).gte", value: "\(yearRange.lowerBound)-01-01"))
+            components.queryItems?.append(URLQueryItem(name: "\(param).lte", value: "\(yearRange.upperBound)-12-31"))
         }
 
         if let minRating = filters.minRating {
@@ -63,8 +71,8 @@ final class TMDBClient: TMDBClientProtocol {
         return url
     }
 
-    private func discoverMovies(page: Int, filters: MovieFilters) async throws -> MoviesListResponse {
-        let url = try discoverURL(page: page, filters: filters)
+    private func discoverMedia(mediaType: MediaType, page: Int, filters: MediaFilters) async throws -> MediaListResponse {
+        let url = try discoverURL(mediaType: mediaType, page: page, filters: filters)
         let (data, response) = try await session.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -75,29 +83,28 @@ final class TMDBClient: TMDBClientProtocol {
             throw TMDBError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        let movies = try decoder.decode(MoviesListResponse.self, from: data)
-        return movies
+        return try decodeList(mediaType: mediaType, data: data)
     }
 
-    func fetchRandomMovie(filters: MovieFilters) async throws -> Movie {
-        let moviesFirstPage = try await discoverMovies(page: 1, filters: filters)
+    func fetchRandomMediaItem(mediaType: MediaType, filters: MediaFilters) async throws -> MediaItem {
+        let firstPage = try await discoverMedia(mediaType: mediaType, page: 1, filters: filters)
 
-        guard moviesFirstPage.totalPages > 0 else {
+        guard firstPage.totalPages > 0 else {
             throw TMDBError.emptyResults
         }
 
-        let randomPage = Int.random(in: 1...min(moviesFirstPage.totalPages, 500))
+        let randomPage = Int.random(in: 1...min(firstPage.totalPages, 500))
 
-        let movies = randomPage == 1 ? moviesFirstPage : try await discoverMovies(page: randomPage, filters: filters)
+        let page = randomPage == 1 ? firstPage : try await discoverMedia(mediaType: mediaType, page: randomPage, filters: filters)
 
-        guard !movies.results.isEmpty, let movie = movies.results.randomElement() else {
+        guard !page.results.isEmpty, let item = page.results.randomElement() else {
             throw TMDBError.emptyResults
         }
-        return movie
+        return item
     }
 
-    func fetchMovieBackdrops(movieID: Int) async throws -> [Backdrop] {
-        guard var components = URLComponents(string: "\(baseURL)/3/movie/\(movieID)/images") else {
+    func fetchBackdrops(mediaType: MediaType, id: Int) async throws -> [Backdrop] {
+        guard var components = URLComponents(string: "\(baseURL)/3/\(mediaType.rawValue)/\(id)/images") else {
             throw TMDBError.invalidResponse
         }
 
@@ -119,7 +126,7 @@ final class TMDBClient: TMDBClientProtocol {
             throw TMDBError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        let backdropsResponse = try decoder.decode(MovieBackdropsResponse.self, from: data)
+        let backdropsResponse = try decoder.decode(BackdropsResponse.self, from: data)
         return backdropsResponse.backdrops
             .filter { $0.iso6391 == nil }
             .map { rawBackdrop in
@@ -127,8 +134,8 @@ final class TMDBClient: TMDBClientProtocol {
             }
     }
 
-    func searchMovies(query: String, language: String) async throws -> [Movie] {
-        guard var components = URLComponents(string: "\(baseURL)/3/search/movie") else {
+    func searchMedia(mediaType: MediaType, query: String, language: String) async throws -> [MediaItem] {
+        guard var components = URLComponents(string: "\(baseURL)/3/search/\(mediaType.rawValue)") else {
             throw TMDBError.invalidResponse
         }
 
@@ -152,17 +159,16 @@ final class TMDBClient: TMDBClientProtocol {
             throw TMDBError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        let movies = try decoder.decode(MoviesListResponse.self, from: data)
-        return movies.results
+        return try decodeList(mediaType: mediaType, data: data).results
     }
 
-    func fetchResultsCount(filters: MovieFilters) async throws -> Int {
-        let response = try await discoverMovies(page: 1, filters: filters)
+    func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
+        let response = try await discoverMedia(mediaType: mediaType, page: 1, filters: filters)
         return response.totalResults
     }
 
-    func fetchGenres() async throws -> [Genre] {
-        guard var components = URLComponents(string: "\(baseURL)/3/genre/movie/list") else {
+    func fetchGenres(mediaType: MediaType) async throws -> [Genre] {
+        guard var components = URLComponents(string: "\(baseURL)/3/genre/\(mediaType.rawValue)/list") else {
             throw TMDBError.invalidResponse
         }
 
@@ -190,6 +196,25 @@ final class TMDBClient: TMDBClientProtocol {
         let genresResponse = try decoder.decode(GenresResponse.self, from: data)
         return genresResponse.genres
     }
+
+    private func decodeList(mediaType: MediaType, data: Data) throws -> MediaListResponse {
+        switch mediaType {
+        case .movie:
+            let response = try decoder.decode(MovieListResponse.self, from: data)
+            return MediaListResponse(
+                results: response.results.map { $0.asMediaItem() },
+                totalPages: response.totalPages,
+                totalResults: response.totalResults
+            )
+        case .tv:
+            let response = try decoder.decode(TVListResponse.self, from: data)
+            return MediaListResponse(
+                results: response.results.map { $0.asMediaItem() },
+                totalPages: response.totalPages,
+                totalResults: response.totalResults
+            )
+        }
+    }
 }
 
 enum TMDBError: Error {
@@ -199,13 +224,49 @@ enum TMDBError: Error {
     case noSuitableMovieFound
 }
 
-private struct MoviesListResponse: Decodable {
-    let results: [Movie]
+private struct MediaListResponse {
+    let results: [MediaItem]
     let totalPages: Int
     let totalResults: Int
 }
 
-private struct MovieBackdropsResponse: Decodable {
+private struct MovieListResponse: Decodable {
+    let results: [MovieDTO]
+    let totalPages: Int
+    let totalResults: Int
+}
+
+private struct TVListResponse: Decodable {
+    let results: [TVDTO]
+    let totalPages: Int
+    let totalResults: Int
+}
+
+private struct MovieDTO: Decodable {
+    let id: Int
+    let title: String
+    let originalTitle: String
+    let releaseDate: String?
+    let overview: String?
+
+    func asMediaItem() -> MediaItem {
+        MediaItem(id: id, mediaType: .movie, title: title, originalTitle: originalTitle, releaseDate: releaseDate, overview: overview)
+    }
+}
+
+private struct TVDTO: Decodable {
+    let id: Int
+    let name: String
+    let originalName: String
+    let firstAirDate: String?
+    let overview: String?
+
+    func asMediaItem() -> MediaItem {
+        MediaItem(id: id, mediaType: .tv, title: name, originalTitle: originalName, releaseDate: firstAirDate, overview: overview)
+    }
+}
+
+private struct BackdropsResponse: Decodable {
     let backdrops: [TMDBBackdropDTO]
 }
 
