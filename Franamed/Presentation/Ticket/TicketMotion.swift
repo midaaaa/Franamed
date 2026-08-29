@@ -24,5 +24,6 @@ enum TicketMotion {
     static let snapBack = Animation.spring(response: 0.4, dampingFraction: 0.75)
     static let returnRestore = Animation.spring(response: 0.4, dampingFraction: 0.85)
     static let flyOut = Animation.linear(duration: 0.22)
+    static let stubReturnDelay: TimeInterval = 0.5
     static let settle = Animation.spring(response: 0.5, dampingFraction: 0.85)
 }

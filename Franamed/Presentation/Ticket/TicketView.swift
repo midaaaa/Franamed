@@ -75,7 +75,7 @@ struct TicketView: View {
                 }
                 .onChange(of: coordinator.presentedRound) { _, round in
                     guard round == nil else { return }
-                    stubReturnToken += 1
+                    scheduleStubReturn()
                 }
                 .fullScreenCover(item: $coordinator.presentedRound) { mediaType in
                     NavigationStack {
@@ -171,6 +171,13 @@ struct TicketView: View {
     }
 
     // MARK: Content
+
+    private func scheduleStubReturn() {
+        Task {
+            try? await Task.sleep(for: .seconds(TicketMotion.stubReturnDelay))
+            stubReturnToken += 1
+        }
+    }
 
     private func startRound(mediaType: MediaType) {
         isCardLocked = true
