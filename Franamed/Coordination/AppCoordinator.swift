@@ -12,9 +12,14 @@ import Combine
 final class AppCoordinator: ObservableObject {
     @Published var gamePath = NavigationPath()
     @Published var curationPath = NavigationPath()
+    @Published var presentedRound: MediaType?
 
     func showRound(mediaType: MediaType) {
-        gamePath.append(Route.round(mediaType))
+        presentedRound = mediaType
+    }
+
+    func dismissRound() {
+        presentedRound = nil
     }
 
     func showCurationQueue() {

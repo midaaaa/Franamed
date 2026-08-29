@@ -30,7 +30,7 @@ struct AnswerInputBar: View {
                 .glassEffect(.regular, in: RoundedRectangle(cornerRadius: suggestionRowHeight / 2))
                 .compositingGroup()
                 .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
-                .id(colorScheme)  // forces full theme switch redraw
+                .id(colorScheme)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onVisibleHeightChange?($0) }
 
             VStack(spacing: 0) {

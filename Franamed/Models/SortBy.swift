@@ -20,6 +20,22 @@ enum SortBy: Hashable, CaseIterable {
         }
     }
 
+    var ticketLabel: String {
+        switch self {
+        case .popularityDesc: "Популярность"
+        case .ratingDesc: "Рейтинг"
+        case .releaseDateDesc: "Дата выхода"
+        }
+    }
+
+    var ticketIcon: String {
+        switch self {
+        case .popularityDesc: "flame.fill"
+        case .ratingDesc: "rosette"
+        case .releaseDateDesc: "calendar"
+        }
+    }
+
     func tmdbValue(for mediaType: MediaType) -> String {
         switch self {
         case .popularityDesc:

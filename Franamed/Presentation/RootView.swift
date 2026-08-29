@@ -11,16 +11,21 @@ import SwiftData
 struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var coordinator = AppCoordinator()
+    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.dark
 
     var body: some View {
         TabView {
-            GameView(coordinator: coordinator)
-                .tabItem { Label("Game", systemImage: "gamecontroller") }
-                .modelContext(modelContext)
+            Tab("Game", systemImage: "gamecontroller") {
+                TicketView(coordinator: coordinator)
+                    .modelContext(modelContext)
+            }
 
-            CurationView(coordinator: coordinator)
-                .tabItem { Label("Curation", systemImage: "checkmark.seal") }
+            Tab("Curation", systemImage: "checkmark.seal") {
+                CurationView(coordinator: coordinator)
+                    .modelContext(modelContext)
+            }
         }
+        .preferredColorScheme(appearance.colorScheme)
     }
 }
 

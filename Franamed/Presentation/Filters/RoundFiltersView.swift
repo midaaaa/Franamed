@@ -16,10 +16,9 @@ struct RoundFiltersView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: RoundFiltersViewModel
-    let onApply: (MediaFilters, Int) -> Void
+    let onApply: (RoundSetup) -> Void
 
-    private let initialFilters: MediaFilters
-    private let initialFrameCount: Int
+    private let initialSetup: RoundSetup
 
     @State private var limitYears: Bool
     @State private var yearFrom: Int
@@ -28,12 +27,12 @@ struct RoundFiltersView: View {
     @State private var limitRating: Bool
     @State private var limitVoteCount: Bool
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, filters: MediaFilters, frameCount: Int, onApply: @escaping (MediaFilters, Int) -> Void) {
-        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, mediaType: mediaType, filters: filters, frameCount: frameCount))
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, setup: RoundSetup, onApply: @escaping (RoundSetup) -> Void) {
+        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, mediaType: mediaType, filters: setup.filters, frameCount: setup.frameCount))
         self.onApply = onApply
-        self.initialFilters = filters
-        self.initialFrameCount = frameCount
+        self.initialSetup = setup
 
+        let filters = setup.filters
         _limitYears = State(initialValue: filters.yearRange != nil)
         _yearFrom = State(initialValue: filters.yearRange?.lowerBound ?? Self.defaultYearFrom)
         _yearTo = State(initialValue: filters.yearRange?.upperBound ?? Self.currentYear)
@@ -50,7 +49,7 @@ struct RoundFiltersView: View {
     }
 
     private var hasChanges: Bool {
-        previewFilters != initialFilters || viewModel.frameCount != initialFrameCount
+        previewFilters != initialSetup.filters || viewModel.frameCount != initialSetup.frameCount
     }
 
     private var frameCountBinding: Binding<Double> {
@@ -67,20 +66,6 @@ struct RoundFiltersView: View {
         )
     }
 
-    private var mediaWordCapitalized: String {
-        switch viewModel.mediaType {
-        case .movie: "Фильмы"
-        case .tv: "Сериалы"
-        }
-    }
-
-    private var mediaWordGenitivePlural: String {
-        switch viewModel.mediaType {
-        case .movie: "фильмы"
-        case .tv: "сериалы"
-        }
-    }
-
     private var yearSectionFooterText: String {
         switch viewModel.mediaType {
         case .movie: "Диапазон года выхода фильма."
@@ -88,24 +73,25 @@ struct RoundFiltersView: View {
         }
     }
 
-    private var selectedGenreNamesSummary: String {
-        guard let selectedIds = viewModel.filters.genres, !selectedIds.isEmpty else {
-            return "Все жанры"
-        }
-        let names = viewModel.genres.filter { selectedIds.contains($0.id) }.map(\.name)
-        let visibleCount = 2
-        guard names.count > visibleCount else {
-            return names.joined(separator: ", ")
-        }
-        let remaining = names.count - visibleCount
-        return names.prefix(visibleCount).joined(separator: ", ") + " +\(remaining)"
-    }
-
     var body: some View {
         NavigationStack {
             Form {
-                difficultySection
-                genresSection
+                AdultFilterSection(includeAdult: $viewModel.filters.includeAdult,
+                                   mediaType: viewModel.mediaType)
+                DifficultyFilterSection(frameCount: $viewModel.frameCount)
+                SortByFilterSection(sortBy: $viewModel.filters.sortBy, mediaType: viewModel.mediaType)
+                GenresFilterSection(viewModel: viewModel)
+
+                OptionalThresholdFilterSection(
+                    title: "Рейтинг",
+                    footer: "\(viewModel.mediaType.displayName) с рейтингом не ниже указанного.",
+                    range: 0...10,
+                    step: 0.5,
+                    defaultValue: Self.defaultMinRating,
+                    formattedValue: { $0.formatted(.number.precision(.fractionLength(1))) },
+                    isEnabled: $limitRating,
+                    value: $viewModel.filters.minRating
+                )
 
                 YearRangeFilterSection(
                     earliestYear: Self.earliestYear,
@@ -114,19 +100,6 @@ struct RoundFiltersView: View {
                     isEnabled: $limitYears,
                     yearFrom: $yearFrom,
                     yearTo: $yearTo
-                )
-
-                sortBySection
-
-                OptionalThresholdFilterSection(
-                    title: "Рейтинг",
-                    footer: "\(mediaWordCapitalized) с рейтингом не ниже указанного.",
-                    range: 0...10,
-                    step: 0.5,
-                    defaultValue: Self.defaultMinRating,
-                    formattedValue: { $0.formatted(.number.precision(.fractionLength(1))) },
-                    isEnabled: $limitRating,
-                    value: $viewModel.filters.minRating
                 )
 
                 OptionalThresholdFilterSection(
@@ -141,12 +114,6 @@ struct RoundFiltersView: View {
                 )
 
                 LanguageFilterSection(selectedCodes: $viewModel.filters.originalLanguages)
-
-                Section {
-                    Toggle("18+", isOn: $viewModel.filters.includeAdult)
-                } footer: {
-                    Text("Показывать \(mediaWordGenitivePlural) с рейтингом 18+.")
-                }
             }
             .navigationTitle("Фильтры")
             .navigationBarTitleDisplayMode(.inline)
@@ -165,56 +132,6 @@ struct RoundFiltersView: View {
             .safeAreaInset(edge: .bottom) { applyButton }
             .task { await viewModel.loadGenres() }
             .task(id: previewFilters) { await viewModel.refreshPreview(filters: previewFilters) }
-        }
-    }
-
-    private var difficultySection: some View {
-        Section {
-            HStack {
-                Slider(value: frameCountBinding, in: 1...6, step: 1) {
-                    Text("Сложность")
-                }
-                Text(viewModel.frameCount, format: .number)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(minWidth: 16, alignment: .trailing)
-            }
-        } header: {
-            Text("Сложность")
-        } footer: {
-            Text("Меньше кадров — сложнее, больше — легче.")
-        }
-    }
-
-    private var genresSection: some View {
-        Section {
-            NavigationLink {
-                GenrePickerView(viewModel: viewModel)
-            } label: {
-                Text(selectedGenreNamesSummary)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        } header: {
-            Text("Жанры")
-        } footer: {
-            Text("Достаточно совпадения хотя бы с одним жанром.")
-        }
-    }
-
-    private var sortBySection: some View {
-        Section {
-            Picker("Сортировка", selection: $viewModel.filters.sortBy) {
-                ForEach(SortBy.allCases, id: \.self) { sortBy in
-                    Text(sortBy.displayName).tag(sortBy)
-                }
-            }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } header: {
-            Text("Сортировка")
-        } footer: {
-            Text("Определяет, из каких \(mediaWordGenitivePlural) собирается раунд: самых популярных, высокооценённых или новых.")
         }
     }
 
@@ -248,7 +165,7 @@ struct RoundFiltersView: View {
         Button {
             applyYearRange()
             applyRatingAndVoteCount()
-            onApply(viewModel.filters, viewModel.frameCount)
+            onApply(RoundSetup(filters: viewModel.filters, frameCount: viewModel.frameCount))
             dismiss()
         } label: {
             ZStack {
@@ -269,8 +186,9 @@ struct RoundFiltersView: View {
     }
 
     private func resetAll() {
-        viewModel.filters = MediaFilters()
-        viewModel.frameCount = 6
+        let defaults = RoundSetup()
+        viewModel.filters = defaults.filters
+        viewModel.frameCount = defaults.frameCount
         limitYears = false
         yearFrom = Self.defaultYearFrom
         yearTo = Self.currentYear
@@ -297,5 +215,5 @@ struct RoundFiltersView: View {
 }
 
 #Preview {
-    RoundFiltersView(mediaFacade: PreviewMediaFacade(), mediaType: .movie, filters: MediaFilters(), frameCount: 6) { _, _ in }
+    RoundFiltersView(mediaFacade: PreviewMediaFacade(), mediaType: .movie, setup: RoundSetup()) { _ in }
 }

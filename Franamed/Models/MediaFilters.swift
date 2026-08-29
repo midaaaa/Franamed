@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct MediaFilters: Equatable {
+struct MediaFilters: Hashable {
     var genres: [Int]? = nil
     var yearRange: ClosedRange<Int>? = nil
     var minRating: Double? = nil

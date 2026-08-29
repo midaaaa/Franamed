@@ -142,7 +142,3 @@ final class RoundViewModel: ObservableObject {
     }
 }
 
-enum RoundOutcome: Equatable {
-    case correct
-    case incorrect
-}

@@ -80,6 +80,7 @@ struct AnswerSuggestionsView: View {
                     .mask(alignment: .bottom) {
                         SuggestionsRevealMask(revealedHeight: revealedHeight, showsFade: hasMoreBelow)
                     }
+                    .simultaneousGesture(DragGesture(minimumDistance: 0))
 
                     Color.clear
                         .frame(height: max(0, suggestionsContentHeight(rows: maxVisibleSuggestions) - revealedHeight))

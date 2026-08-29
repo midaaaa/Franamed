@@ -10,11 +10,6 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import UIKit
 
-struct ProjectorStripTint: Sendable {
-    let color: Color
-    let brightness: Double
-}
-
 private final class ProjectorTintBox {
     let tints: [ProjectorStripTint]
     init(_ tints: [ProjectorStripTint]) { self.tints = tints }
