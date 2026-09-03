@@ -134,5 +134,44 @@ enum PreviewSuggestions {
     ]
 }
 
+struct PreviewAuthService: BackendAuthServiceProtocol {
+    var user: BackendUser = .preview
+
+    @discardableResult
+    func ensureSession() async throws -> BackendUser { user }
+
+    func isSignedIn() async -> Bool { true }
+
+    func currentUser() async -> BackendUser? { user }
+
+    func refreshCurrentUser() async throws -> BackendUser { user }
+
+    @discardableResult
+    func signInAnonymously() async throws -> BackendUser { user }
+
+    func signInWithApple(identityToken: String, nonce: String?, displayName: String?) async throws -> BackendUser { user }
+
+    func linkApple(identityToken: String, nonce: String?, displayName: String?) async throws -> BackendUser { user }
+
+    func signOut() async {}
+
+    func forgetAccount() async {}
+}
+
+extension BackendUser {
+    static let preview = BackendUser(
+        uid: "preview",
+        role: .admin,
+        displayName: nil,
+        isAnonymous: true,
+        reportMultiplier: 1,
+        dailyStreak: 3,
+        longestStreak: 7,
+        lastDailyCompletedDate: nil,
+        bonusAttemptsAvailable: 0,
+        attemptsUsedToday: 2,
+        lastAttemptResetDate: nil
+    )
+}
 #endif
 

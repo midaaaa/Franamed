@@ -16,6 +16,8 @@ struct ProfileSheet: View {
     @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
     @AppStorage(DebugSettings.returnShrinkKey) private var shrinksOnReturn = false
 
+    @EnvironmentObject private var session: SessionStore
+
     @State private var isConfirming = false
 
     var body: some View {
@@ -31,6 +33,23 @@ struct ProfileSheet: View {
                     .labelsHidden()
                 } header: {
                     Text("Оформление")
+                }
+
+                Section {
+                    if let user = session.user {
+                        LabeledContent("Роль", value: user.role.displayName)
+                        LabeledContent("Аккаунт", value: user.isAnonymous ? "Анонимный" : (user.displayName ?? "Связан с Apple ID"))
+                        LabeledContent("Серия", value: "\(user.dailyStreak)")
+                    }
+
+                    Button("Выйти", role: .destructive) {
+                        Task {
+                            dismiss()
+                            await session.signOut()
+                        }
+                    }
+                } header: {
+                    Text("Аккаунт")
                 }
 
                 Section {
@@ -80,5 +99,6 @@ struct ProfileSheet: View {
 
 #Preview {
     ProfileSheet()
+        .environmentObject(SessionStore(auth: PreviewAuthService()))
         .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
 }
