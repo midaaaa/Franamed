@@ -24,6 +24,7 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var hasSearched = false
 
     @Published var answerText = ""
+    private var selectedSuggestion: MediaItem?
     @Published private(set) var attemptsRemaining: Int
     @Published private(set) var outcome: RoundOutcome?
     @Published private(set) var revealedCount = 1
@@ -56,12 +57,23 @@ final class RoundViewModel: ObservableObject {
         currentFrameIndex = 0
         answeredFrameIndex = nil
         attemptsMade = 0
+        selectedSuggestion = nil
 
         do {
             mediaItemWithBackdrops = try await mediaFacade.fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
         } catch {
             self.error = error
         }
+    }
+
+    func selectSuggestion(_ item: MediaItem) {
+        selectedSuggestion = item
+        answerText = item.title
+    }
+
+    private var pickedSuggestionId: Int? {
+        guard let selectedSuggestion, selectedSuggestion.title == answerText else { return nil }
+        return selectedSuggestion.id
     }
 
     func submitAnswer() {
@@ -73,8 +85,13 @@ final class RoundViewModel: ObservableObject {
         if attemptsMade == 1 {
             modelContext.insert(WatchedMovieCache(tmdbId: item.id, mediaType: mediaType, addedAt: .now))
         }
-        let isCorrect = [item.title, item.originalTitle].contains {
-            $0.caseInsensitiveCompare(answerText) == .orderedSame
+        let isCorrect: Bool
+        if let pickedId = pickedSuggestionId {
+            isCorrect = pickedId == item.id
+        } else {
+            isCorrect = [item.title, item.originalTitle].contains {
+                $0.caseInsensitiveCompare(submittedAnswer) == .orderedSame
+            }
         }
         if isCorrect {
             answeredFrameIndex = currentFrameIndex

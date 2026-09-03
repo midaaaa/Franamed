@@ -215,7 +215,7 @@ struct RoundView: View {
                 searchResults: viewModel.searchResults,
                 hasSearched: viewModel.hasSearched,
                 isFocused: $isAnswerFieldFocused,
-                onSelectSuggestion: { movie in viewModel.answerText = movie.title },
+                onSelectSuggestion: { viewModel.selectSuggestion($0) },
                 onSubmit: { viewModel.submitAnswer() },
                 onAnswerTextChange: { await viewModel.searchAnswer() },
                 onVisibleHeightChange: updateAnswerBarHeight,
