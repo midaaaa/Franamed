@@ -42,3 +42,6 @@ Pods/
 # Cloudflare Worker
 node_modules/
 .dev.vars
+
+# Local-only debug console for the backend API (not shipped, not reviewed)
+Franamed/Presentation/BackendLab/
