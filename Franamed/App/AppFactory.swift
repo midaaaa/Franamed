@@ -16,14 +16,13 @@ enum AppFactory {
         return TMDBClient(apiKey: apiKey)
     }
 
-    static func makeFirestoreService() -> FirestoreServiceProtocol {
-        return StubFirestoreService()
+    private static let sharedBackend = Backend()
+
+    static func makeBackend() -> Backend {
+        sharedBackend
     }
 
     static func makeMediaFacade() -> MediaFacadeProtocol {
-        let tmdbClient = makeTMDBClient()
-        let firestoreService = makeFirestoreService()
-
-        return MediaFacade(tmdbClient: tmdbClient, firestoreService: firestoreService)
+        MediaFacade(tmdbClient: makeTMDBClient(), backend: makeBackend())
     }
 }

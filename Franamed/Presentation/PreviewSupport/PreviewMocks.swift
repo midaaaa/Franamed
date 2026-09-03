@@ -33,6 +33,63 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
     func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
         124
     }
+
+    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, excludeWatched: Bool) async throws -> RoundPayload {
+        let key = "\(mediaType.rawValue)_\(Int.random(in: 1...1_000_000))"
+
+        return RoundPayload(
+            pool: .curated,
+            date: nil,
+            playlistId: nil,
+            item: CuratedItem(
+                key: key,
+                tmdbId: 603,
+                mediaType: mediaType,
+                title: "Preview Movie",
+                originalTitle: "Preview Movie",
+                releaseYear: 2024,
+                originalLanguage: "en",
+                popularity: 42,
+                posterURL: nil,
+                status: "approved",
+                genreIds: [1, 2],
+                totalImages: 12,
+                reviewedImages: 12,
+                approvedImages: 8,
+                adminFinalized: true,
+                finalizedAt: nil,
+                lastSyncedAt: nil
+            ),
+            frames: (1...frameCount).map { index in
+                CuratedImage(
+                    id: index,
+                    mediaKey: key,
+                    filePath: "/preview\(index).jpg",
+                    status: .approved,
+                    reportWeight: 0,
+                    perceptualHash: nil,
+                    clusteredWith: nil,
+                    difficultyTier: index <= 2 ? .hard : index <= 4 ? .medium : .easy,
+                    difficultyRank: nil,
+                    moderatorStatus: nil,
+                    moderatorAt: nil,
+                    disputesDismissedCount: 0,
+                    voteAverage: Double(index),
+                    voteCount: index * 3,
+                    width: 1280,
+                    height: 720,
+                    aspectRatio: 1.777
+                )
+            },
+            spareFrames: [],
+            position: nil,
+            playlistTotal: nil
+        )
+    }
+
+    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters, excludeWatched: Bool) async throws -> Int {
+        87
+    }
 }
 
 extension MediaItem {
@@ -76,4 +133,6 @@ enum PreviewSuggestions {
         .preview(2, "Her")
     ]
 }
+
 #endif
+
