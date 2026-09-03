@@ -1,0 +1,41 @@
+name = "franamed-api"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Every deployed version otherwise gets its own public preview URL.
+workers_dev = true
+preview_urls = false
+
+# Filled in by `wrangler d1 create franamed` — copy the printed database_id here.
+[[d1_databases]]
+binding = "DB"
+database_name = "franamed"
+database_id = "6e10c858-857c-4f2e-9025-f6a474e9f029"
+
+# Bursts only: counters are per Cloudflare location and the window is capped at
+# 60s, so these stop hammering, not patient abuse. See src/lib/limits.js.
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+[[ratelimits]]
+name = "WRITE_LIMITER"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+[[ratelimits]]
+name = "IMPORT_LIMITER"
+namespace_id = "1003"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# Secrets are set with `wrangler secret put NAME`, never committed:
+#   JWT_SECRET      — 32+ random bytes, signs access tokens
+#   TMDB_API_KEY    — used server-side to import titles
+#   APPLE_BUNDLE_ID — audience checked on Sign in with Apple tokens

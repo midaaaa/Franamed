@@ -38,3 +38,7 @@ Pods/
 
 # Cloudflare Wrangler local dev state (account id, TLS session cache, sqlite)
 .wrangler/
+
+# Cloudflare Worker
+node_modules/
+.dev.vars
