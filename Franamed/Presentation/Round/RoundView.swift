@@ -22,6 +22,8 @@ struct RoundView: View {
     @State private var isWaitingForFrame = false
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
+    @State private var keyboardAnimation: Animation?
+    @State private var beamAnimation: Animation?
 
     private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
 
@@ -74,6 +76,7 @@ struct RoundView: View {
                         )
                             .frame(maxHeight: max(beamGap, 1))
                             .clipped()
+                            .animation(beamAnimation, value: containerHeight)
                             .allowsHitTesting(false)
                     }
 
@@ -88,8 +91,9 @@ struct RoundView: View {
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
-                    containerHeight = $0
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newHeight in
+                    beamAnimation = newHeight > containerHeight ? keyboardAnimation : nil
+                    containerHeight = newHeight
                 }
                 .overlay(alignment: .bottom) { bottomActionBar }
                 .toolbar {
@@ -109,6 +113,9 @@ struct RoundView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+            keyboardAnimation = KeyboardAnimation.from(notification)
+        }
         .task { await viewModel.loadRound() }
         .task(id: currentBackdropURL) {
             await transitionToCurrentFrame()
@@ -121,9 +128,8 @@ struct RoundView: View {
         }
         .gesture(
             DragGesture().onChanged { value in
-                if value.translation.height > 20 {
-                    isAnswerFieldFocused = false
-                }
+                guard value.translation.height > 20, isAnswerFieldFocused else { return }
+                DispatchQueue.main.async { isAnswerFieldFocused = false }
             }
         )
         .onChange(of: viewModel.outcome) { _, newOutcome in
