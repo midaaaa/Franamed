@@ -27,16 +27,17 @@ private struct SuggestionsRevealMask: View {
     }
 }
 
-private struct FixedHeightSlot<Content: View>: View {
+private struct SuggestionsSlot<Content: View>: View {
+    let visibleHeight: CGFloat
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            content
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: suggestionsContentHeight(rows: maxVisibleSuggestions))
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: max(0, visibleHeight))
+            .overlay(alignment: .bottom) {
+                content.frame(height: suggestionsContentHeight(rows: maxVisibleSuggestions))
+            }
     }
 }
 
@@ -60,8 +61,23 @@ struct AnswerSuggestionsView: View {
         return items.map(SuggestionRow.media)
     }
 
+    @ViewBuilder
+    private var scrollView: some View {
+        let scroll = SuggestionsScrollView(
+            rows: rows,
+            onSelect: onSelect,
+            revealedHeight: $revealedHeight,
+            totalContentHeight: $totalContentHeight,
+            availableWidth: availableWidth
+        )
+
+        scroll.mask(alignment: .bottom) {
+            SuggestionsRevealMask(revealedHeight: revealedHeight, showsFade: hasMoreBelow)
+        }
+    }
+
     var body: some View {
-        FixedHeightSlot {
+        SuggestionsSlot(visibleHeight: rows.isEmpty ? 0 : revealedHeight) {
             if rows.isEmpty {
                 Color.clear
                     .onAppear {
@@ -69,27 +85,13 @@ struct AnswerSuggestionsView: View {
                         withAnimation(.snappy) { revealedHeight = 0 }
                     }
             } else {
-                ZStack(alignment: .top) {
-                    SuggestionsScrollView(
-                        rows: rows,
-                        onSelect: onSelect,
-                        revealedHeight: $revealedHeight,
-                        totalContentHeight: $totalContentHeight,
-                        availableWidth: availableWidth
-                    )
-                    .mask(alignment: .bottom) {
-                        SuggestionsRevealMask(revealedHeight: revealedHeight, showsFade: hasMoreBelow)
-                    }
-                    .simultaneousGesture(DragGesture(minimumDistance: 0))
-
-                    Color.clear
-                        .frame(height: max(0, suggestionsContentHeight(rows: maxVisibleSuggestions) - revealedHeight))
-                        .contentShape(Rectangle())
-                }
+                scrollView
             }
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(DragGesture(minimumDistance: 0))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
-        .allowsHitTesting(!items.isEmpty)
+        .allowsHitTesting(!rows.isEmpty)
     }
 }
 

@@ -19,7 +19,8 @@ struct SuggestionsScrollView: UIViewRepresentable {
         Coordinator(revealedHeight: $revealedHeight)
     }
 
-    func makeUIView(context: Context) -> UIScrollView {
+    func makeUIView(context: Context) -> SuggestionsHitTestContainer {
+        let container = SuggestionsHitTestContainer()
         let scrollView = SelfSizingScrollView()
         scrollView.delegate = context.coordinator
         scrollView.showsVerticalScrollIndicator = false
@@ -33,16 +34,19 @@ struct SuggestionsScrollView: UIViewRepresentable {
         context.coordinator.hostingController = hosting
         scrollView.hostingView = hosting.view
         scrollView.addSubview(hosting.view)
-        return scrollView
+        context.coordinator.scrollView = scrollView
+        container.addSubview(scrollView)
+        return container
     }
 
-    static func dismantleUIView(_ uiView: UIScrollView, coordinator: Coordinator) {
-        uiView.delegate = nil
+    static func dismantleUIView(_ uiView: SuggestionsHitTestContainer, coordinator: Coordinator) {
+        coordinator.scrollView?.delegate = nil
     }
 
-    func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        guard let scrollView = scrollView as? SelfSizingScrollView else { return }
+    func updateUIView(_ container: SuggestionsHitTestContainer, context: Context) {
+        container.visibleHeight = revealedHeight
         let coordinator = context.coordinator
+        guard let scrollView = coordinator.scrollView else { return }
         guard let hosting = coordinator.hostingController else { return }
 
         let slotHeight = suggestionsContentHeight(rows: maxVisibleSuggestions)
@@ -93,6 +97,7 @@ struct SuggestionsScrollView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
         var hostingController: UIHostingController<SuggestionRowsView>?
+        weak var scrollView: SelfSizingScrollView?
         let revealedHeightBinding: Binding<CGFloat>
         var slotHeight: CGFloat = 0
         var lastRowIDs: [AnyHashable] = []
