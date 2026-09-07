@@ -29,6 +29,10 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { keyWindow?.safeAreaInsets.bottom ?? 0 }
 
+    private var screenHeight: CGFloat { keyWindow?.bounds.height ?? 0 }
+
+    private var beamReferenceHeight: CGFloat { max(0, screenHeight - frameHeight - suggestionRowHeight) }
+
     private var keyWindow: UIWindow? {
         UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.keyWindow }
@@ -62,8 +66,13 @@ struct RoundView: View {
                     .layoutPriority(1)
 
                     if viewModel.outcome == nil {
-                        ProjectorBeam(intensity: beamIntensity, stripTints: stripTints, isFillLit: isBeamFillLit)
-                            .frame(maxHeight: max(beamGap, 0))
+                        ProjectorBeam(
+                            intensity: beamIntensity,
+                            stripTints: stripTints,
+                            isFillLit: isBeamFillLit,
+                            referenceHeight: beamReferenceHeight
+                        )
+                            .frame(maxHeight: max(beamGap, 1))
                             .clipped()
                             .allowsHitTesting(false)
                     }

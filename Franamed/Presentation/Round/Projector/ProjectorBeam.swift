@@ -11,11 +11,14 @@ struct ProjectorBeam: View {
     var intensity: Double
     var stripTints: [ProjectorStripTint] = []
     var isFillLit: Bool = true
+    var referenceHeight: CGFloat = 0
+
+    private static let imperceptibleOpacity = 1.0 / 255
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .bottom) {
-                ProjectorBeamFill(stripTints: stripTints)
+                fill(height: proxy.size.height)
                     .opacity(isFillLit ? 1 : 0)
 
                 ProjectorSourceHalo()
@@ -25,8 +28,29 @@ struct ProjectorBeam: View {
             .frame(width: proxy.size.width * 1.00, height: proxy.size.height)
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
-        .opacity(intensity)
+        .opacity(max(intensity, Self.imperceptibleOpacity))
         .allowsHitTesting(false)
+    }
+
+    private func fill(height: CGFloat) -> some View {
+        let reference = max(referenceHeight, height)
+
+        return Color.clear
+            .overlay(alignment: .bottom) {
+                ProjectorBeamFill(stripTints: stripTints)
+                    .frame(height: reference)
+                    .scaleEffect(x: 1, y: scale(from: reference, to: height), anchor: .bottom)
+            }
+            .mask(alignment: .bottom) {
+                Color.clear.overlay(alignment: .bottom) {
+                    ProjectorSourceFalloffMask().frame(height: reference)
+                }
+            }
+    }
+
+    private func scale(from reference: CGFloat, to height: CGFloat) -> CGFloat {
+        guard reference > 0 else { return 1 }
+        return max(0, height) / reference
     }
 }
 
