@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct RoundView: View {
     @StateObject private var viewModel: RoundViewModel
@@ -22,7 +23,19 @@ struct RoundView: View {
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
 
-    private var beamGap: CGFloat { (containerHeight - 8 - answerBarHeight) - frameHeight }
+    private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
+
+    private var barBottomInset: CGFloat { isAnswerFieldFocused ? 6 : 24 - homeIndicatorInset }
+
+    private var homeIndicatorInset: CGFloat { keyWindow?.safeAreaInsets.bottom ?? 0 }
+
+    private var keyWindow: UIWindow? {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first
+    }
+
+    private var beamGap: CGFloat { (containerHeight - barBottomInset - answerBarHeight) - frameHeight }
     private var beamMaxExpectedGap: CGFloat { max(containerHeight * 0.25, 1) }
     private var beamIntensity: Double {
         guard beamGap > 0 else { return 0 }
@@ -219,7 +232,6 @@ struct RoundView: View {
                 onSubmit: { viewModel.submitAnswer() },
                 onAnswerTextChange: { await viewModel.searchAnswer() },
                 onVisibleHeightChange: updateAnswerBarHeight,
-                showsSubmitButton: false,
                 hasOutcome: viewModel.outcome != nil
             )
             .opacity((1 - morphProgress) * (isInputBlocked ? 0.5 : 1))
@@ -237,8 +249,9 @@ struct RoundView: View {
             }
             .frame(height: suggestionRowHeight)
         }
-        .padding(.horizontal)
-        .padding(.bottom, 8)
+        .padding(.horizontal, barInset)
+        .padding(.bottom, barBottomInset)
+        .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
         .disabled(isInputBlocked)
     }
 

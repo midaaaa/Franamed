@@ -16,20 +16,23 @@ struct AnswerInputBar: View {
     let onSubmit: () -> Void
     let onAnswerTextChange: () async -> Void
     var onVisibleHeightChange: ((CGFloat) -> Void)? = nil
-    var showsSubmitButton: Bool = false
     var hasOutcome: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var revealedHeight: CGFloat = 0
 
+    @ViewBuilder
+    private var barBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: suggestionRowHeight / 2, style: .continuous)
+
+        shape.fill(Color.clear)
+            .frame(height: suggestionRowHeight + revealedHeight)
+            .glassEffect(.regular, in: shape)
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            RoundedRectangle(cornerRadius: suggestionRowHeight / 2)
-                .fill(Color.clear)
-                .frame(height: suggestionRowHeight + revealedHeight)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: suggestionRowHeight / 2))
-                .compositingGroup()
-                .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+            barBackground
                 .id(colorScheme)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onVisibleHeightChange?($0) }
 
@@ -42,29 +45,15 @@ struct AnswerInputBar: View {
                 )
                 .id(colorScheme)
 
-                ZStack(alignment: .trailing) {
-                    TextField("Your guess", text: $answerText)
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                        .focused(isFocused)
-                        .onSubmit(onSubmit)
-                        .task(id: answerText) { await onAnswerTextChange() }
-                        .padding(.leading, suggestionsLeadingInset)
-                        .padding(.trailing, 44)
-                        .frame(height: suggestionRowHeight)
-
-                    if showsSubmitButton {
-                        Button(action: onSubmit) {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .contentShape(Circle())
-                        }
-                        .glassEffect(.regular.tint(.accentColor), in: Circle())
-                        .padding(.trailing, 6)
-                    }
-                }
+                TextField("Your guess", text: $answerText)
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    .focused(isFocused)
+                    .onSubmit(onSubmit)
+                    .task(id: answerText) { await onAnswerTextChange() }
+                    .padding(.leading, suggestionsLeadingInset)
+                    .padding(.trailing, 44)
+                    .frame(height: suggestionRowHeight)
             }
         }
         .frame(maxWidth: .infinity)
@@ -78,7 +67,6 @@ struct AnswerInputBar: View {
 private struct AnswerInputBarPreviewContainer: View {
     let searchResults: [MediaItem]
     let hasSearched: Bool
-    var showsSubmitButton: Bool = false
     @State private var answerText = ""
     @FocusState private var isFocused: Bool
 
@@ -90,8 +78,7 @@ private struct AnswerInputBarPreviewContainer: View {
             isFocused: $isFocused,
             onSelectSuggestion: { answerText = $0.title },
             onSubmit: {},
-            onAnswerTextChange: {},
-            showsSubmitButton: showsSubmitButton
+            onAnswerTextChange: {}
         )
         .padding()
     }
@@ -107,8 +94,4 @@ private struct AnswerInputBarPreviewContainer: View {
 
 #Preview("Nothing found") {
     AnswerInputBarPreviewContainer(searchResults: [], hasSearched: true)
-}
-
-#Preview("Standalone (with submit button)") {
-    AnswerInputBarPreviewContainer(searchResults: PreviewSuggestions.mixed, hasSearched: true, showsSubmitButton: true)
 }
