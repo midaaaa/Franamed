@@ -7,8 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Render snapshot
-
 // MARK: - Engine
 
 @MainActor

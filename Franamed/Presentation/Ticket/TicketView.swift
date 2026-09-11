@@ -38,7 +38,6 @@ struct TicketView: View {
     @GestureState private var isDraggingCard = false
 
     @State private var showsMesh = true
-    @State private var hapticsEnabled = true
     @State private var tintsPaper = false
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
     @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
@@ -150,7 +149,6 @@ struct TicketView: View {
             hidesStub: hidesStub,
             showsMesh: showsMesh,
             tintsPaper: tintsPaper,
-            resetToken: 0,
             returnToken: stubReturnToken,
             returnStyle: returnStyle,
             posterZoom: posterZoom,
@@ -326,7 +324,6 @@ struct TicketView: View {
         if showsDebugOverlay {
             TicketDebugOverlay(probe: tearFrameRate,
                                showsMesh: $showsMesh,
-                               hapticsEnabled: $hapticsEnabled,
                                tintsPaper: $tintsPaper)
         }
         #endif

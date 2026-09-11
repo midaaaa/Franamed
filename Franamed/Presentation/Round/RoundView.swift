@@ -29,16 +29,10 @@ struct RoundView: View {
 
     private var barBottomInset: CGFloat { isAnswerFieldFocused ? 6 : 24 - homeIndicatorInset }
 
-    private var homeIndicatorInset: CGFloat { keyWindow?.safeAreaInsets.bottom ?? 0 }
+    private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
 
-    private var screenHeight: CGFloat { keyWindow?.bounds.height ?? 0 }
-
-    private var beamReferenceHeight: CGFloat { max(0, screenHeight - frameHeight - suggestionRowHeight) }
-
-    private var keyWindow: UIWindow? {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-            .first
+    private var beamReferenceHeight: CGFloat {
+        max(0, WindowMetrics.size.height - frameHeight - suggestionRowHeight)
     }
 
     private var beamGap: CGFloat { (containerHeight - barBottomInset - answerBarHeight) - frameHeight }

@@ -18,7 +18,6 @@ struct TicketFaceView: View, Equatable {
             && lhs.hidesStub == rhs.hidesStub
             && lhs.showsMesh == rhs.showsMesh
             && lhs.tintsPaper == rhs.tintsPaper
-            && lhs.resetToken == rhs.resetToken
             && lhs.returnToken == rhs.returnToken
             && lhs.returnStyle == rhs.returnStyle
             && lhs.posterZoom == rhs.posterZoom
@@ -36,7 +35,6 @@ struct TicketFaceView: View, Equatable {
     var hidesStub: Bool = false
     var showsMesh: Bool = true
     var tintsPaper: Bool = false
-    let resetToken: Int
     let returnToken: Int
     var returnStyle: TearReturnStyle = .flat
     let posterZoom: Namespace.ID
@@ -71,10 +69,6 @@ struct TicketFaceView: View, Equatable {
         return config
     }
 
-    private var tearResetToken: Int {
-        resetToken &* TicketGameMode.allCases.count &+ card.mode.rawValue
-    }
-
     private struct ContentID: Hashable {
         let mediaType: MediaType
         let mode: TicketGameMode
@@ -89,7 +83,7 @@ struct TicketFaceView: View, Equatable {
     }
 
     var body: some View {
-        TicketTear(config: tearConfig, resetToken: tearResetToken,
+        TicketTear(config: tearConfig, resetToken: card.mode.rawValue,
                    contentID: contentID, isGrabEnabled: isStubGrabEnabled,
                    rasterizesContent: isRasterized, returnToken: returnToken,
                    onComplete: onStart, onReturnChange: onReturnChange,
@@ -186,7 +180,6 @@ struct TicketFaceView: View, Equatable {
         posterHeight: 450,
         isStubGrabEnabled: true,
         isRasterized: false,
-        resetToken: 0,
         returnToken: 0,
         posterZoom: posterZoom,
         filtersZoom: filtersZoom,

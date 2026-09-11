@@ -102,7 +102,6 @@ struct TicketTear<Content: View>: View {
             }
             .overlay { grabArea }
             .padding(-config.canvasPadding)
-            .overlay(alignment: .top) { frameRateReadout }
             .onChange(of: phase.cutsOutStub) { _, away in
                 onStubAwayChange?(away)
             }
@@ -218,18 +217,6 @@ struct TicketTear<Content: View>: View {
     private func snapshotTexture() {
         guard size.width > 1, size.height > 1 else { return }
         texture = TicketSnapshot.texture(of: content, scale: displayScale)
-    }
-
-    // MARK: Overlay
-
-    @ViewBuilder
-    private var frameRateReadout: some View {
-        if config.showsFrameRate, let probe {
-            TearFrameRateBadge(probe: probe)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .offset(y: -26)
-                .allowsHitTesting(false)
-        }
     }
 
     // MARK: Gesture
