@@ -31,18 +31,32 @@ function requireSecret(env) {
 
 // ------------------------------------------------------------------ accounts
 
+// The first account created becomes admin. The claim goes through `app_config`,
+// whose key is a primary key, so two simultaneous first sign-ups cannot both win
+// it — counting `users` instead, as this did, lets them.
+async function bootstrapRole(env, uid) {
+    const claimed = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'bootstrapAdmin'").first();
+    if (claimed) return claimed.value === uid ? "admin" : "user";
+
+    // No marker means an empty database or one filled before the marker existed;
+    // only the first may grant the role.
+    const existing = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first();
+
+    await env.DB.prepare("INSERT OR IGNORE INTO app_config (key, value) VALUES ('bootstrapAdmin', ?)")
+        .bind(existing.count === 0 ? uid : "done")
+        .run();
+
+    const settled = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'bootstrapAdmin'").first();
+    return settled?.value === uid ? "admin" : "user";
+}
+
 async function createUser(env, { isAnonymous }) {
     const uid = crypto.randomUUID();
-    const now = Date.now();
-
-    // The very first account to be created becomes admin, so a fresh deployment
-    // has someone who can grant roles. Afterwards this branch never fires.
-    const existing = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first();
-    const role = existing.count === 0 ? "admin" : "user";
+    const role = await bootstrapRole(env, uid);
 
     await env.DB.prepare(
         "INSERT INTO users (uid, role, is_anonymous, created_at) VALUES (?, ?, ?, ?)"
-    ).bind(uid, role, isAnonymous ? 1 : 0, now).run();
+    ).bind(uid, role, isAnonymous ? 1 : 0, Date.now()).run();
 
     return uid;
 }
@@ -115,26 +129,33 @@ export function publicUser(user) {
 
 export async function rotateRefreshToken(env, presentedToken, userAgent) {
     const hash = await sha256Hex(presentedToken);
-    const row = await env.DB.prepare("SELECT * FROM refresh_tokens WHERE token_hash = ?").bind(hash).first();
+    const now = Date.now();
+
+    // Claim and revoke in one statement. Split in two, two concurrent refreshes
+    // both see an unrevoked token and both succeed — which also means neither
+    // ever observes it as spent, so the replay check below never fires.
+    const claimed = await env.DB.prepare(
+        `UPDATE refresh_tokens SET revoked_at = ?1
+         WHERE token_hash = ?2 AND revoked_at IS NULL AND expires_at >= ?1
+         RETURNING uid`
+    ).bind(now, hash).first();
+
+    if (claimed) return issueTokens(env, claimed.uid, userAgent);
+
+    // Nothing claimed — read only to tell unknown from expired from already spent.
+    const row = await env.DB.prepare("SELECT uid, expires_at FROM refresh_tokens WHERE token_hash = ?")
+        .bind(hash)
+        .first();
 
     if (!row) throw unauthorized("Unknown refresh token");
+    if (row.expires_at < now) throw unauthorized("Refresh token expired");
 
-    if (row.revoked_at !== null) {
-        // Replay of an already-rotated token. Treat the whole session family as
-        // compromised rather than guessing which side is the attacker.
-        await env.DB.prepare(
-            "UPDATE refresh_tokens SET revoked_at = ? WHERE uid = ? AND revoked_at IS NULL"
-        ).bind(Date.now(), row.uid).run();
-        throw unauthorized("Refresh token was already used");
-    }
-
-    if (row.expires_at < Date.now()) throw unauthorized("Refresh token expired");
-
-    await env.DB.prepare("UPDATE refresh_tokens SET revoked_at = ? WHERE token_hash = ?")
-        .bind(Date.now(), hash)
-        .run();
-
-    return issueTokens(env, row.uid, userAgent);
+    // Replay of an already-rotated token. Treat the whole session family as
+    // compromised rather than guessing which side is the attacker.
+    await env.DB.prepare(
+        "UPDATE refresh_tokens SET revoked_at = ? WHERE uid = ? AND revoked_at IS NULL"
+    ).bind(now, row.uid).run();
+    throw unauthorized("Refresh token was already used");
 }
 
 export async function revokeAllTokens(env, uid) {
