@@ -80,7 +80,7 @@ struct TicketView: View {
                 .fullScreenCover(item: $coordinator.presentedRound) { mediaType in
                     NavigationStack {
                         RoundView(
-                            mediaFacade: AppFactory.makeMediaFacade(),
+                            mediaFacade: Self.mediaFacade,
                             modelContext: modelContext,
                             mediaType: mediaType,
                             filters: setup(for: mediaType).filters,
@@ -103,7 +103,7 @@ struct TicketView: View {
                 }
                 .sheet(item: $filtersSheetMediaType) { mediaType in
                     RoundFiltersView(
-                        mediaFacade: AppFactory.makeMediaFacade(),
+                        mediaFacade: Self.mediaFacade,
                         mediaType: mediaType,
                         setup: setup(for: mediaType)
                     ) { newSetup in
