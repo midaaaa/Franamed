@@ -228,4 +228,6 @@ INSERT OR IGNORE INTO app_config (key, value) VALUES
     ('catalogCacheTTLSeconds',   '86400'),
     ('voteWeightMinRounds',      '5'),
     ('targetApprovedFrames',     '12'),
+    ('curationLeaseMinutes',     '30'),
+    ('curationHeartbeatSeconds', '45'),
     ('onboardingMediaKey',       '');

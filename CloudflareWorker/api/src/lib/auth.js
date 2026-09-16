@@ -316,3 +316,9 @@ export function requireRole(user, minimumRole) {
         throw forbidden(`Requires ${minimumRole} role`);
     }
 }
+
+// Seniority, for the rules that compare two people rather than one person
+// against a bar: only a higher role may take a title away from someone.
+export function roleRank(role) {
+    return ROLE_RANK[role] ?? -1;
+}

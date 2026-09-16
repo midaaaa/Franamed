@@ -5,8 +5,19 @@
 // should. Votes are stored per user rather than as an anonymous counter so a
 // vote can be changed — the old weight comes off, the new one goes on.
 
-import { badRequest, json, notFound, parseInteger, readJSON, requireEnum } from "../lib/http.js";
+import { badRequest, json, noContent, notFound, parseInteger, readJSON, requireEnum } from "../lib/http.js";
 import { authenticate, requireRole } from "../lib/auth.js";
+import {
+    acquireLease,
+    canTakeOver,
+    isLive,
+    loadLease,
+    releaseLease,
+    serializeLease,
+    takeNotices,
+    takeOverLease,
+    touchLease
+} from "../lib/leases.js";
 import { DIFFICULTY_TIERS, IMAGE_STATUSES, MEDIA_TYPES, REPORT_REASONS, refreshMediaCounters, serializeImage } from "../lib/media.js";
 import { readConfig } from "../lib/config.js";
 import { grantBonusAttempts } from "../lib/daily.js";
@@ -70,6 +81,105 @@ async function clusterMemberIds(env, image) {
 }
 
 export async function handleCuration(request, env, segments, url) {
+    // ---------------------------------------------------------------- leases
+    // Dealt from the queue, searched for, or opened to review a batch: one lock.
+    if (segments[0] === "leases") {
+        const user = await authenticate(request, env);
+        const config = await readConfig(env);
+        const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
+        const now = Date.now();
+
+        if (segments.length === 1 && request.method === "GET") {
+            const notices = await takeNotices(env, user.uid, { now });
+
+            // A curator has no business knowing who else is working; a
+            // moderator deciding whether to take a title over does.
+            const rows = user.role === "user"
+                ? await env.DB.prepare(
+                    `SELECT l.*, u.display_name FROM title_leases l LEFT JOIN users u ON u.uid = l.uid
+                     WHERE l.uid = ? AND l.released_at IS NULL AND l.touched_at > ?`
+                ).bind(user.uid, now - windowMs).all()
+                : await env.DB.prepare(
+                    `SELECT l.*, u.display_name FROM title_leases l LEFT JOIN users u ON u.uid = l.uid
+                     WHERE l.released_at IS NULL AND l.touched_at > ? ORDER BY l.touched_at DESC LIMIT 100`
+                ).bind(now - windowMs).all();
+
+            return json({
+                leases: rows.results.map((row) => serializeLease(row, { now, windowMs, uid: user.uid })),
+                notices,
+                heartbeatSeconds: config.curationHeartbeatSeconds,
+                leaseMinutes: config.curationLeaseMinutes
+            });
+        }
+
+        const mediaKey = segments[1];
+        if (!mediaKey) throw badRequest("A media key is required");
+
+        if (segments.length === 2 && request.method === "POST") {
+            const item = await env.DB.prepare("SELECT key FROM media_items WHERE key = ?").bind(mediaKey).first();
+            if (!item) throw notFound(`Unknown media item "${mediaKey}"`);
+
+            const body = await readJSON(request).catch(() => ({}));
+            const notices = await takeNotices(env, user.uid, { now });
+
+            let lease = await acquireLease(env, user, mediaKey, { now, windowMs });
+
+            if (!lease) {
+                const holder = await loadLease(env, mediaKey);
+
+                if (body.takeover === true && holder && canTakeOver(user, holder)) {
+                    lease = await takeOverLease(env, user, holder, mediaKey, { reason: body.reason, now });
+                }
+
+                if (!lease) {
+                    return json(
+                        {
+                            error: "lease_held",
+                            message: "Someone else is working on this title",
+                            lease: serializeLease(holder, { now, windowMs, uid: user.uid }),
+                            canTakeOver: Boolean(holder && canTakeOver(user, holder)),
+                            notices
+                        },
+                        409
+                    );
+                }
+            }
+
+            return json({
+                lease: serializeLease({ ...lease, display_name: user.display_name }, { now, windowMs, uid: user.uid }),
+                heartbeatSeconds: config.curationHeartbeatSeconds,
+                notices
+            });
+        }
+
+        // Carries nothing on purpose: "someone is still here" is all the expiry
+        // rule needs, and the draft never leaves the device.
+        if (segments[2] === "heartbeat" && request.method === "POST") {
+            const lease = await touchLease(env, user, mediaKey, { now, windowMs });
+            if (!lease) {
+                const holder = await loadLease(env, mediaKey);
+                return json(
+                    {
+                        error: "lease_lost",
+                        message: "This title is no longer leased to you",
+                        lease: isLive(holder, { now, windowMs })
+                            ? serializeLease(holder, { now, windowMs, uid: user.uid })
+                            : null,
+                        notices: await takeNotices(env, user.uid, { now })
+                    },
+                    409
+                );
+            }
+
+            return json({ lease: serializeLease(lease, { now, windowMs, uid: user.uid }) });
+        }
+
+        if (segments.length === 2 && request.method === "DELETE") {
+            await releaseLease(env, user, mediaKey, { now });
+            return noContent();
+        }
+    }
+
     // GET /v1/curation/queue — what to show a curator next
     if (segments[0] === "queue" && request.method === "GET") {
         const user = await authenticate(request, env);

@@ -16,6 +16,10 @@ const DEFAULTS = {
     // playable. This is only the point where asking humans to look at it again
     // stops being worth their time.
     targetApprovedFrames: 12,
+    // How long a title stays leased to one curator with no activity on it, and
+    // how often the client should say it is still there.
+    curationLeaseMinutes: 30,
+    curationHeartbeatSeconds: 45,
     onboardingMediaKey: ""
 };
 
