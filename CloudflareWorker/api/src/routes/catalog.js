@@ -3,7 +3,6 @@ import { authenticate, requireRole } from "../lib/auth.js";
 import {
     MEDIA_TYPES,
     buildCatalogQuery,
-    DIFFICULTY_TIERS,
     loadGenreIds,
     parseFilters,
     refreshMediaCounters,
@@ -12,9 +11,9 @@ import {
 } from "../lib/media.js";
 import { fetchDiscoverPage, fetchPosterOptions, importMediaItem } from "../lib/tmdb.js";
 import { limitByUser } from "../lib/limits.js";
+import { applyVerdicts, parseVerdicts } from "../lib/verdicts.js";
 
 const MAX_BULK_IMPORT = 20;
-const MAX_BULK_VERDICTS = 300;
 
 export async function handleCatalog(request, env, segments, url) {
     // GET /v1/catalog/items — browse the curated pool
@@ -179,16 +178,8 @@ export async function handleCatalog(request, env, segments, url) {
         return json(serializeMediaItem(item, genres.get(key) || []));
     }
 
-    // POST /v1/catalog/items/{key}/curate — decide a whole title in one call
-    //
-    // The per-frame endpoints are right for the community queue, where a player
-    // genuinely looks at one frame at a time. They are wrong for a moderator: a
-    // popular film can carry 170 backdrops, and settling it frame by frame
-    // would be 170 requests out of a 100k daily budget shared with the image
-    // proxy. Here the whole title is one request, and identical verdicts are
-    // collapsed into a single UPDATE each so the query count stays flat no
-    // matter how many frames there are — D1 allows only 50 queries per
-    // invocation on the free plan.
+    // POST /v1/catalog/items/{key}/curate — decide a whole title in one call.
+    // A moderator settling 170 backdrops frame by frame would be 170 requests.
     if (segments[0] === "items" && segments[2] === "curate" && request.method === "POST") {
         const user = await authenticate(request, env);
         requireRole(user, "moderator");
@@ -199,72 +190,14 @@ export async function handleCatalog(request, env, segments, url) {
         if (!item) throw notFound(`Unknown media item "${key}"`);
 
         const body = await readJSON(request);
-        const verdicts = Array.isArray(body.verdicts) ? body.verdicts : [];
-        if (verdicts.length > MAX_BULK_VERDICTS) {
-            throw badRequest(`At most ${MAX_BULK_VERDICTS} frames per request`);
-        }
+        const verdicts = parseVerdicts(body.verdicts);
 
-        // Grouped by the exact change being applied, so N frames sharing a
-        // verdict cost one statement rather than N.
-        const groups = new Map();
-        for (const verdict of verdicts) {
-            const imageId = Number.parseInt(verdict.imageId, 10);
-            if (!Number.isInteger(imageId)) throw badRequest("Each verdict needs an integer imageId");
-
-            // Clearing a lock has to consult the votes again, which is a
-            // per-frame job — the single-frame endpoint handles it.
-            if (!["approved", "rejected"].includes(verdict.status)) {
-                throw badRequest('Each verdict status must be "approved" or "rejected"');
-            }
-
-            const tier = verdict.difficultyTier === undefined ? undefined : verdict.difficultyTier;
-            if (tier !== undefined && tier !== null && !DIFFICULTY_TIERS.includes(tier)) {
-                throw badRequest(`difficultyTier must be null or one of: ${DIFFICULTY_TIERS.join(", ")}`);
-            }
-
-            const groupKey = `${verdict.status}|${tier === undefined ? "keep" : tier}`;
-            if (!groups.has(groupKey)) groups.set(groupKey, { status: verdict.status, tier, ids: [] });
-            groups.get(groupKey).ids.push(imageId);
-        }
-
-        const now = Date.now();
-        const statements = [];
-
-        for (const { status, tier, ids } of groups.values()) {
-            const placeholders = ids.map(() => "?").join(", ");
-            // A locked frame's status is its lock, so it can be written in the
-            // same statement instead of recomputed afterwards.
-            const tierClause = tier === undefined ? "" : ", difficulty_tier = ?";
-            const bindings = tier === undefined
-                ? [status, status, user.uid, now, key, ...ids]
-                : [status, status, user.uid, now, tier, key, ...ids];
-
-            statements.push(
-                env.DB.prepare(
-                    `UPDATE media_images
-                     SET status = ?, moderator_status = ?, moderator_uid = ?, moderator_at = ?${tierClause}
-                     WHERE media_key = ? AND id IN (${placeholders})`
-                ).bind(...bindings)
-            );
-        }
-
-        // "Everything I did not tick is out" — the common ending to reviewing a
-        // title with far more frames than a round will ever need.
-        if (body.rejectRemaining === true) {
-            const reviewed = verdicts.map((verdict) => Number.parseInt(verdict.imageId, 10));
-            const exclusion = reviewed.length ? `AND id NOT IN (${reviewed.map(() => "?").join(", ")})` : "";
-
-            statements.push(
-                env.DB.prepare(
-                    `UPDATE media_images
-                     SET status = 'rejected', moderator_status = 'rejected', moderator_uid = ?, moderator_at = ?
-                     WHERE media_key = ? AND moderator_status IS NULL ${exclusion}`
-                ).bind(user.uid, now, key, ...reviewed)
-            );
-        }
-
-        if (statements.length) await env.DB.batch(statements);
-        await refreshMediaCounters(env, key);
+        await applyVerdicts(env, {
+            mediaKey: key,
+            verdicts,
+            rejectRemaining: body.rejectRemaining === true,
+            moderatorUid: user.uid
+        });
 
         const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
         const genres = await loadGenreIds(env, [key]);

@@ -5,7 +5,18 @@
 // should. Votes are stored per user rather than as an anonymous counter so a
 // vote can be changed — the old weight comes off, the new one goes on.
 
-import { badRequest, json, noContent, notFound, parseInteger, readJSON, requireEnum } from "../lib/http.js";
+import {
+    badRequest,
+    conflict,
+    json,
+    noContent,
+    notFound,
+    optionalString,
+    parseInteger,
+    readJSON,
+    requireEnum,
+    requireString
+} from "../lib/http.js";
 import { authenticate, requireRole } from "../lib/auth.js";
 import {
     acquireLease,
@@ -31,6 +42,7 @@ import {
 import { readConfig } from "../lib/config.js";
 import { grantBonusAttempts } from "../lib/daily.js";
 import { limitByUser, voterWeight } from "../lib/limits.js";
+import { applyVerdicts, parseVerdicts } from "../lib/verdicts.js";
 
 // Recomputes one image's status from the votes and reports on it, then updates
 // its title's cached counters. Everything that can change an image's standing
@@ -154,9 +166,15 @@ export async function handleCuration(request, env, segments, url) {
                 }
             }
 
+            const pending = await env.DB.prepare(
+                "SELECT id FROM curation_batches WHERE media_key = ? AND state = 'pending'"
+            ).bind(mediaKey).first();
+
             return json({
                 lease: serializeLease({ ...lease, display_name: user.display_name }, { now, windowMs, uid: user.uid }),
                 heartbeatSeconds: config.curationHeartbeatSeconds,
+                // A title with a batch waiting has one way in: reviewing it.
+                pendingBatchId: pending?.id ?? null,
                 notices
             });
         }
@@ -311,6 +329,190 @@ export async function handleCuration(request, env, segments, url) {
             },
             404
         );
+    }
+
+    // --------------------------------------------------------------- batches
+    // A proposal for one title, never applied by itself.
+    if (segments[0] === "batches") {
+        const user = await authenticate(request, env);
+        const config = await readConfig(env);
+        const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
+        const now = Date.now();
+
+        // POST /v1/curation/batches — submit one
+        if (segments.length === 1 && request.method === "POST") {
+            const body = await readJSON(request);
+            const batchId = requireString(body, "batchId", { maxLength: 64 });
+            const mediaKey = requireString(body, "mediaKey", { maxLength: 60 });
+
+            // The id is the client's idempotency key. This lookup comes first
+            // because submitting releases the lease, so a retry would fail the
+            // lease check below.
+            const existing = await loadBatch(env, batchId);
+            if (existing) {
+                if (existing.uid !== user.uid) throw conflict("That batch id belongs to someone else");
+                return json({ batch: serializeBatch(existing), duplicate: true });
+            }
+
+            const item = await env.DB.prepare("SELECT key FROM media_items WHERE key = ?").bind(mediaKey).first();
+            if (!item) throw notFound(`Unknown media item "${mediaKey}"`);
+
+            await limitByUser(env, user.uid, "WRITE_LIMITER");
+
+            // The one server-side rule the whole draft model rests on. Without
+            // it a batch could be built on a state that has since moved on.
+            const lease = await touchLease(env, user, mediaKey, { now, windowMs });
+            if (!lease) {
+                const holder = await loadLease(env, mediaKey);
+                return json(
+                    {
+                        error: "lease_lost",
+                        message: "Your lease on this title has expired or been taken over",
+                        lease: isLive(holder, { now, windowMs })
+                            ? serializeLease(holder, { now, windowMs, uid: user.uid })
+                            : null,
+                        notices: await takeNotices(env, user.uid, { now })
+                    },
+                    409
+                );
+            }
+
+            const open = await env.DB.prepare(
+                "SELECT id FROM curation_batches WHERE media_key = ? AND state = 'pending'"
+            ).bind(mediaKey).first();
+            if (open) throw conflict(`This title already has a batch awaiting review (${open.id})`);
+
+            const verdicts = parseVerdicts(body.verdicts);
+            if (!verdicts.length) throw badRequest("A batch needs at least one verdict");
+
+            await env.DB.prepare(
+                `INSERT INTO curation_batches (id, media_key, uid, state, verdicts, reject_remaining, note, submitted_at)
+                 VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)`
+            ).bind(
+                batchId,
+                mediaKey,
+                user.uid,
+                JSON.stringify(verdicts),
+                body.rejectRemaining === true ? 1 : 0,
+                optionalString(body, "note", { maxLength: 500 }),
+                now
+            ).run();
+
+            // The title is held out of the queue by the pending batch from here
+            // on, so the lease has nothing left to do.
+            await releaseLease(env, user, mediaKey, { now });
+
+            return json({ batch: serializeBatch(await loadBatch(env, batchId)) });
+        }
+
+        // GET /v1/curation/batches — the review queue, or "my submissions"
+        if (segments.length === 1 && request.method === "GET") {
+            const state = url.searchParams.get("state");
+            if (state && !["pending", "applied", "rejected"].includes(state)) throw badRequest("Unknown batch state");
+            const limit = parseInteger(url.searchParams.get("limit"), { fallback: 50, min: 1, max: 200 });
+
+            const mine = user.role === "user" || url.searchParams.get("scope") === "mine";
+
+            const rows = await env.DB.prepare(
+                `SELECT b.*, m.title, m.poster_url, m.approved_images, u.display_name
+                 FROM curation_batches b
+                 JOIN media_items m ON m.key = b.media_key
+                 LEFT JOIN users u ON u.uid = b.uid
+                 WHERE (?1 IS NULL OR b.state = ?1) AND (?2 = 0 OR b.uid = ?3)
+                 ORDER BY b.submitted_at DESC LIMIT ?4`
+            ).bind(state || null, mine ? 1 : 0, user.uid, limit).all();
+
+            return json({ batches: rows.results.map(serializeBatch) });
+        }
+
+        const batchId = segments[1];
+        const batch = batchId ? await loadBatch(env, batchId) : null;
+        if (!batch) throw notFound("Unknown batch");
+
+        // GET /v1/curation/batches/{id} — the proposal against the title as it stands now
+        if (segments.length === 2 && request.method === "GET") {
+            if (batch.uid !== user.uid) requireRole(user, "moderator");
+
+            const images = await env.DB.prepare(
+                "SELECT * FROM media_images WHERE media_key = ? ORDER BY tmdb_vote_average ASC"
+            ).bind(batch.media_key).all();
+
+            const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(batch.media_key).first();
+            const genres = await loadGenreIds(env, [batch.media_key]);
+            const diff = diffBatch(batch, images.results);
+
+            return json({
+                batch: serializeBatch(batch),
+                item: serializeMediaItem(item, genres.get(batch.media_key) || []),
+                frames: diff.frames,
+                consequences: diff.consequences,
+                targetApprovedFrames: config.targetApprovedFrames
+            });
+        }
+
+        // POST /v1/curation/batches/{id}/apply — accept it, with or without edits
+        if (segments[2] === "apply" && request.method === "POST") {
+            requireRole(user, "moderator");
+            if (batch.state !== "pending") throw conflict(`This batch is already ${batch.state}`);
+
+            const lease = await holdForReview(env, user, batch.media_key, { now, windowMs });
+            if (lease.error) return json(lease.error, 409);
+
+            const body = await readJSON(request).catch(() => ({}));
+            const final = body.verdicts === undefined ? JSON.parse(batch.verdicts) : parseVerdicts(body.verdicts);
+            const rejectRemaining = body.rejectRemaining === undefined
+                ? batch.reject_remaining === 1
+                : body.rejectRemaining === true;
+
+            const { editsCount, overturnedApprovals } = compareVerdicts(JSON.parse(batch.verdicts), final);
+
+            await applyVerdicts(env, {
+                mediaKey: batch.media_key,
+                verdicts: final,
+                rejectRemaining,
+                moderatorUid: user.uid,
+                now
+            });
+
+            await env.DB.prepare(
+                `UPDATE curation_batches
+                 SET state = 'applied', review_outcome = 'applied', reviewed_by = ?, reviewed_at = ?,
+                     review_note = ?, edits_count = ?, overturned_approvals = ?
+                 WHERE id = ?`
+            ).bind(user.uid, now, optionalString(body, "note", { maxLength: 500 }), editsCount, overturnedApprovals, batch.id).run();
+
+            await releaseLease(env, user, batch.media_key, { now });
+
+            const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(batch.media_key).first();
+            const genres = await loadGenreIds(env, [batch.media_key]);
+
+            return json({
+                batch: serializeBatch(await loadBatch(env, batch.id)),
+                item: serializeMediaItem(item, genres.get(batch.media_key) || []),
+                applied: final.length,
+                editsCount,
+                overturnedApprovals
+            });
+        }
+
+        // POST /v1/curation/batches/{id}/reject — neutral, or as poor work
+        if (segments[2] === "reject" && request.method === "POST") {
+            requireRole(user, "moderator");
+            if (batch.state !== "pending") throw conflict(`This batch is already ${batch.state}`);
+
+            const body = await readJSON(request);
+            // "The title is not wanted" must not count against the person who
+            // curated it — that is a decision about the film, not their work.
+            const outcome = requireEnum(body, "outcome", ["neutral", "poor"]);
+
+            await env.DB.prepare(
+                `UPDATE curation_batches
+                 SET state = 'rejected', review_outcome = ?, reviewed_by = ?, reviewed_at = ?, review_note = ?
+                 WHERE id = ?`
+            ).bind(`rejected_${outcome}`, user.uid, now, optionalString(body, "note", { maxLength: 500 }), batch.id).run();
+
+            return json({ batch: serializeBatch(await loadBatch(env, batch.id)) });
+        }
     }
 
     // POST /v1/curation/vote — binary classification from the curation screen
@@ -613,6 +815,9 @@ async function queueTitles(env, { uid, mediaType, limit, target, windowMs }) {
                SELECT 1 FROM title_leases l
                WHERE l.media_key = m.key AND l.released_at IS NULL AND l.touched_at > ?3 AND l.uid != ?4
            )
+           AND NOT EXISTS (
+               SELECT 1 FROM curation_batches b WHERE b.media_key = m.key AND b.state = 'pending'
+           )
          ORDER BY weight DESC, m.key
          LIMIT ?5`
     ).bind(target, mediaType || null, Date.now() - windowMs, uid, limit).all();
@@ -626,5 +831,115 @@ function serializeQueueRow(row) {
         weight: row.weight,
         pendingImages: row.pending_images,
         unjudgedImages: row.unjudged_images
+    };
+}
+
+async function loadBatch(env, batchId) {
+    return env.DB.prepare(
+        `SELECT b.*, m.title, m.poster_url, m.approved_images, u.display_name
+         FROM curation_batches b
+         JOIN media_items m ON m.key = b.media_key
+         LEFT JOIN users u ON u.uid = b.uid
+         WHERE b.id = ?`
+    ).bind(batchId).first();
+}
+
+function serializeBatch(row) {
+    const verdicts = JSON.parse(row.verdicts);
+    return {
+        id: row.id,
+        mediaKey: row.media_key,
+        title: row.title,
+        posterURL: row.poster_url ?? null,
+        uid: row.uid,
+        displayName: row.display_name ?? null,
+        state: row.state,
+        proposedApprovals: verdicts.filter((verdict) => verdict.status === "approved").length,
+        proposedRejections: verdicts.filter((verdict) => verdict.status === "rejected").length,
+        rejectRemaining: row.reject_remaining === 1,
+        note: row.note,
+        submittedAt: row.submitted_at,
+        reviewedBy: row.reviewed_by,
+        reviewedAt: row.reviewed_at,
+        reviewOutcome: row.review_outcome,
+        reviewNote: row.review_note,
+        editsCount: row.edits_count,
+        overturnedApprovals: row.overturned_approvals
+    };
+}
+
+// The proposal laid over the title as it stands now, plus what applying it
+// would do to the playable pool.
+function diffBatch(batch, images) {
+    const proposed = new Map(JSON.parse(batch.verdicts).map((verdict) => [verdict.imageId, verdict]));
+    const rejectRemaining = batch.reject_remaining === 1;
+
+    const frames = images.map((image) => {
+        const verdict = proposed.get(image.id);
+        const proposedStatus = verdict
+            ? verdict.status
+            : rejectRemaining && image.moderator_status === null
+                ? "rejected"
+                : null;
+
+        return {
+            ...serializeImage(image),
+            proposedStatus,
+            proposedTier: verdict?.difficultyTier ?? null,
+            // Re-importing only ever adds rows, so an unjudged frame is a new one.
+            isNew: image.moderator_status === null,
+            changesStatus: proposedStatus !== null && proposedStatus !== image.status
+        };
+    });
+
+    const approvedNow = images.filter((image) => image.status === "approved").length;
+    const approvedAfter = frames.filter(
+        (frame) => (frame.proposedStatus ?? frame.status) === "approved"
+    ).length;
+
+    const warnings = [];
+    if (approvedAfter < 6) warnings.push("below_playable");
+    else if (approvedAfter <= 6) warnings.push("no_spares");
+
+    return {
+        frames,
+        consequences: { approvedNow, approvedAfter, playableThreshold: 6, spareFramesAfter: Math.max(0, approvedAfter - 6), warnings }
+    };
+}
+
+// Picking a different good frame is not a mistake; having picks thrown out is.
+function compareVerdicts(proposal, final) {
+    const finalById = new Map(final.map((verdict) => [verdict.imageId, verdict.status]));
+    const proposalById = new Map(proposal.map((verdict) => [verdict.imageId, verdict.status]));
+
+    let editsCount = 0;
+    let overturnedApprovals = 0;
+
+    for (const [imageId, status] of proposalById) {
+        const settled = finalById.get(imageId) ?? null;
+        if (settled !== status) editsCount += 1;
+        if (status === "approved" && settled !== "approved") overturnedApprovals += 1;
+    }
+    for (const imageId of finalById.keys()) {
+        if (!proposalById.has(imageId)) editsCount += 1;
+    }
+
+    return { editsCount, overturnedApprovals };
+}
+
+// Reviewing takes the same lease as curating: a free title is picked up
+// silently, one held by someone else stops the review.
+async function holdForReview(env, user, mediaKey, { now, windowMs }) {
+    const lease = await acquireLease(env, user, mediaKey, { now, windowMs });
+    if (lease) return { lease };
+
+    const holder = await loadLease(env, mediaKey);
+    return {
+        error: {
+            error: "lease_held",
+            message: "Someone else is working on this title",
+            lease: serializeLease(holder, { now, windowMs, uid: user.uid }),
+            canTakeOver: Boolean(holder && canTakeOver(user, holder))
+        }
     };
 }

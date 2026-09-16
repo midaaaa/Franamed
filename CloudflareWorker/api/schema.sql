@@ -170,6 +170,32 @@ CREATE TABLE IF NOT EXISTS lease_notices (
 );
 CREATE INDEX IF NOT EXISTS idx_lease_notices_uid ON lease_notices(uid, delivered_at);
 
+-- A curator's proposal for one title. Never applied on its own: a moderator
+-- reviews it in the same workbench, edits it, and applies or rejects it. The id
+-- is the client's idempotency key, so a lost response cannot become a second
+-- batch on retry.
+CREATE TABLE IF NOT EXISTS curation_batches (
+    id                  TEXT PRIMARY KEY,                      -- client-generated UUID
+    media_key           TEXT    NOT NULL REFERENCES media_items(key) ON DELETE CASCADE,
+    uid                 TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    state               TEXT    NOT NULL DEFAULT 'pending',    -- pending | applied | rejected
+    verdicts            TEXT    NOT NULL,                      -- JSON [{imageId,status,difficultyTier}]
+    reject_remaining    INTEGER NOT NULL DEFAULT 0,
+    note                TEXT,
+    submitted_at        INTEGER NOT NULL,
+
+    reviewed_by         TEXT,
+    reviewed_at         INTEGER,
+    review_outcome      TEXT,                                  -- applied | rejected_neutral | rejected_poor
+    review_note         TEXT,
+    edits_count         INTEGER,
+    overturned_approvals INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_batches_state ON curation_batches(state, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_batches_uid   ON curation_batches(uid, submitted_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_batches_open_title
+    ON curation_batches(media_key) WHERE state = 'pending';
+
 -- ---------------------------------------------------------------- playlists
 
 CREATE TABLE IF NOT EXISTS playlists (
