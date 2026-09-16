@@ -18,7 +18,16 @@ import {
     takeOverLease,
     touchLease
 } from "../lib/leases.js";
-import { DIFFICULTY_TIERS, IMAGE_STATUSES, MEDIA_TYPES, REPORT_REASONS, refreshMediaCounters, serializeImage } from "../lib/media.js";
+import {
+    DIFFICULTY_TIERS,
+    IMAGE_STATUSES,
+    MEDIA_TYPES,
+    REPORT_REASONS,
+    loadGenreIds,
+    refreshMediaCounters,
+    serializeImage,
+    serializeMediaItem
+} from "../lib/media.js";
 import { readConfig } from "../lib/config.js";
 import { grantBonusAttempts } from "../lib/daily.js";
 import { limitByUser, voterWeight } from "../lib/limits.js";
@@ -181,7 +190,7 @@ export async function handleCuration(request, env, segments, url) {
     }
 
     // GET /v1/curation/queue — what to show a curator next
-    if (segments[0] === "queue" && request.method === "GET") {
+    if (segments[0] === "queue" && segments.length === 1 && request.method === "GET") {
         const user = await authenticate(request, env);
 
         const mediaType = url.searchParams.get("mediaType");
@@ -223,6 +232,85 @@ export async function handleCuration(request, env, segments, url) {
                 releaseYear: row.release_year
             }))
         });
+    }
+
+    // ------------------------------------------------------------ work queue
+    // The frame queue's weight, lifted onto titles. Curators are dealt work
+    // rather than searching for it, which is what makes coverage systematic.
+    if (segments[0] === "queue" && segments[1] === "titles" && request.method === "GET") {
+        const user = await authenticate(request, env);
+        const config = await readConfig(env);
+
+        const mediaType = url.searchParams.get("mediaType");
+        if (mediaType && !MEDIA_TYPES.includes(mediaType)) throw badRequest("Unknown media type");
+        const limit = parseInteger(url.searchParams.get("limit"), { fallback: 20, min: 1, max: 100 });
+
+        const rows = await queueTitles(env, {
+            uid: user.uid,
+            mediaType,
+            limit,
+            target: config.targetApprovedFrames,
+            windowMs: Math.max(1, config.curationLeaseMinutes) * 60 * 1000
+        });
+
+        return json({
+            items: rows.map(serializeQueueRow),
+            targetApprovedFrames: config.targetApprovedFrames
+        });
+    }
+
+    // POST /v1/curation/queue/claim — hand out the next title and lease it
+    if (segments[0] === "queue" && segments[1] === "claim" && request.method === "POST") {
+        const user = await authenticate(request, env);
+        const config = await readConfig(env);
+        const now = Date.now();
+        const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
+
+        const body = await readJSON(request).catch(() => ({}));
+        const mediaType = body.mediaType ?? null;
+        if (mediaType && !MEDIA_TYPES.includes(mediaType)) throw badRequest("Unknown media type");
+
+        // Someone who already holds a title gets that title back rather than a
+        // second one: the draft for it is still sitting on their device.
+        const held = await env.DB.prepare(
+            `SELECT media_key FROM title_leases
+             WHERE uid = ? AND released_at IS NULL AND touched_at > ? ORDER BY touched_at DESC LIMIT 1`
+        ).bind(user.uid, now - windowMs).first();
+
+        const candidates = held
+            ? [{ key: held.media_key }]
+            : await queueTitles(env, {
+                uid: user.uid,
+                mediaType,
+                limit: 5,
+                target: config.targetApprovedFrames,
+                windowMs
+            });
+
+        // Walking a few candidates rather than one: between the read and the
+        // write someone else may have taken the top title.
+        for (const candidate of candidates) {
+            const lease = await acquireLease(env, user, candidate.key, { now, windowMs });
+            if (!lease) continue;
+
+            const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(candidate.key).first();
+            const genres = await loadGenreIds(env, [candidate.key]);
+
+            return json({
+                item: serializeMediaItem(item, genres.get(candidate.key) || []),
+                lease: serializeLease(lease, { now, windowMs, uid: user.uid }),
+                heartbeatSeconds: config.curationHeartbeatSeconds,
+                resumed: Boolean(held)
+            });
+        }
+
+        return json(
+            {
+                error: "queue_empty",
+                message: "Nothing in the catalogue needs curating right now"
+            },
+            404
+        );
     }
 
     // POST /v1/curation/vote — binary classification from the curation screen
@@ -504,4 +592,39 @@ export async function handleCuration(request, env, segments, url) {
     }
 
     return null;
+}
+
+// The queue read, shared by browsing it and by being dealt the next title.
+async function queueTitles(env, { uid, mediaType, limit, target, windowMs }) {
+    const rows = await env.DB.prepare(
+        `SELECT m.*,
+                m.popularity * (CAST(?1 - m.approved_images AS REAL) / ?1) + 0.01 AS weight,
+                (SELECT COUNT(*) FROM media_images i
+                  WHERE i.media_key = m.key AND i.status = 'pending') AS pending_images,
+                (SELECT COUNT(*) FROM media_images i
+                  WHERE i.media_key = m.key AND i.moderator_status IS NULL) AS unjudged_images
+         FROM media_items m
+         WHERE (?2 IS NULL OR m.media_type = ?2)
+           AND m.admin_finalized = 0
+           AND m.total_images > 0
+           AND m.approved_images < ?1
+           AND m.reviewed_images < m.total_images
+           AND NOT EXISTS (
+               SELECT 1 FROM title_leases l
+               WHERE l.media_key = m.key AND l.released_at IS NULL AND l.touched_at > ?3 AND l.uid != ?4
+           )
+         ORDER BY weight DESC, m.key
+         LIMIT ?5`
+    ).bind(target, mediaType || null, Date.now() - windowMs, uid, limit).all();
+
+    return rows.results;
+}
+
+function serializeQueueRow(row) {
+    return {
+        ...serializeMediaItem(row),
+        weight: row.weight,
+        pendingImages: row.pending_images,
+        unjudgedImages: row.unjudged_images
+    };
 }
