@@ -1,9 +1,9 @@
 // Admin surface: roles, runtime config, scheduled dailies, onboarding pick.
 
-import { badRequest, json, notFound, readJSON, requireEnum, requireString } from "../lib/http.js";
+import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON, requireEnum, requireString } from "../lib/http.js";
 import { authenticate, requireRole, revokeAllTokens } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
-import { isValidDateString } from "../lib/daily.js";
+import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
 
 export async function handleAdmin(request, env, segments, url) {
     // GET /v1/admin/config is readable by any signed-in client: the app needs
@@ -71,17 +71,37 @@ export async function handleAdmin(request, env, segments, url) {
 
         const date = segments[1];
         if (!isValidDateString(date)) throw badRequest("date must be YYYY-MM-DD");
+        if (date < utcDateString()) throw badRequest("A past day cannot be changed");
 
         const body = await readJSON(request);
         const mediaKey = requireString(body, "mediaKey", { maxLength: 60 });
+        const frameCount = parseInteger(body.frameCount, { fallback: DEFAULT_DAILY_FRAME_COUNT, min: 1, max: 12 });
 
         if (!mediaKey.startsWith("movie_")) {
             throw badRequest("The daily puzzle is movies only");
         }
 
+        const config = await readConfig(env);
         const item = await env.DB.prepare("SELECT approved_images FROM media_items WHERE key = ?").bind(mediaKey).first();
         if (!item) throw notFound("Unknown media item");
-        if (item.approved_images < 6) throw badRequest("That film does not have six approved frames yet");
+
+        // The bar here is the curation target, not the playability threshold:
+        // the one puzzle everybody plays should come from a film that was
+        // actually finished, with frames to spare.
+        if (item.approved_images < config.targetApprovedFrames) {
+            throw badRequest(`That film needs ${config.targetApprovedFrames} approved frames, it has ${item.approved_images}`);
+        }
+
+        // A film may come round only once. Nothing enforced this before.
+        const usedOn = await env.DB.prepare(
+            "SELECT date FROM daily_overrides WHERE media_key = ? AND date != ?"
+        ).bind(mediaKey, date).first();
+        if (usedOn) throw conflict(`That film is already scheduled for ${usedOn.date}`);
+
+        const existing = await env.DB.prepare("SELECT media_key FROM daily_overrides WHERE date = ?").bind(date).first();
+        if (existing && date === utcDateString()) {
+            throw conflict("Today's puzzle is already running and cannot be swapped");
+        }
 
         await env.DB.prepare(
             `INSERT INTO daily_overrides (date, media_key, created_by, created_at)
@@ -89,24 +109,55 @@ export async function handleAdmin(request, env, segments, url) {
              ON CONFLICT (date) DO UPDATE SET media_key = excluded.media_key, created_by = excluded.created_by`
         ).bind(date, mediaKey, user.uid, Date.now()).run();
 
-        return json({ date, mediaKey });
+        // Frozen at scheduling time rather than at first play, so what the day
+        // will look like is visible while it can still be changed.
+        const layout = await freezeDailyLayout(env, { dateString: date, mediaKey, frameCount });
+
+        return json({ date, mediaKey, ...layout });
+    }
+
+    // DELETE /v1/admin/daily/{date} — only ahead of today: past days carry
+    // results and streaks that would be orphaned.
+    if (segments[0] === "daily" && segments.length === 2 && request.method === "DELETE") {
+        requireRole(user, "moderator");
+
+        const date = segments[1];
+        if (!isValidDateString(date)) throw badRequest("date must be YYYY-MM-DD");
+        if (date <= utcDateString()) throw badRequest("Only a future day can be removed");
+
+        await env.DB.prepare("DELETE FROM daily_overrides WHERE date = ?").bind(date).run();
+        return noContent();
     }
 
     if (segments[0] === "daily" && segments.length === 1 && request.method === "GET") {
         requireRole(user, "moderator");
+        const limit = parseInteger(url.searchParams.get("limit"), { fallback: 400, min: 1, max: 1000 });
+
         const rows = await env.DB.prepare(
-            `SELECT d.date, d.media_key, d.created_by, m.title
+            `SELECT d.date, d.media_key, d.created_by, d.frame_ids, d.frame_count, d.frozen_at, m.title, m.poster_url
              FROM daily_overrides d LEFT JOIN media_items m ON m.key = d.media_key
-             ORDER BY d.date DESC LIMIT 120`
-        ).all();
+             ORDER BY d.date DESC LIMIT ?`
+        ).bind(limit).all();
+
+        // Numbered the way Framed does it: by position among the days that
+        // exist, so a gap in the calendar does not leave a gap in the numbers.
+        const ascending = [...rows.results].sort((a, b) => (a.date < b.date ? -1 : 1));
+        const numbers = new Map(ascending.map((row, index) => [row.date, index + 1]));
 
         return json({
             schedule: rows.results.map((row) => ({
                 date: row.date,
+                number: numbers.get(row.date),
                 mediaKey: row.media_key,
                 title: row.title,
+                posterURL: row.poster_url ?? null,
+                frameCount: row.frame_count,
+                frozen: Boolean(row.frame_ids),
                 scheduledBy: row.created_by
-            }))
+            })),
+            // Small enough to send whole, and it is what the planner needs to
+            // grey out films that have already had their day.
+            usedMediaKeys: rows.results.map((row) => row.media_key)
         });
     }
 

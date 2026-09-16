@@ -240,12 +240,21 @@ CREATE TABLE IF NOT EXISTS playlist_completions (
 
 -- ---------------------------------------------------------------- daily
 
+-- The layout is frozen into the row: frames are picked randomly inside a
+-- difficulty tier, so choosing them at request time would hand two players
+-- different puzzles on the same day — and different substitutes for a frame
+-- that has since been deleted from TMDB.
 CREATE TABLE IF NOT EXISTS daily_overrides (
-    date       TEXT PRIMARY KEY,                                 -- YYYY-MM-DD
-    media_key  TEXT    NOT NULL,
-    created_by TEXT,
-    created_at INTEGER NOT NULL
+    date        TEXT PRIMARY KEY,                                -- YYYY-MM-DD
+    media_key   TEXT    NOT NULL,
+    frame_ids   TEXT,                                            -- JSON array of image ids, in order
+    spare_ids   TEXT,                                            -- JSON array, used when a frame 404s
+    frame_count INTEGER,
+    frozen_at   INTEGER,
+    created_by  TEXT,
+    created_at  INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_daily_media_key ON daily_overrides(media_key);
 
 CREATE TABLE IF NOT EXISTS daily_results (
     uid           TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,

@@ -8,8 +8,8 @@
 import { badRequest, json, notFound, parseInteger } from "../lib/http.js";
 import { authenticate } from "../lib/auth.js";
 import { buildCatalogQuery, loadGenreIds, parseFilters, serializeImage, serializeMediaItem } from "../lib/media.js";
-import { selectRoundFrames } from "../lib/frames.js";
-import { isValidDateString, resolveDailyMediaKey, utcDateString } from "../lib/daily.js";
+import { selectRoundFrames, selectSpareFrames } from "../lib/frames.js";
+import { dailyNumber, ensureFrozen, isValidDateString, loadDailyPlan, utcDateString } from "../lib/daily.js";
 
 const SPARE_FRAME_COUNT = 3;
 
@@ -21,37 +21,41 @@ async function loadItemWithFrames(env, key, frameCount) {
     const frames = selectRoundFrames(images.results, frameCount);
     const genres = await loadGenreIds(env, [key]);
 
-    // Approved frames beyond the six the round uses, sent in the same response
-    // so a frame that has since been deleted from TMDB can be swapped on the
-    // device without another request and without the player noticing. There
-    // may be none: a title with exactly six approved frames has no slack, which
-    // is why the curation target sits above the playability threshold.
-    const chosen = new Set(frames.map((frame) => frame.id));
-    const byVote = (a, b) => a.tmdb_vote_average - b.tmdb_vote_average;
-    const available = images.results
-        .filter((image) => image.status === "approved" && !chosen.has(image.id))
-        .sort(byVote);
-
-    // One spare per tier before any second helping. The round runs hardest to
-    // easiest, so a substitute has to match the difficulty of the frame it
-    // replaces — dropping an easy frame into the opening slot would hand the
-    // answer over on the first attempt. Picking purely by vote could leave all
-    // three spares in the same tier and no match available.
-    const spares = [];
-    for (const tier of ["hard", "medium", "easy"]) {
-        const match = available.find((image) => image.difficulty_tier === tier && !spares.includes(image));
-        if (match) spares.push(match);
-    }
-    for (const image of available) {
-        if (spares.length >= SPARE_FRAME_COUNT) break;
-        if (!spares.includes(image)) spares.push(image);
-    }
-    spares.length = Math.min(spares.length, SPARE_FRAME_COUNT);
+    // Sent in the same response so a frame deleted from TMDB can be swapped on
+    // device without another request. A title with exactly six has no slack.
+    const spares = selectSpareFrames(images.results, new Set(frames.map((frame) => frame.id)), SPARE_FRAME_COUNT);
 
     return {
         item: serializeMediaItem(item, genres.get(key) || []),
         frames: frames.map(serializeImage),
         spareFrames: spares.map(serializeImage)
+    };
+}
+
+// Frames in the stored order, whatever their status is now: re-curating the
+// film must not rewrite a day that has already been published.
+async function loadFrozenDaily(env, plan, frameCount) {
+    const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(plan.media_key).first();
+    if (!item) throw notFound(`Unknown media item "${plan.media_key}"`);
+
+    const frameIds = JSON.parse(plan.frame_ids).slice(0, frameCount);
+    const spareIds = JSON.parse(plan.spare_ids || "[]");
+    const ids = [...frameIds, ...spareIds];
+
+    const rows = ids.length
+        ? (await env.DB.prepare(
+            `SELECT * FROM media_images WHERE id IN (${ids.map(() => "?").join(", ")})`
+        ).bind(...ids).all()).results
+        : [];
+
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const pick = (list) => list.map((id) => byId.get(id)).filter(Boolean).map(serializeImage);
+    const genres = await loadGenreIds(env, [plan.media_key]);
+
+    return {
+        item: serializeMediaItem(item, genres.get(plan.media_key) || []),
+        frames: pick(frameIds),
+        spareFrames: pick(spareIds)
     };
 }
 
@@ -63,13 +67,30 @@ export async function handleRound(request, env, segments, url) {
     const pool = url.searchParams.get("pool") || "curated";
 
     // ------------------------------------------------------------- daily
+    // Served from the layout frozen onto the day, so everyone gets the same six
+    // frames in the same order — and the same substitute for a missing one.
     if (pool === "daily") {
         const date = url.searchParams.get("date") || utcDateString();
         if (!isValidDateString(date)) throw badRequest("date must be YYYY-MM-DD");
         if (date > utcDateString()) throw badRequest("The daily puzzle for a future date is not available");
 
-        const key = await resolveDailyMediaKey(env, date);
-        return json({ pool: "daily", date, ...(await loadItemWithFrames(env, key, frameCount)) });
+        const plan = await loadDailyPlan(env, date);
+        if (!plan) {
+            // No automatic pick: it cannot honour the scheduling rules, and an
+            // empty date is loud in the admin calendar where a bad day is not.
+            return json(
+                { error: "no_daily", date, message: "No film is scheduled for this day" },
+                404
+            );
+        }
+
+        const frozen = await ensureFrozen(env, plan);
+        return json({
+            pool: "daily",
+            date,
+            number: await dailyNumber(env, date),
+            ...(await loadFrozenDaily(env, frozen, frameCount))
+        });
     }
 
     // -------------------------------------- curated pool, optionally a playlist

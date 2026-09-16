@@ -20,13 +20,25 @@ function byAscendingVote(a, b) {
     return a.tmdb_vote_count - b.tmdb_vote_count;
 }
 
-function shuffled(items) {
+function shuffled(items, random = Math.random) {
     const copy = [...items];
     for (let i = copy.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(random() * (i + 1));
         [copy[i], copy[j]] = [copy[j], copy[i]];
     }
     return copy;
+}
+
+// A generator the caller can seed, for the one case where the same input has to
+// produce the same round every time: the daily puzzle.
+export function seededRandom(seed) {
+    let state = seed >>> 0;
+    return () => {
+        state = (state + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(state ^ (state >>> 15), 1 | state);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
 
 // Spreads `total` slots across the populated tiers, then repeatedly hands any
@@ -70,7 +82,7 @@ export function allocateSlots(available, total) {
     return allocation;
 }
 
-export function selectRoundFrames(images, frameCount = 6) {
+export function selectRoundFrames(images, frameCount = 6, { random = Math.random } = {}) {
     const approved = images.filter((image) => image.status === "approved");
 
     // An explicit rank is a curator overriding one exact position. Last write
@@ -103,7 +115,7 @@ export function selectRoundFrames(images, frameCount = 6) {
         if (count <= 0) continue;
         // Random subset from a tier with surplus keeps replays varied; the
         // vote sort then fixes a stable order within the tier.
-        const picked = shuffled(buckets[tier]).slice(0, count).sort(byAscendingVote);
+        const picked = shuffled(buckets[tier], random).slice(0, count).sort(byAscendingVote);
         chosen.push(...picked);
     }
 
@@ -121,6 +133,26 @@ export function selectRoundFrames(images, frameCount = 6) {
     }
 
     return result;
+}
+
+// Stand-ins for a frame deleted from TMDB. One per tier before any second
+// helping: an easy frame in an opening slot would hand the answer over.
+export function selectSpareFrames(images, chosenIds, count = 3) {
+    const available = images
+        .filter((image) => image.status === "approved" && !chosenIds.has(image.id))
+        .sort(byAscendingVote);
+
+    const spares = [];
+    for (const tier of TIER_ORDER) {
+        const match = available.find((image) => image.difficulty_tier === tier && !spares.includes(image));
+        if (match) spares.push(match);
+    }
+    for (const image of available) {
+        if (spares.length >= count) break;
+        if (!spares.includes(image)) spares.push(image);
+    }
+
+    return spares.slice(0, count);
 }
 
 // Six approved images is the eligibility bar for the six-frame mode. It counts

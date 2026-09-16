@@ -4,8 +4,9 @@
 // solving the same thing at the same time, which only holds if "today" means
 // the same thing in every timezone.
 
-import { notFound } from "./http.js";
+import { badRequest } from "./http.js";
 import { readConfig } from "./config.js";
+import { seededRandom, selectRoundFrames, selectSpareFrames } from "./frames.js";
 
 export function utcDateString(date = new Date()) {
     return date.toISOString().slice(0, 10);
@@ -31,34 +32,59 @@ function hashString(value) {
     return hash;
 }
 
-// Priority is a hand-scheduled override, then a deterministic pick from the
-// approved pool. The deterministic pick is written back as an override so the
-// answer for a given date never changes once anyone has seen it — without that,
-// growing the catalogue would silently rewrite history.
-export async function resolveDailyMediaKey(env, dateString) {
-    const override = await env.DB.prepare("SELECT media_key FROM daily_overrides WHERE date = ?")
+export const DEFAULT_DAILY_FRAME_COUNT = 6;
+
+export async function loadDailyPlan(env, dateString) {
+    return env.DB.prepare("SELECT * FROM daily_overrides WHERE date = ?").bind(dateString).first();
+}
+
+// Numbered by how many days actually exist up to it, so a gap in the calendar
+// leaves no gap in the numbers.
+export async function dailyNumber(env, dateString) {
+    const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM daily_overrides WHERE date <= ?")
         .bind(dateString)
         .first();
-    if (override) return override.media_key;
+    return row.count;
+}
 
-    // Movies only, permanently. A show's backdrop stands in for the whole
-    // series, so a random still risks spoiling a season the player has not
-    // reached — a problem a film simply does not have.
-    const pool = await env.DB.prepare(
-        `SELECT key FROM media_items
-         WHERE media_type = 'movie' AND status = 'approved' AND approved_images >= 6
-         ORDER BY key`
-    ).all();
+// Picks the frames once and stores them: chosen at request time they would
+// differ between players, between reopenings, and after any re-curation. The
+// date seeds the generator so a re-freeze lands the same way.
+export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount = DEFAULT_DAILY_FRAME_COUNT }) {
+    const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ?").bind(mediaKey).all();
 
-    if (!pool.results.length) throw notFound("No approved movie is available for the daily puzzle");
+    const frames = selectRoundFrames(images.results, frameCount, { random: seededRandom(hashString(dateString)) });
+    if (!frames.length) throw badRequest("That film has no approved frames to build a day from");
 
-    const chosen = pool.results[hashString(dateString) % pool.results.length].key;
+    const spares = selectSpareFrames(images.results, new Set(frames.map((frame) => frame.id)));
 
     await env.DB.prepare(
-        "INSERT OR IGNORE INTO daily_overrides (date, media_key, created_by, created_at) VALUES (?, ?, 'system', ?)"
-    ).bind(dateString, chosen, Date.now()).run();
+        `UPDATE daily_overrides
+         SET frame_ids = ?, spare_ids = ?, frame_count = ?, frozen_at = ?
+         WHERE date = ?`
+    ).bind(
+        JSON.stringify(frames.map((frame) => frame.id)),
+        JSON.stringify(spares.map((frame) => frame.id)),
+        frames.length,
+        Date.now(),
+        dateString
+    ).run();
 
-    return chosen;
+    return { frameIds: frames.map((frame) => frame.id), spareIds: spares.map((frame) => frame.id) };
+}
+
+// Days scheduled before freezing existed are frozen on first play, otherwise
+// they would keep being re-rolled.
+export async function ensureFrozen(env, plan) {
+    if (plan.frame_ids) return plan;
+
+    await freezeDailyLayout(env, {
+        dateString: plan.date,
+        mediaKey: plan.media_key,
+        frameCount: plan.frame_count || DEFAULT_DAILY_FRAME_COUNT
+    });
+
+    return loadDailyPlan(env, plan.date);
 }
 
 // ------------------------------------------------------------ attempt budget
