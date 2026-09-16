@@ -13,6 +13,11 @@ import UIKit
 #endif
 
 @MainActor
+private struct TicketTearEngineBox {
+    let engine = TicketTearEngine()
+}
+
+@MainActor
 struct TicketTear<Content: View>: View {
 
     private let config: TicketTearConfig
@@ -27,12 +32,7 @@ struct TicketTear<Content: View>: View {
     private let onReturnChange: ((Bool) -> Void)?
     private let onStubAwayChange: ((Bool) -> Void)?
 
-    @MainActor
-    private struct EngineBox {
-        let engine = TicketTearEngine()
-    }
-
-    @State private var box = EngineBox()
+    @State private var box = TicketTearEngineBox()
     @State private var size: CGSize = .zero
     @State private var texture: MTLTexture?
     @State private var accepted = false
