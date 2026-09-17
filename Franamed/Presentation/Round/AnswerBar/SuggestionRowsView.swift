@@ -15,9 +15,6 @@ struct SuggestionRowsView: View {
         VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                 rowView(for: row)
-                    .padding(.vertical, 12)
-                    .padding(.leading, suggestionsLeadingInset)
-                    .padding(.trailing, 12)
 
                 if index != rows.count - 1 {
                     Divider()
@@ -35,19 +32,22 @@ struct SuggestionRowsView: View {
             Button {
                 onSelect(item)
             } label: {
-                Text(item.title)
-                    .lineLimit(3)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+                label(Text(item.title))
             }
             .buttonStyle(.plain)
         case .empty:
-            Text("Nothing found")
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            label(Text("Nothing found").foregroundStyle(.secondary))
         }
+    }
+
+    private func label(_ text: Text) -> some View {
+        text
+            .lineLimit(3)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+            .padding(.leading, suggestionsLeadingInset)
+            .padding(.trailing, 12)
+            .contentShape(Rectangle())
     }
 }

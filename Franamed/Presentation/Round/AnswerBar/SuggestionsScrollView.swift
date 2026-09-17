@@ -26,6 +26,7 @@ struct SuggestionsScrollView: UIViewRepresentable {
         scrollView.showsVerticalScrollIndicator = false
         scrollView.backgroundColor = .clear
         scrollView.isOpaque = false
+        scrollView.delaysContentTouches = false
 
         let hosting = UIHostingController(rootView: SuggestionRowsView(rows: [], onSelect: { _ in }))
         hosting.safeAreaRegions.remove(.keyboard)
