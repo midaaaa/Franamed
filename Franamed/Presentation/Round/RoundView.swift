@@ -20,10 +20,9 @@ struct RoundView: View {
     @State private var displayedURL: URL?
     @State private var isBeamFillLit = true
     @State private var isWaitingForFrame = false
+    @State private var beamAnimation: Animation?
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
-    @State private var keyboardAnimation: Animation?
-    @State private var beamAnimation: Animation?
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
 
     private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
@@ -37,7 +36,10 @@ struct RoundView: View {
     }
 
     private var beamGap: CGFloat { (containerHeight - barBottomInset - answerBarHeight) - frameHeight }
+    private var beamHeight: CGFloat { max(beamGap, 1) }
     private var beamMaxExpectedGap: CGFloat { max(containerHeight * 0.25, 1) }
+
+    private static let beamShrink = Animation.timingCurve(0.38, 0.7, 0.125, 1, duration: 0.28)
     private var beamIntensity: Double {
         guard beamGap > 0 else { return 0 }
         return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
@@ -69,11 +71,13 @@ struct RoundView: View {
                             stripTints: stripTints,
                             isFillLit: isBeamFillLit,
                             referenceHeight: beamReferenceHeight,
-                            isProtected: isScreenProtected
+                            isProtected: isScreenProtected,
+                            showsSource: false
                         )
-                            .frame(maxHeight: max(beamGap, 1))
+                            .frame(maxHeight: beamHeight)
                             .clipped()
                             .animation(beamAnimation, value: containerHeight)
+                            .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
                             .allowsHitTesting(false)
                     }
 
@@ -89,7 +93,7 @@ struct RoundView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newHeight in
-                    beamAnimation = newHeight > containerHeight ? keyboardAnimation : nil
+                    beamAnimation = newHeight < containerHeight ? Self.beamShrink : nil
                     containerHeight = newHeight
                 }
                 .overlay(alignment: .bottom) { bottomActionBar }
@@ -110,9 +114,6 @@ struct RoundView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
-            keyboardAnimation = KeyboardAnimation.from(notification)
-        }
         .task { await viewModel.loadRound() }
         .task(id: currentBackdropURL) {
             await transitionToCurrentFrame()
@@ -126,7 +127,7 @@ struct RoundView: View {
         .gesture(
             DragGesture().onChanged { value in
                 guard value.translation.height > 20, isAnswerFieldFocused else { return }
-                DispatchQueue.main.async { isAnswerFieldFocused = false }
+                DispatchQueue.main.async { resignKeyboard() }
             }
         )
         .onChange(of: viewModel.outcome) { _, newOutcome in
@@ -262,9 +263,29 @@ struct RoundView: View {
             .frame(height: suggestionRowHeight)
         }
         .padding(.horizontal, barInset)
+        .overlay(alignment: .top) { beamSource }
         .padding(.bottom, barBottomInset)
         .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
         .disabled(isInputBlocked)
+    }
+
+    @ViewBuilder
+    private var beamSource: some View {
+        if viewModel.outcome == nil {
+            ZStack(alignment: .bottom) {
+                ProjectorSourceHalo()
+                ProjectorLineSource()
+            }
+            .frame(height: beamHeight)
+            .offset(y: -beamHeight)
+            .opacity(max(beamIntensity, ProjectorBeam.imperceptibleOpacity))
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func resignKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
     }
 
     private var isInputBlocked: Bool {

@@ -13,8 +13,9 @@ struct ProjectorBeam: View {
     var isFillLit: Bool = true
     var referenceHeight: CGFloat = 0
     var isProtected: Bool = false
+    var showsSource: Bool = true
 
-    private static let imperceptibleOpacity = 1.0 / 255
+    static let imperceptibleOpacity = 1.0 / 255
 
     var body: some View {
         GeometryReader { proxy in
@@ -22,9 +23,10 @@ struct ProjectorBeam: View {
                 protectedFill(height: proxy.size.height)
                     .opacity(isFillLit ? 1 : 0)
 
-                ProjectorSourceHalo()
-
-                ProjectorLineSource()
+                if showsSource {
+                    ProjectorSourceHalo()
+                    ProjectorLineSource()
+                }
             }
             .frame(width: proxy.size.width * 1.00, height: proxy.size.height)
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
