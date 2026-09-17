@@ -9,7 +9,6 @@ import UIKit
 
 final class ProtectedBox: UIView {
 
-    private let field = UITextField()
     private let openHost = UIView()
     private let child: UIView
 
@@ -26,43 +25,45 @@ final class ProtectedBox: UIView {
         self.child = child
         super.init(frame: .zero)
 
-        field.isSecureTextEntry = true
-        field.isUserInteractionEnabled = false
-        field.backgroundColor = .clear
-        field.clipsToBounds = false
-        addSubview(field)
+        protectedHost = Self.makeProtectedHost()
+        if let protectedHost {
+            protectedHost.clipsToBounds = false
+            protectedHost.isUserInteractionEnabled = false
+            addSubview(protectedHost)
+        } else {
+            NSLog("[Shield] не нашёл защищённый слой, содержимое осталось незащищённым")
+        }
 
         openHost.isUserInteractionEnabled = false
         addSubview(openHost)
 
         child.autoresizingMask = []
         openHost.addSubview(child)
+        attachChild()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) не поддерживается") }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        guard window != nil, protectedHost == nil else { return }
+    private static func makeProtectedHost() -> UIView? {
+        let field = UITextField()
+        field.isSecureTextEntry = true
+        field.textContentType = .oneTimeCode
+        field.isUserInteractionEnabled = false
+        field.frame = CGRect(x: 0, y: 0, width: 320, height: 320)
+        field.layoutIfNeeded()
 
-        layoutIfNeeded()
-        protectedHost = field.subviews.first {
+        let host = field.subviews.first {
             String(describing: type(of: $0)).contains("CanvasView")
         }
-
-        if protectedHost == nil {
-            NSLog("[Shield] не нашёл защищённый слой, содержимое осталось незащищённым")
-        }
-
-        protectedHost?.clipsToBounds = false
-        attachChild()
+        host?.removeFromSuperview()
+        return host
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
 
-        field.frame = bounds
+        protectedHost?.frame = bounds
         openHost.frame = bounds
 
         if let host = child.superview {
