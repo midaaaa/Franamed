@@ -36,6 +36,7 @@ nonisolated struct TicketTearConfig: Sendable, Equatable {
     // MARK: Curl
 
     var tightestCurl: CGFloat = 34
+    var curlSettle: TimeInterval = 0.10
 
     // MARK: Gesture
 

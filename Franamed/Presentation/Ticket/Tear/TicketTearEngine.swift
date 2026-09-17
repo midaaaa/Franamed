@@ -58,6 +58,11 @@ final class TicketTearEngine {
     private var returnProgress: Double = 0
     private var returnCurlTheta: CGFloat = .pi / 2
 
+    private var shownTheta: CGFloat = .pi / 2
+    private var releaseTheta: CGFloat = .pi / 2
+    private var curlCatchUp: Double = 1
+    private var curlGap: CGFloat = 0
+
     private var lastTick: Date?
 
     private var isResumable: Bool { grace > 0 || relax < 1 || brokenTabs > 0 }
@@ -121,7 +126,12 @@ final class TicketTearEngine {
         grace = config.gracePeriod
         relax = 0
         finger = p
-        if !resumable { smoothedFinger = p }
+        if !resumable {
+            smoothedFinger = p
+            shownTheta = .pi / 2
+        }
+        curlCatchUp = 0
+        curlGap = shownTheta - currentTheta(apexA: shownFront)
         lastTick = nil
         grabAlong = geometry.inTearSpace(p).x
         grabFront = front
@@ -138,7 +148,7 @@ final class TicketTearEngine {
         guard dragging else { return }
         dragging = false
         guard !isComplete else { return }
-        grace = config.gracePeriod
+        grace = brokenTabs > 0 ? config.gracePeriod : 0
         relax = 0
         captureRelease()
     }
@@ -169,6 +179,9 @@ final class TicketTearEngine {
         releasedFinger = config.returnStyle == .curled ? geometry.farCorner : geometry.handle
         smoothedFinger = releasedFinger
         returnCurlTheta = currentTheta(apexA: geometry.perfLength)
+        shownTheta = returnCurlTheta
+        releaseTheta = returnCurlTheta
+        curlCatchUp = 1
 
         relax = 0
         isReturning = true
@@ -189,6 +202,9 @@ final class TicketTearEngine {
         dragging = false
         isReturning = false
         returnProgress = 0
+        shownTheta = .pi / 2
+        releaseTheta = .pi / 2
+        curlCatchUp = 1
         clearStrain()
         onWake?()
     }
@@ -223,6 +239,7 @@ final class TicketTearEngine {
         releasedFinger = smoothedFinger
         releaseFront = front
         releaseStrain = strain
+        releaseTheta = shownTheta
     }
 
     private func finishAtEnd() {
@@ -257,6 +274,7 @@ final class TicketTearEngine {
             grace = config.gracePeriod
             relax = 0
             advance()
+            updateCurl(clamped)
         } else if isReturning {
             stepReturn(clamped)
         } else if isComplete {
@@ -293,6 +311,7 @@ final class TicketTearEngine {
         smoothedFinger = releasedFinger + (geometry.handle - releasedFinger) * CGFloat(e)
         front = releaseFront * CGFloat(1 - e)
         strain = releaseStrain * CGFloat(1 - e)
+        shownTheta = .pi / 2 + (releaseTheta - .pi / 2) * CGFloat(1 - e)
 
         let reached = front - config.perfEndInset
         let stillBroken = reached < 0 ? 0 : Int((reached / max(geometry.pitch, 0.01)).rounded(.down)) + 1
@@ -345,10 +364,23 @@ final class TicketTearEngine {
         }
     }
 
+    private func updateCurl(_ dt: Double) {
+        let target = currentTheta(apexA: shownFront)
+
+        guard curlCatchUp < 1 else {
+            shownTheta = target
+            return
+        }
+
+        curlCatchUp = min(1, curlCatchUp + dt / max(config.curlSettle, 0.001))
+        shownTheta = target + curlGap * CGFloat(1 - easeOutCubic(curlCatchUp))
+    }
+
     private func detach() {
         isComplete = true
         detachApex = shownFront
-        detachTheta = currentTheta(apexA: shownFront)
+        detachTheta = shownTheta
+        curlCatchUp = 1
         detachAnchor = smoothedFinger
         detachRelease = 0
         detachFlight = 0
@@ -361,7 +393,7 @@ final class TicketTearEngine {
 
     func currentPose() -> TearPose {
         var apexA = shownFront
-        var theta = currentTheta(apexA: shownFront)
+        var theta = shownTheta
         var offset = CGVector(dx: 0, dy: 0)
         var opacity: CGFloat = 1
 
