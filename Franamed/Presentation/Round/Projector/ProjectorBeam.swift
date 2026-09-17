@@ -12,13 +12,14 @@ struct ProjectorBeam: View {
     var stripTints: [ProjectorStripTint] = []
     var isFillLit: Bool = true
     var referenceHeight: CGFloat = 0
+    var isProtected: Bool = false
 
     private static let imperceptibleOpacity = 1.0 / 255
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .bottom) {
-                fill(height: proxy.size.height)
+                protectedFill(height: proxy.size.height)
                     .opacity(isFillLit ? 1 : 0)
 
                 ProjectorSourceHalo()
@@ -30,6 +31,17 @@ struct ProjectorBeam: View {
         }
         .opacity(max(intensity, Self.imperceptibleOpacity))
         .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private func protectedFill(height: CGFloat) -> some View {
+        if isProtected {
+            ProtectedContent(isProtected: true) {
+                fill(height: height)
+            }
+        } else {
+            fill(height: height)
+        }
     }
 
     private func fill(height: CGFloat) -> some View {

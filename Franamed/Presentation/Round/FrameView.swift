@@ -10,6 +10,7 @@ import SwiftUI
 struct FrameView: View {
     let imageURL: URL?
     var isWaitingForFrame: Bool = false
+    var isProtected: Bool = false
     let onTapPrevious: () -> Void
     let onTapNext: () -> Void
 
@@ -19,7 +20,7 @@ struct FrameView: View {
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .overlay {
                 if let imageURL {
-                    CachedAsyncImage(url: imageURL)
+                    CachedAsyncImage(url: imageURL, isProtected: isProtected)
                 } else if isWaitingForFrame {
                     ProgressView().tint(.white)
                 }

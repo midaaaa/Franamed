@@ -9,12 +9,14 @@ import SwiftUI
 
 struct CachedAsyncImage: View {
     let url: URL?
-
+    var isProtected: Bool?
     @State private var uiImage: UIImage?
 
     var body: some View {
         Group {
-            if let uiImage {
+            if let isProtected {
+                ProtectedImage(image: uiImage, isProtected: isProtected)
+            } else if let uiImage {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)

@@ -15,6 +15,7 @@ struct ProfileSheet: View {
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
     @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
     @AppStorage(DebugSettings.returnShrinkKey) private var shrinksOnReturn = false
+    @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
 
     @EnvironmentObject private var session: SessionStore
 
@@ -81,6 +82,7 @@ struct ProfileSheet: View {
                         }
                     }
                     Toggle("Ужимать билет", isOn: $shrinksOnReturn)
+                    Toggle("Прятать кадр от съёмки", isOn: $isScreenProtected)
                 } header: {
                     Text("Отладка")
                 }

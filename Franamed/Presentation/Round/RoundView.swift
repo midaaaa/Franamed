@@ -24,6 +24,7 @@ struct RoundView: View {
     @State private var isMorphAnimating = false
     @State private var keyboardAnimation: Animation?
     @State private var beamAnimation: Animation?
+    @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
 
     private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
 
@@ -55,6 +56,7 @@ struct RoundView: View {
                     FrameView(
                         imageURL: displayedURL,
                         isWaitingForFrame: isWaitingForFrame,
+                        isProtected: isScreenProtected && viewModel.outcome == nil,
                         onTapPrevious: { viewModel.showPreviousFrame() },
                         onTapNext: { viewModel.showNextFrame() }
                     )
@@ -66,7 +68,8 @@ struct RoundView: View {
                             intensity: beamIntensity,
                             stripTints: stripTints,
                             isFillLit: isBeamFillLit,
-                            referenceHeight: beamReferenceHeight
+                            referenceHeight: beamReferenceHeight,
+                            isProtected: isScreenProtected
                         )
                             .frame(maxHeight: max(beamGap, 1))
                             .clipped()
