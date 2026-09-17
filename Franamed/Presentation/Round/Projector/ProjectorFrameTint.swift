@@ -33,18 +33,19 @@ private final class ProjectorTintCache: @unchecked Sendable {
 }
 
 enum ProjectorFrameTint {
-    nonisolated static func cachedTints(for url: URL) async -> [ProjectorStripTint]? {
+    private static let context = CIContext()
+
+    nonisolated static func cachedTints(for url: URL) -> [ProjectorStripTint]? {
         ProjectorTintCache.shared.tints(for: url)
     }
 
-    nonisolated static func storeTints(_ tints: [ProjectorStripTint], for url: URL) async {
+    nonisolated static func storeTints(_ tints: [ProjectorStripTint], for url: URL) {
         ProjectorTintCache.shared.store(tints, for: url)
     }
 
     nonisolated static func averageStripTints(from image: UIImage, stripCount: Int) -> [ProjectorStripTint] {
         guard stripCount > 0, let cgImage = image.cgImage else { return [] }
         let ciImage = CIImage(cgImage: cgImage)
-        let context = CIContext()
         let extent = ciImage.extent
         guard extent.width > 0, extent.height > 0 else { return [] }
 
@@ -82,7 +83,7 @@ enum ProjectorFrameTint {
     }
 
     nonisolated static func loadAndSample(url: URL, stripCount: Int) async -> [ProjectorStripTint] {
-        if let cachedTints = await cachedTints(for: url) {
+        if let cachedTints = cachedTints(for: url) {
             return cachedTints
         }
 
@@ -97,7 +98,7 @@ enum ProjectorFrameTint {
         }
 
         let tints = averageStripTints(from: image, stripCount: stripCount)
-        await storeTints(tints, for: url)
+        storeTints(tints, for: url)
         return tints
     }
 }

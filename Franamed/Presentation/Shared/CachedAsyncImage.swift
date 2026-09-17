@@ -12,11 +12,15 @@ struct CachedAsyncImage: View {
     var isProtected: Bool?
     @State private var uiImage: UIImage?
 
+    private var displayed: UIImage? {
+        uiImage ?? url.flatMap { ImageCache.shared.image(for: $0) }
+    }
+
     var body: some View {
         Group {
             if let isProtected {
-                ProtectedImage(image: uiImage, isProtected: isProtected)
-            } else if let uiImage {
+                ProtectedImage(image: displayed, isProtected: isProtected)
+            } else if let uiImage = displayed {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)

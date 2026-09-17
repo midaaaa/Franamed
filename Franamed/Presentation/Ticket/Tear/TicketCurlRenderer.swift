@@ -22,7 +22,8 @@ struct TicketCurlRenderer: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MTKView {
         let view = MTKView()
-        view.device = MTLCreateSystemDefaultDevice()
+        let device = MTLCreateSystemDefaultDevice()
+        view.device = device
         let opaque = config.opaqueLayerProbe
         view.isOpaque = opaque
         view.backgroundColor = opaque ? .black : .clear
@@ -31,7 +32,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
         }
         view.colorPixelFormat = .bgra8Unorm
         view.depthStencilPixelFormat = .depth32Float
-        let samples = config.multisampling && view.device?.supportsTextureSampleCount(4) == true ? 4 : 1
+        let samples = config.multisampling && device?.supportsTextureSampleCount(4) == true ? 4 : 1
         view.sampleCount = samples
         view.clearColor = MTLClearColorMake(0, 0, 0, opaque ? 1 : 0)
         view.preferredFramesPerSecond = 60
@@ -39,9 +40,11 @@ struct TicketCurlRenderer: UIViewRepresentable {
         view.enableSetNeedsDisplay = false
         view.isUserInteractionEnabled = false
         view.delegate = context.coordinator
-        context.coordinator.configure(device: view.device!, colorFormat: view.colorPixelFormat,
-                                       depthFormat: view.depthStencilPixelFormat,
-                                       sampleCount: samples)
+        if let device {
+            context.coordinator.configure(device: device, colorFormat: view.colorPixelFormat,
+                                          depthFormat: view.depthStencilPixelFormat,
+                                          sampleCount: samples)
+        }
         context.coordinator.attach(view: view)
         return view
     }
@@ -110,10 +113,16 @@ struct TicketCurlRenderer: UIViewRepresentable {
                                             length: indices.count * MemoryLayout<UInt16>.stride,
                                             options: .storageModeShared)
 
-            let library = device.makeDefaultLibrary()!
+            guard let library = device.makeDefaultLibrary(),
+                  let vertexFunction = library.makeFunction(name: "ticketCurlVertex"),
+                  let fragmentFunction = library.makeFunction(name: "ticketCurlFragment") else {
+                print("[TicketCurl] shader library unavailable")
+                return
+            }
+
             let pdesc = MTLRenderPipelineDescriptor()
-            pdesc.vertexFunction = library.makeFunction(name: "ticketCurlVertex")!
-            pdesc.fragmentFunction = library.makeFunction(name: "ticketCurlFragment")!
+            pdesc.vertexFunction = vertexFunction
+            pdesc.fragmentFunction = fragmentFunction
             pdesc.depthAttachmentPixelFormat = depthFormat
             pdesc.rasterSampleCount = sampleCount
 

@@ -120,7 +120,7 @@ struct RoundView: View {
         .onChange(of: viewModel.hasSearched) { _, _ in
             pendingAnimatedHeightCatchUp = true
         }
-        .onChange(of: viewModel.searchResults.map(\.id)) { _, _ in
+        .onChange(of: viewModel.searchResults) { _, _ in
             pendingAnimatedHeightCatchUp = true
         }
         .gesture(
@@ -172,7 +172,7 @@ struct RoundView: View {
         if let cachedImage = ImageCache.shared.image(for: url) {
             displayedURL = url
 
-            if let cachedTints = await ProjectorFrameTint.cachedTints(for: url) {
+            if let cachedTints = ProjectorFrameTint.cachedTints(for: url) {
                 stripTints = cachedTints
                 isBeamFillLit = true
                 isWaitingForFrame = false
@@ -183,7 +183,7 @@ struct RoundView: View {
                 ProjectorFrameTint.averageStripTints(from: cachedImage, stripCount: 14)
             }.value
             guard !Task.isCancelled, url == currentBackdropURL else { return }
-            await ProjectorFrameTint.storeTints(tints, for: url)
+            ProjectorFrameTint.storeTints(tints, for: url)
             stripTints = tints
             isBeamFillLit = true
             isWaitingForFrame = false

@@ -43,7 +43,6 @@ struct AnswerInputBar: View {
                     revealedHeight: $revealedHeight,
                     onSelect: onSelectSuggestion
                 )
-                .id(colorScheme)
 
                 TextField("Your guess", text: $answerText)
                     .textFieldStyle(.plain)

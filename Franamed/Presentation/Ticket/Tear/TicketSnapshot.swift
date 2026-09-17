@@ -12,6 +12,10 @@ import QuartzCore
 enum TicketSnapshot {
 
     @MainActor
+    private static let textureLoader: MTKTextureLoader? =
+        MTLCreateSystemDefaultDevice().map(MTKTextureLoader.init(device:))
+
+    @MainActor
     static func texture(of content: some View, scale: CGFloat) -> MTLTexture? {
         #if DEBUG
         let started = CACurrentMediaTime()
@@ -25,9 +29,9 @@ enum TicketSnapshot {
         renderer.scale = scale
         guard let rendered = renderer.cgImage,
               let normalized = normalized(rendered),
-              let device = MTLCreateSystemDefaultDevice() else { return nil }
+              let loader = textureLoader else { return nil }
 
-        return try? MTKTextureLoader(device: device).newTexture(cgImage: normalized, options: [
+        return try? loader.newTexture(cgImage: normalized, options: [
             .SRGB: false,
             .origin: MTKTextureLoader.Origin.topLeft,
             .generateMipmaps: true
