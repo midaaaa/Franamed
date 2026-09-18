@@ -120,9 +120,14 @@ export function selectRoundFrames(images, frameCount = 6, { random = Math.random
     }
 
     // Nothing is tagged at all, or the tagged images could not cover six slots.
-    // Untagged images fall back to the automatic vote ordering.
+    // Shuffled before the slice for the same reason the tiers are: off a sorted
+    // list an untagged title yields the same six frames every round.
     if (chosen.length < slotsToFill) {
-        chosen.push(...untagged.sort(byAscendingVote).slice(0, slotsToFill - chosen.length));
+        chosen.push(
+            ...shuffled(untagged, random)
+                .slice(0, slotsToFill - chosen.length)
+                .sort(byAscendingVote)
+        );
     }
 
     const result = [];
@@ -137,19 +142,29 @@ export function selectRoundFrames(images, frameCount = 6, { random = Math.random
 
 // Stand-ins for a frame deleted from TMDB. One per tier before any second
 // helping: an easy frame in an opening slot would hand the answer over.
-export function selectSpareFrames(images, chosenIds, count = 3) {
-    const available = images
-        .filter((image) => image.status === "approved" && !chosenIds.has(image.id))
-        .sort(byAscendingVote);
+// Shuffled, so a title with slack does not offer the same three forever. The
+// daily passes its seeded generator: there the substitution must be the same
+// one for every player.
+export function selectSpareFrames(images, chosenIds, count = 3, { random = Math.random } = {}) {
+    const available = shuffled(
+        images.filter((image) => image.status === "approved" && !chosenIds.has(image.id)),
+        random
+    );
 
     const spares = [];
+    const taken = new Set();
+    const take = (image) => {
+        spares.push(image);
+        taken.add(image.id);
+    };
+
     for (const tier of TIER_ORDER) {
-        const match = available.find((image) => image.difficulty_tier === tier && !spares.includes(image));
-        if (match) spares.push(match);
+        const match = available.find((image) => image.difficulty_tier === tier && !taken.has(image.id));
+        if (match) take(match);
     }
     for (const image of available) {
         if (spares.length >= count) break;
-        if (!spares.includes(image)) spares.push(image);
+        if (!taken.has(image.id)) take(image);
     }
 
     return spares.slice(0, count);

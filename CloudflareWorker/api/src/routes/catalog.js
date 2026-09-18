@@ -1,14 +1,19 @@
-import { badRequest, json, notFound, parseInteger, readJSON, requireEnum } from "../lib/http.js";
-import { authenticate, requireRole } from "../lib/auth.js";
+import { badRequest, json, notFound, optionalString, parseInteger, readJSON, requireEnum } from "../lib/http.js";
+import { authenticate, requireRole, roleRank } from "../lib/auth.js";
 import {
+    CURATION_FILTER_NAMES,
     MEDIA_TYPES,
     buildCatalogQuery,
+    catalogOrderBy,
     loadGenreIds,
     parseFilters,
+    recomputeTitleImageStatuses,
     refreshMediaCounters,
     serializeImage,
     serializeMediaItem
 } from "../lib/media.js";
+import { readConfig } from "../lib/config.js";
+import { utcDateString } from "../lib/daily.js";
 import { fetchDiscoverPage, fetchPosterOptions, importMediaItem } from "../lib/tmdb.js";
 import { limitByUser } from "../lib/limits.js";
 import { applyVerdicts, parseVerdicts } from "../lib/verdicts.js";
@@ -24,16 +29,38 @@ export async function handleCatalog(request, env, segments, url) {
         const limit = parseInteger(url.searchParams.get("limit"), { fallback: 50, min: 1, max: 200 });
         const offset = parseInteger(url.searchParams.get("offset"), { fallback: 0, min: 0 });
 
-        // Only a moderator may see titles that are not playable yet — for a
-        // player, "the catalogue" means what they can actually be dealt.
-        const includeUnapproved =
-            url.searchParams.get("includeUnapproved") === "true" && user.role !== "user";
+        // For a player, "the catalogue" means what they can actually be dealt.
+        const curates = roleRank(user.role) >= roleRank("curator");
 
-        const { where, bindings } = buildCatalogQuery(filters, { includeUnapproved });
+        const curationFilter = url.searchParams.get("curate");
+        if (curationFilter && !CURATION_FILTER_NAMES.includes(curationFilter)) {
+            throw badRequest(`curate must be one of: ${CURATION_FILTER_NAMES.join(", ")}`);
+        }
+        if (curationFilter && !curates) throw badRequest("Curation filters need a curator role");
+
+        // Every curator filter asks about unfinished work, so it implies the
+        // unfinished titles; requiring both flags would only return empty pages.
+        const includeUnapproved =
+            curates && (curationFilter !== null || url.searchParams.get("includeUnapproved") === "true");
+
+        const config = curates ? await readConfig(env) : null;
+
+        const { where, bindings } = buildCatalogQuery(filters, {
+            includeUnapproved,
+            curationFilter,
+            includeRejected: curates && url.searchParams.get("includeRejected") === "true",
+            target: config?.targetApprovedFrames ?? null
+        });
+
+        // "Where is the work" needs the target to mean anything, so for everyone
+        // else it falls back to popularity rather than an invented one.
+        const order = catalogOrderBy(curates ? url.searchParams.get("sort") : null, {
+            target: Math.max(1, config?.targetApprovedFrames ?? 1)
+        });
 
         const rows = await env.DB.prepare(
-            `SELECT * FROM media_items m WHERE ${where} ORDER BY m.popularity DESC LIMIT ? OFFSET ?`
-        ).bind(...bindings, limit, offset).all();
+            `SELECT * FROM media_items m WHERE ${where} ORDER BY ${order.sql} LIMIT ? OFFSET ?`
+        ).bind(...bindings, ...order.bindings, limit, offset).all();
 
         const genres = await loadGenreIds(env, rows.results.map((row) => row.key));
 
@@ -176,6 +203,109 @@ export async function handleCatalog(request, env, segments, url) {
 
         const genres = await loadGenreIds(env, [key]);
         return json(serializeMediaItem(item, genres.get(key) || []));
+    }
+
+    // POST /v1/catalog/items/{key}/reset — drop every moderator verdict and
+    // re-derive each frame from the votes and reports that remain.
+    //
+    // The insurance policy for `rejectRemaining`: one mis-aimed sweep locks 158
+    // frames and clearing a lock is per-frame. Un-rejects the title too —
+    // resetting means starting over, not starting over somewhere unplayable.
+    if (segments[0] === "items" && segments[2] === "reset" && request.method === "POST") {
+        const user = await authenticate(request, env);
+        requireRole(user, "moderator");
+        await limitByUser(env, user.uid, "WRITE_LIMITER");
+
+        const key = segments[1];
+        const item = await env.DB.prepare("SELECT key FROM media_items WHERE key = ?").bind(key).first();
+        if (!item) throw notFound(`Unknown media item "${key}"`);
+
+        const config = await readConfig(env);
+
+        await env.DB.batch([
+            env.DB.prepare(
+                `UPDATE media_images
+                 SET moderator_status = NULL, moderator_uid = NULL, moderator_at = NULL
+                 WHERE media_key = ?`
+            ).bind(key),
+            env.DB.prepare(
+                `UPDATE media_items
+                 SET status = 'pending', rejected_at = NULL, rejected_by = NULL, rejected_reason = NULL
+                 WHERE key = ?`
+            ).bind(key)
+        ]);
+
+        await recomputeTitleImageStatuses(env, key, {
+            autoHideReportWeight: config.autoHideReportWeight
+        });
+
+        const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
+        const genres = await loadGenreIds(env, [key]);
+        return json({ item: serializeMediaItem(refreshed, genres.get(key) || []) });
+    }
+
+    // POST /v1/catalog/items/{key}/reject — throw the whole title out.
+    //
+    // A decision about the film, not its frames: they keep their verdicts,
+    // because reinstating the title does not make that work wrong.
+    if (segments[0] === "items" && segments[2] === "reject" && request.method === "POST") {
+        const user = await authenticate(request, env);
+        requireRole(user, "moderator");
+        await limitByUser(env, user.uid, "WRITE_LIMITER");
+
+        const key = segments[1];
+        const item = await env.DB.prepare("SELECT key FROM media_items WHERE key = ?").bind(key).first();
+        if (!item) throw notFound(`Unknown media item "${key}"`);
+
+        const body = await readJSON(request).catch(() => ({}));
+
+        await env.DB.prepare(
+            `UPDATE media_items
+             SET status = 'rejected', rejected_at = ?, rejected_by = ?, rejected_reason = ?
+             WHERE key = ?`
+        ).bind(Date.now(), user.uid, optionalString(body, "reason", { maxLength: 300 }), key).run();
+
+        // Past days carry results, so only the ones still ahead are released.
+        await env.DB.prepare(
+            "DELETE FROM daily_overrides WHERE media_key = ? AND date > ?"
+        ).bind(key, utcDateString()).run();
+
+        const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
+        const genres = await loadGenreIds(env, [key]);
+        return json({ item: serializeMediaItem(refreshed, genres.get(key) || []) });
+    }
+
+    // POST /v1/catalog/items/{key}/reimport — pull this title from TMDB again.
+    // Safe to repeat: the import upserts and existing rows keep their curation
+    // state, so it only adds frames TMDB has published since.
+    if (segments[0] === "items" && segments[2] === "reimport" && request.method === "POST") {
+        const user = await authenticate(request, env);
+        requireRole(user, "moderator");
+        await limitByUser(env, user.uid, "IMPORT_LIMITER");
+
+        const key = segments[1];
+        const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
+        if (!item) throw notFound(`Unknown media item "${key}"`);
+
+        const before = await env.DB.prepare(
+            "SELECT COUNT(*) AS count FROM media_images WHERE media_key = ?"
+        ).bind(key).first();
+
+        await importMediaItem(env, item.media_type, item.tmdb_id, { addedBy: item.added_by });
+        await refreshMediaCounters(env, key);
+
+        const after = await env.DB.prepare(
+            "SELECT COUNT(*) AS count FROM media_images WHERE media_key = ?"
+        ).bind(key).first();
+
+        const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
+        const genres = await loadGenreIds(env, [key]);
+
+        return json({
+            item: serializeMediaItem(refreshed, genres.get(key) || []),
+            newFrames: after.count - before.count,
+            totalFrames: after.count
+        });
     }
 
     // POST /v1/catalog/items/{key}/curate — decide a whole title in one call.

@@ -1,7 +1,7 @@
 // Admin surface: roles, runtime config, scheduled dailies, onboarding pick.
 
 import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON, requireEnum, requireString } from "../lib/http.js";
-import { authenticate, requireRole, revokeAllTokens } from "../lib/auth.js";
+import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
 
@@ -26,23 +26,24 @@ export async function handleAdmin(request, env, segments, url) {
         const body = await readJSON(request);
 
         const uid = requireString(body, "uid", { maxLength: 64 });
-        const role = requireEnum(body, "role", ["user", "moderator", "admin"]);
+        const role = requireEnum(body, "role", ROLES);
 
-        const target = await env.DB.prepare("SELECT uid, is_anonymous FROM users WHERE uid = ?").bind(uid).first();
+        const target = await env.DB.prepare("SELECT uid, role, is_anonymous FROM users WHERE uid = ?").bind(uid).first();
         if (!target) throw notFound("Unknown user");
 
-        // An anonymous account is tied to one install: reinstall the app and the
-        // role is gone with no way to recover it. Curators sign in with Apple
-        // first so the account outlives the device.
-        if (role !== "user" && target.is_anonymous === 1) {
-            throw badRequest("Link an Apple ID to this account before granting a role");
+        // An anonymous account is tied to one install, which is a reason to be
+        // careful about powers rather than about curating: a curator's work
+        // lands on a moderator's desk anyway. So the Apple requirement starts
+        // at moderator, where a lost account means lost authority.
+        if (roleRank(role) >= roleRank("moderator") && target.is_anonymous === 1) {
+            throw badRequest("Link an Apple ID to this account before granting moderator or admin");
         }
 
         await env.DB.prepare("UPDATE users SET role = ? WHERE uid = ?").bind(role, uid).run();
 
-        // Access tokens carry the old role for up to their lifetime; dropping
-        // the sessions makes a demotion take effect at once.
-        if (role === "user") await revokeAllTokens(env, uid);
+        // Access tokens carry the old role for up to their lifetime, so any
+        // step down drops the sessions.
+        if (roleRank(role) < roleRank(target.role)) await revokeAllTokens(env, uid);
 
         return json({ uid, role });
     }

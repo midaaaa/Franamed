@@ -68,11 +68,18 @@ CREATE TABLE IF NOT EXISTS media_items (
     finalized_at      INTEGER,
     finalized_by      TEXT,
 
+    -- Set when a moderator throws the whole title out. Kept because "we looked
+    -- at this one and said no" is the answer to whoever imports it next.
+    rejected_at       INTEGER,
+    rejected_by       TEXT,
+    rejected_reason   TEXT,
+
     added_by          TEXT,
     last_synced_at    INTEGER,
     created_at        INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_media_type_status ON media_items(media_type, status);
+CREATE INDEX IF NOT EXISTS idx_media_status      ON media_items(status);
 CREATE INDEX IF NOT EXISTS idx_media_year        ON media_items(release_year);
 CREATE INDEX IF NOT EXISTS idx_media_language    ON media_items(original_language);
 CREATE INDEX IF NOT EXISTS idx_media_popularity  ON media_items(popularity DESC);
@@ -129,8 +136,13 @@ CREATE TABLE IF NOT EXISTS image_votes (
     verdict    TEXT    NOT NULL,                                 -- approve | reject
     weight     REAL    NOT NULL,
     created_at INTEGER NOT NULL,
+    -- A dismissed row stops counting but is never removed: it is the evidence
+    -- for judging whoever cast it.
+    dismissed_at INTEGER,                                      -- NULL = still counts
+    dismissed_by TEXT,
     PRIMARY KEY (image_id, uid)
 );
+CREATE INDEX IF NOT EXISTS idx_votes_live ON image_votes(image_id, dismissed_at);
 
 CREATE TABLE IF NOT EXISTS image_reports (
     image_id   INTEGER NOT NULL REFERENCES media_images(id) ON DELETE CASCADE,
@@ -138,9 +150,12 @@ CREATE TABLE IF NOT EXISTS image_reports (
     reason     TEXT    NOT NULL,                                 -- poster | not_a_frame | bad_quality | unclear
     weight     REAL    NOT NULL,
     created_at INTEGER NOT NULL,
+    dismissed_at INTEGER,                                      -- NULL = still counts
+    dismissed_by TEXT,
     PRIMARY KEY (image_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_reports_created ON image_reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reports_live    ON image_reports(image_id, dismissed_at);
 
 -- ---------------------------------------------------------------- curation
 
@@ -293,4 +308,6 @@ INSERT OR IGNORE INTO app_config (key, value) VALUES
     ('targetApprovedFrames',     '12'),
     ('curationLeaseMinutes',     '30'),
     ('curationHeartbeatSeconds', '45'),
+    ('curationEnabled',          'true'),
+    ('reportReplacementLimit',   '2'),
     ('onboardingMediaKey',       '');

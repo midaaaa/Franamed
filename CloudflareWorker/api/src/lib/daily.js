@@ -53,10 +53,14 @@ export async function dailyNumber(env, dateString) {
 export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount = DEFAULT_DAILY_FRAME_COUNT }) {
     const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ?").bind(mediaKey).all();
 
-    const frames = selectRoundFrames(images.results, frameCount, { random: seededRandom(hashString(dateString)) });
+    // Both picks share one generator: the spares are part of the layout, and an
+    // unseeded pick there would give two players different substitutes.
+    const random = seededRandom(hashString(dateString));
+
+    const frames = selectRoundFrames(images.results, frameCount, { random });
     if (!frames.length) throw badRequest("That film has no approved frames to build a day from");
 
-    const spares = selectSpareFrames(images.results, new Set(frames.map((frame) => frame.id)));
+    const spares = selectSpareFrames(images.results, new Set(frames.map((frame) => frame.id)), 3, { random });
 
     await env.DB.prepare(
         `UPDATE daily_overrides

@@ -53,6 +53,9 @@ function serializePlaylist(row) {
     };
 }
 
+// A playlist is a curated 1-to-100 walk, so this only bounds the write.
+const MAX_PLAYLIST_ITEMS = 500;
+
 export async function handlePlaylists(request, env, segments, url) {
     // GET /v1/playlists
     if (segments.length === 0 && request.method === "GET") {
@@ -187,23 +190,36 @@ export async function handlePlaylists(request, env, segments, url) {
         requireRole(user, "moderator");
 
         const body = await readJSON(request);
-        const keys = Array.isArray(body.mediaKeys) ? body.mediaKeys.filter((key) => typeof key === "string") : [];
+        const submitted = Array.isArray(body.mediaKeys) ? body.mediaKeys.filter((key) => typeof key === "string") : [];
+
+        if (submitted.length > MAX_PLAYLIST_ITEMS) {
+            throw badRequest(`A playlist holds at most ${MAX_PLAYLIST_ITEMS} titles`);
+        }
+
+        // Deduplicated rather than rejected: the same key twice is a client
+        // slip, not a reason to fail the save. The first position wins.
+        const seen = new Set();
+        const keys = [];
+        for (const key of submitted) {
+            if (seen.has(key)) continue;
+            seen.add(key);
+            keys.push(key);
+        }
 
         const wrongType = keys.find((key) => !key.startsWith(`${playlist.media_type}_`));
         if (wrongType) throw badRequest(`"${wrongType}" is not a ${playlist.media_type}; playlists hold a single media type`);
 
-        await env.DB.prepare("DELETE FROM playlist_items WHERE playlist_id = ?").bind(playlistId).run();
+        // One batch, which D1 runs as a transaction: run separately, any failed
+        // insert leaves the playlist emptied by a DELETE that already committed.
+        await env.DB.batch([
+            env.DB.prepare("DELETE FROM playlist_items WHERE playlist_id = ?").bind(playlistId),
+            ...keys.map((key, index) =>
+                env.DB.prepare("INSERT INTO playlist_items (playlist_id, media_key, position) VALUES (?, ?, ?)")
+                    .bind(playlistId, key, index)
+            )
+        ]);
 
-        if (keys.length) {
-            await env.DB.batch(
-                keys.map((key, index) =>
-                    env.DB.prepare("INSERT INTO playlist_items (playlist_id, media_key, position) VALUES (?, ?, ?)")
-                        .bind(playlistId, key, index)
-                )
-            );
-        }
-
-        return json({ id: playlistId, count: keys.length });
+        return json({ id: playlistId, count: keys.length, duplicatesDropped: submitted.length - keys.length });
     }
 
     // POST /v1/playlists/{id}/progress — record one answered title

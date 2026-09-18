@@ -20,6 +20,12 @@ const DEFAULTS = {
     // how often the client should say it is still there.
     curationLeaseMinutes: 30,
     curationHeartbeatSeconds: 45,
+    // Stops curation for everyone below moderator; moderators keep draining
+    // what is already in flight.
+    curationEnabled: true,
+    // Live reports one account may file on a single title in a day before the
+    // round stops offering it a free replacement frame.
+    reportReplacementLimit: 2,
     onboardingMediaKey: ""
 };
 

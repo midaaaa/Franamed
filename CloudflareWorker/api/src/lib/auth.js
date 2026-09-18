@@ -19,7 +19,12 @@ export const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60;
 
 const APPLE_ISSUER = "https://appleid.apple.com";
 const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
-const ROLE_RANK = { user: 0, moderator: 1, admin: 2 };
+// `curator` may be dealt titles and submit batches, but every batch still goes
+// to a moderator — which is why it is the one role an anonymous account may
+// hold. See the anonymity rule in routes/admin.js.
+const ROLE_RANK = { user: 0, curator: 1, moderator: 2, admin: 3 };
+
+export const ROLES = Object.keys(ROLE_RANK);
 
 function requireSecret(env) {
     const secret = env.JWT_SECRET;

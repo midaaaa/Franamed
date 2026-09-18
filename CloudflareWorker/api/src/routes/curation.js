@@ -8,6 +8,7 @@
 import {
     badRequest,
     conflict,
+    forbidden,
     json,
     noContent,
     notFound,
@@ -17,7 +18,7 @@ import {
     requireEnum,
     requireString
 } from "../lib/http.js";
-import { authenticate, requireRole } from "../lib/auth.js";
+import { authenticate, requireRole, roleRank } from "../lib/auth.js";
 import {
     acquireLease,
     canTakeOver,
@@ -53,15 +54,16 @@ async function recomputeImageStatus(env, imageId) {
     const image = await env.DB.prepare("SELECT * FROM media_images WHERE id = ?").bind(imageId).first();
     if (!image) throw notFound("Unknown image");
 
+    // Dismissed rows are kept as evidence but stop counting.
     const votes = await env.DB.prepare(
         `SELECT
             COALESCE(SUM(CASE WHEN verdict = 'approve' THEN weight ELSE 0 END), 0) AS approve,
             COALESCE(SUM(CASE WHEN verdict = 'reject'  THEN weight ELSE 0 END), 0) AS reject
-         FROM image_votes WHERE image_id = ?`
+         FROM image_votes WHERE image_id = ? AND dismissed_at IS NULL`
     ).bind(imageId).first();
 
     const reports = await env.DB.prepare(
-        "SELECT COALESCE(SUM(weight), 0) AS weight FROM image_reports WHERE image_id = ?"
+        "SELECT COALESCE(SUM(weight), 0) AS weight FROM image_reports WHERE image_id = ? AND dismissed_at IS NULL"
     ).bind(imageId).first();
 
     const net = votes.approve - votes.reject;
@@ -102,12 +104,21 @@ async function clusterMemberIds(env, image) {
 }
 
 export async function handleCuration(request, env, segments, url) {
+    // Once for the whole surface: every route below needs an account, and the
+    // switch underneath runs before any of them.
+    const user = await authenticate(request, env);
+    const config = await readConfig(env);
+    const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
+
+    // Moderators keep working while it is off: freezing the review queue too
+    // would strand every batch already in flight.
+    if (!config.curationEnabled && roleRank(user.role) < roleRank("moderator")) {
+        throw forbidden("Curation is paused right now");
+    }
+
     // ---------------------------------------------------------------- leases
     // Dealt from the queue, searched for, or opened to review a batch: one lock.
     if (segments[0] === "leases") {
-        const user = await authenticate(request, env);
-        const config = await readConfig(env);
-        const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
         const now = Date.now();
 
         if (segments.length === 1 && request.method === "GET") {
@@ -209,8 +220,6 @@ export async function handleCuration(request, env, segments, url) {
 
     // GET /v1/curation/queue — what to show a curator next
     if (segments[0] === "queue" && segments.length === 1 && request.method === "GET") {
-        const user = await authenticate(request, env);
-
         const mediaType = url.searchParams.get("mediaType");
         if (mediaType && !MEDIA_TYPES.includes(mediaType)) throw badRequest("Unknown media type");
         const limit = parseInteger(url.searchParams.get("limit"), { fallback: 20, min: 1, max: 50 });
@@ -224,8 +233,6 @@ export async function handleCuration(request, env, segments, url) {
         // or once there is simply nothing left to approve. It never reaches
         // zero: TMDB keeps adding backdrops, so "done" is never permanent, and
         // the small floor lets a settled title resurface occasionally.
-        const config = await readConfig(env);
-
         const rows = await env.DB.prepare(
             `SELECT i.*, m.title, m.media_type, m.release_year,
                     CASE
@@ -236,9 +243,13 @@ export async function handleCuration(request, env, segments, url) {
              FROM media_images i
              JOIN media_items m ON m.key = i.media_key
              WHERE i.status = 'pending'
+               AND m.status != 'rejected'
                AND i.clustered_with IS NULL
                AND (?2 IS NULL OR m.media_type = ?2)
-               AND NOT EXISTS (SELECT 1 FROM image_votes v WHERE v.image_id = i.id AND v.uid = ?3)
+               AND NOT EXISTS (
+                   SELECT 1 FROM image_votes v
+                    WHERE v.image_id = i.id AND v.uid = ?3 AND v.dismissed_at IS NULL
+               )
              ORDER BY weight DESC, RANDOM()
              LIMIT ?4`
         ).bind(config.targetApprovedFrames, mediaType || null, user.uid, limit).all();
@@ -256,9 +267,6 @@ export async function handleCuration(request, env, segments, url) {
     // The frame queue's weight, lifted onto titles. Curators are dealt work
     // rather than searching for it, which is what makes coverage systematic.
     if (segments[0] === "queue" && segments[1] === "titles" && request.method === "GET") {
-        const user = await authenticate(request, env);
-        const config = await readConfig(env);
-
         const mediaType = url.searchParams.get("mediaType");
         if (mediaType && !MEDIA_TYPES.includes(mediaType)) throw badRequest("Unknown media type");
         const limit = parseInteger(url.searchParams.get("limit"), { fallback: 20, min: 1, max: 100 });
@@ -279,10 +287,7 @@ export async function handleCuration(request, env, segments, url) {
 
     // POST /v1/curation/queue/claim — hand out the next title and lease it
     if (segments[0] === "queue" && segments[1] === "claim" && request.method === "POST") {
-        const user = await authenticate(request, env);
-        const config = await readConfig(env);
         const now = Date.now();
-        const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
 
         const body = await readJSON(request).catch(() => ({}));
         const mediaType = body.mediaType ?? null;
@@ -334,9 +339,6 @@ export async function handleCuration(request, env, segments, url) {
     // --------------------------------------------------------------- batches
     // A proposal for one title, never applied by itself.
     if (segments[0] === "batches") {
-        const user = await authenticate(request, env);
-        const config = await readConfig(env);
-        const windowMs = Math.max(1, config.curationLeaseMinutes) * 60 * 1000;
         const now = Date.now();
 
         // POST /v1/curation/batches — submit one
@@ -517,7 +519,6 @@ export async function handleCuration(request, env, segments, url) {
 
     // POST /v1/curation/vote — binary classification from the curation screen
     if (segments[0] === "vote" && request.method === "POST") {
-        const user = await authenticate(request, env);
         const body = await readJSON(request);
 
         const imageId = Number.parseInt(body.imageId, 10);
@@ -529,13 +530,12 @@ export async function handleCuration(request, env, segments, url) {
 
         await limitByUser(env, user.uid, "WRITE_LIMITER");
 
-        const config = await readConfig(env);
         // Zero for an account that has not played yet: weighted voting assumes
         // accounts are scarce, and anonymous ones are free.
         const weight = await voterWeight(env, user);
-        const isFirstVote = !(await env.DB.prepare("SELECT 1 AS present FROM image_votes WHERE image_id = ? AND uid = ?")
-            .bind(imageId, user.uid)
-            .first());
+        const isFirstVote = !(await env.DB.prepare(
+            "SELECT 1 AS present FROM image_votes WHERE image_id = ? AND uid = ? AND dismissed_at IS NULL"
+        ).bind(imageId, user.uid).first());
 
         const targets = await clusterMemberIds(env, image);
 
@@ -544,7 +544,14 @@ export async function handleCuration(request, env, segments, url) {
                 env.DB.prepare(
                     `INSERT INTO image_votes (image_id, uid, verdict, weight, created_at)
                      VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT (image_id, uid) DO UPDATE SET verdict = excluded.verdict, weight = excluded.weight`
+                     ON CONFLICT (image_id, uid) DO UPDATE SET
+                        verdict = excluded.verdict,
+                        weight = excluded.weight,
+                        created_at = excluded.created_at,
+                        -- Voting again is a fresh judgement, so it comes back
+                        -- out of the dismissed pile and counts once more.
+                        dismissed_at = NULL,
+                        dismissed_by = NULL`
                 ).bind(id, user.uid, verdict, weight, Date.now())
             )
         );
@@ -569,7 +576,6 @@ export async function handleCuration(request, env, segments, url) {
 
     // POST /v1/curation/report — the in-round "something is wrong with this frame" button
     if (segments[0] === "report" && request.method === "POST") {
-        const user = await authenticate(request, env);
         const body = await readJSON(request);
 
         const imageId = Number.parseInt(body.imageId, 10);
@@ -581,32 +587,54 @@ export async function handleCuration(request, env, segments, url) {
 
         await limitByUser(env, user.uid, "WRITE_LIMITER");
         const reportWeight = await voterWeight(env, user);
+        const now = Date.now();
 
         await env.DB.prepare(
             `INSERT INTO image_reports (image_id, uid, reason, weight, created_at)
              VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT (image_id, uid) DO UPDATE SET reason = excluded.reason, weight = excluded.weight`
-        ).bind(imageId, user.uid, reason, reportWeight, Date.now()).run();
+             ON CONFLICT (image_id, uid) DO UPDATE SET
+                reason = excluded.reason,
+                weight = excluded.weight,
+                created_at = excluded.created_at,
+                dismissed_at = NULL,
+                dismissed_by = NULL`
+        ).bind(imageId, user.uid, reason, reportWeight, now).run();
 
         const updated = await recomputeImageStatus(env, imageId);
 
         // A replacement is offered for the one-frame mode, where the reported
-        // image is the whole round. The round never charges an attempt for
-        // this: the player is compensating for broken content, not failing to
-        // recognise a film.
-        const replacement = await env.DB.prepare(
-            "SELECT * FROM media_images WHERE media_key = ? AND status = 'approved' AND id != ? ORDER BY RANDOM() LIMIT 1"
-        ).bind(image.media_key, imageId).first();
+        // image is the whole round, and no attempt is charged: the player is
+        // compensating for broken content, not failing to recognise a film.
+        //
+        // Two limits keep that from being a free swap for any hard frame: the
+        // replacement is never easier, and someone who keeps reporting the
+        // same title stops being handed new frames.
+        const reportsToday = await env.DB.prepare(
+            `SELECT COUNT(*) AS count
+               FROM image_reports r JOIN media_images i ON i.id = r.image_id
+              WHERE r.uid = ? AND i.media_key = ? AND r.dismissed_at IS NULL AND r.created_at > ?`
+        ).bind(user.uid, image.media_key, now - 24 * 60 * 60 * 1000).first();
+
+        let replacement = null;
+        if (reportsToday.count <= config.reportReplacementLimit) {
+            const candidates = await env.DB.prepare(
+                `SELECT * FROM media_images
+                  WHERE media_key = ? AND status = 'approved' AND id != ?
+                  ORDER BY RANDOM() LIMIT 20`
+            ).bind(image.media_key, imageId).all();
+
+            replacement = pickReplacement(candidates.results, image.difficulty_tier);
+        }
 
         return json({
             image: serializeImage(updated),
-            replacement: replacement ? serializeImage(replacement) : null
+            replacement: replacement ? serializeImage(replacement) : null,
+            replacementsRemaining: Math.max(0, config.reportReplacementLimit - reportsToday.count + 1)
         });
     }
 
     // POST /v1/curation/images/{id}/lock — a verdict votes cannot overturn
     if (segments[0] === "images" && segments[2] === "lock" && request.method === "POST") {
-        const user = await authenticate(request, env);
         requireRole(user, "moderator");
 
         const imageId = Number.parseInt(segments[1], 10);
@@ -637,23 +665,29 @@ export async function handleCuration(request, env, segments, url) {
 
     // POST /v1/curation/images/{id}/dismiss-disputes — "the complaints are wrong"
     if (segments[0] === "images" && segments[2] === "dismiss-disputes" && request.method === "POST") {
-        const user = await authenticate(request, env);
         requireRole(user, "moderator");
 
         const imageId = Number.parseInt(segments[1], 10);
         if (!Number.isInteger(imageId)) throw badRequest("Image id must be an integer");
 
-        // The complaints are cleared but the fact that they were cleared is
-        // not: a frame dismissed three times still reads as one that keeps
-        // attracting them, which is the whole point of keeping the count.
+        // Marked, never deleted: these rows are the evidence for judging the
+        // people who filed them. A dismissed row stops counting towards the
+        // frame's status and stays readable. The frame's own dismissal count
+        // is separate, so one cleared three times still reads as one that
+        // keeps attracting complaints.
+        const dismissedAt = Date.now();
         await env.DB.batch([
-            env.DB.prepare("DELETE FROM image_reports WHERE image_id = ?").bind(imageId),
-            env.DB.prepare("DELETE FROM image_votes WHERE image_id = ?").bind(imageId),
+            env.DB.prepare(
+                "UPDATE image_reports SET dismissed_at = ?, dismissed_by = ? WHERE image_id = ? AND dismissed_at IS NULL"
+            ).bind(dismissedAt, user.uid, imageId),
+            env.DB.prepare(
+                "UPDATE image_votes SET dismissed_at = ?, dismissed_by = ? WHERE image_id = ? AND dismissed_at IS NULL"
+            ).bind(dismissedAt, user.uid, imageId),
             env.DB.prepare(
                 `UPDATE media_images
                  SET disputes_dismissed_at = ?, disputes_dismissed_count = disputes_dismissed_count + 1
                  WHERE id = ?`
-            ).bind(Date.now(), imageId)
+            ).bind(dismissedAt, imageId)
         ]);
 
         return json(serializeImage(await recomputeImageStatus(env, imageId)));
@@ -661,7 +695,6 @@ export async function handleCuration(request, env, segments, url) {
 
     // GET /v1/curation/contested — locked frames the community disagrees with
     if (segments[0] === "contested" && request.method === "GET") {
-        const user = await authenticate(request, env);
         requireRole(user, "moderator");
 
         const limit = parseInteger(url.searchParams.get("limit"), { fallback: 50, min: 1, max: 200 });
@@ -670,10 +703,13 @@ export async function handleCuration(request, env, segments, url) {
             `SELECT i.*, m.title, m.release_year,
                     COALESCE(SUM(CASE WHEN v.verdict = 'approve' THEN v.weight ELSE 0 END), 0) AS approve_weight,
                     COALESCE(SUM(CASE WHEN v.verdict = 'reject'  THEN v.weight ELSE 0 END), 0) AS reject_weight,
-                    (SELECT COUNT(*) FROM image_reports r WHERE r.image_id = i.id) AS report_count
+                    (SELECT COUNT(*) FROM image_reports r
+                      WHERE r.image_id = i.id AND r.dismissed_at IS NULL) AS report_count
              FROM media_images i
              JOIN media_items m ON m.key = i.media_key
-             LEFT JOIN image_votes v ON v.image_id = i.id
+             -- Dismissed judgement is settled, not contested: counting it here
+             -- would keep a cleared frame at the top of this list forever.
+             LEFT JOIN image_votes v ON v.image_id = i.id AND v.dismissed_at IS NULL
              WHERE i.moderator_status IS NOT NULL
              GROUP BY i.id
              HAVING i.report_weight > 0 OR reject_weight > 0
@@ -696,7 +732,6 @@ export async function handleCuration(request, env, segments, url) {
 
     // PATCH /v1/curation/images/{id} — moderator tools: tier, rank, clustering, hash
     if (segments[0] === "images" && segments.length === 2 && request.method === "PATCH") {
-        const user = await authenticate(request, env);
         const body = await readJSON(request);
 
         const imageId = Number.parseInt(segments[1], 10);
@@ -763,20 +798,23 @@ export async function handleCuration(request, env, segments, url) {
 
     // GET /v1/curation/reports — the moderator's report feed
     if (segments[0] === "reports" && request.method === "GET") {
-        const user = await authenticate(request, env);
         requireRole(user, "moderator");
 
         const limit = parseInteger(url.searchParams.get("limit"), { fallback: 50, min: 1, max: 200 });
+        // Off by default because the feed is a work queue; on demand because
+        // judging a serial reporter means reading the ones already thrown out.
+        const includeDismissed = url.searchParams.get("includeDismissed") === "true";
 
         const rows = await env.DB.prepare(
-            `SELECT r.image_id, r.reason, r.weight, r.created_at,
+            `SELECT r.image_id, r.reason, r.weight, r.created_at, r.uid, r.dismissed_at,
                     i.file_path, i.status, i.report_weight, i.media_key, m.title
              FROM image_reports r
              JOIN media_images i ON i.id = r.image_id
              JOIN media_items m ON m.key = i.media_key
+             WHERE (?1 = 1 OR r.dismissed_at IS NULL)
              ORDER BY r.created_at DESC
-             LIMIT ?`
-        ).bind(limit).all();
+             LIMIT ?2`
+        ).bind(includeDismissed ? 1 : 0, limit).all();
 
         return json({
             reports: rows.results.map((row) => ({
@@ -786,6 +824,8 @@ export async function handleCuration(request, env, segments, url) {
                 filePath: row.file_path,
                 reason: row.reason,
                 weight: row.weight,
+                reportedBy: row.uid,
+                dismissedAt: row.dismissed_at ?? null,
                 imageStatus: row.status,
                 totalReportWeight: row.report_weight,
                 createdAt: row.created_at
@@ -794,6 +834,28 @@ export async function handleCuration(request, env, segments, url) {
     }
 
     return null;
+}
+
+// A stand-in for a reported frame, never an easier one. Candidates arrive in
+// random order, so the first allowed one is a random pick among them. With
+// nothing at or above the reported difficulty the hardest left is handed over
+// rather than nothing — a broken frame still has to be replaced. Untagged
+// counts as easiest: it is the one nobody has vouched for.
+function pickReplacement(candidates, reportedTier) {
+    if (!candidates.length) return null;
+
+    const rank = (row) => {
+        const index = DIFFICULTY_TIERS.indexOf(row.difficulty_tier);
+        return index === -1 ? DIFFICULTY_TIERS.length : index;
+    };
+
+    const bar = DIFFICULTY_TIERS.indexOf(reportedTier);
+    if (bar === -1) return candidates[0];
+
+    const notEasier = candidates.filter((row) => rank(row) <= bar);
+    if (notEasier.length) return notEasier[0];
+
+    return [...candidates].sort((a, b) => rank(a) - rank(b))[0];
 }
 
 // The queue read, shared by browsing it and by being dealt the next title.
@@ -807,6 +869,7 @@ async function queueTitles(env, { uid, mediaType, limit, target, windowMs }) {
                   WHERE i.media_key = m.key AND i.moderator_status IS NULL) AS unjudged_images
          FROM media_items m
          WHERE (?2 IS NULL OR m.media_type = ?2)
+           AND m.status != 'rejected'
            AND m.admin_finalized = 0
            AND m.total_images > 0
            AND m.approved_images < ?1

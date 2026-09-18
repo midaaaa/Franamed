@@ -30,7 +30,9 @@ export function serializeMediaItem(row, genreIds = []) {
         approvedImages: row.approved_images,
         adminFinalized: row.admin_finalized === 1,
         finalizedAt: row.finalized_at,
-        lastSyncedAt: row.last_synced_at
+        lastSyncedAt: row.last_synced_at,
+        rejectedAt: row.rejected_at ?? null,
+        rejectedReason: row.rejected_reason ?? null
     };
 }
 
@@ -92,6 +94,47 @@ export function parseFilters(url) {
     };
 }
 
+// The curator's views of the catalogue, as conditions the database answers
+// directly rather than pages the whole catalogue to the device for.
+// `?target` is the curation target; it is bound, never interpolated.
+export const CURATION_FILTERS = {
+    needsWork: "m.approved_images < ?target AND m.reviewed_images < m.total_images",
+    // Has something, but not the six a round needs.
+    almostPlayable: "m.approved_images BETWEEN 1 AND 5",
+    untouched: "m.reviewed_images = 0",
+    // Untagged frames play, but only as filler: they cannot fill a difficulty
+    // slot.
+    noTiers: `EXISTS (SELECT 1 FROM media_images i
+                       WHERE i.media_key = m.key AND i.status = 'approved' AND i.difficulty_tier IS NULL)`,
+    // Re-importing only adds rows, so an unjudged frame on a worked title is
+    // one TMDB added since.
+    hasNewFrames: `EXISTS (SELECT 1 FROM media_images i
+                            WHERE i.media_key = m.key AND i.moderator_status IS NULL)`,
+    noPoster: "m.poster_url IS NULL"
+};
+
+export const CURATION_FILTER_NAMES = Object.keys(CURATION_FILTERS);
+
+// Carries its own bindings rather than interpolating them, so the caller
+// splices them between the WHERE and the LIMIT.
+export function catalogOrderBy(sort, { target }) {
+    switch (sort) {
+        // The queue's weight, as a sort: where an hour of curating buys most.
+        case "needsWork":
+            return {
+                sql: "(m.popularity * (CAST(? - m.approved_images AS REAL) / ?)) DESC, m.key",
+                bindings: [target, target]
+            };
+        case "title":
+            return { sql: "m.title COLLATE NOCASE ASC", bindings: [] };
+        case "recent":
+            return { sql: "m.created_at DESC", bindings: [] };
+        case "popularity":
+        default:
+            return { sql: "m.popularity DESC", bindings: [] };
+    }
+}
+
 // Builds the WHERE clause shared by "pick a round", "count the pool" and
 // "browse the catalogue", so those three can never drift apart.
 // `includeUnapproved` is the moderator's view of the catalogue: a title that is
@@ -99,7 +142,15 @@ export function parseFilters(url) {
 // playable-pool conditions have to come off for them.
 export function buildCatalogQuery(
     filters,
-    { uid = null, excludeWatched = false, playlistId = null, includeUnapproved = false } = {}
+    {
+        uid = null,
+        excludeWatched = false,
+        playlistId = null,
+        includeUnapproved = false,
+        curationFilter = null,
+        includeRejected = false,
+        target = null
+    } = {}
 ) {
     const conditions = ["m.media_type = ?"];
     const bindings = [filters.mediaType];
@@ -107,6 +158,26 @@ export function buildCatalogQuery(
     if (!includeUnapproved) {
         conditions.push("m.status = 'approved'", "m.approved_images >= ?");
         bindings.push(filters.minApprovedImages);
+    }
+
+    // Otherwise "rejected" would mean nothing more than "hidden from players".
+    if (includeUnapproved && !includeRejected) {
+        conditions.push("m.status != 'rejected'");
+    }
+
+    if (curationFilter) {
+        const clause = CURATION_FILTERS[curationFilter];
+        if (!clause) throw badRequest(`Unknown curation filter "${curationFilter}"`);
+        if (clause.includes("?target") && !Number.isInteger(target)) {
+            throw badRequest(`The "${curationFilter}" filter needs a curation target`);
+        }
+
+        if (clause.includes("?target")) {
+            conditions.push(clause.replaceAll("?target", "?"));
+            for (let i = 0; i < clause.split("?target").length - 1; i += 1) bindings.push(target);
+        } else {
+            conditions.push(clause);
+        }
     }
 
     if (filters.query) {
@@ -176,10 +247,44 @@ export async function refreshMediaCounters(env, key) {
 
     // A title becomes playable the moment it has an approved image; admin
     // finalisation is queue housekeeping and deliberately not a gameplay gate.
+    //
+    // 'rejected' is sticky: without that first branch any vote on any frame
+    // would put a thrown-out title back in the playable pool. Undoing a
+    // rejection is `/catalog/items/{key}/reset`, never a side effect.
     await env.DB.prepare(
         `UPDATE media_items
          SET total_images = ?, reviewed_images = ?, approved_images = ?,
-             status = CASE WHEN ? > 0 THEN 'approved' ELSE status END
+             status = CASE
+                 WHEN status = 'rejected' THEN 'rejected'
+                 WHEN ? > 0 THEN 'approved'
+                 ELSE status
+             END
          WHERE key = ?`
     ).bind(counts.total || 0, counts.reviewed || 0, approved, approved, key).run();
+}
+
+// Every frame's status on one title, re-derived from the live votes and
+// reports in a single statement: a title can carry 170 frames and D1 allows 50
+// queries per invocation, so the per-frame path cannot be looped.
+export async function recomputeTitleImageStatuses(env, key, { autoHideReportWeight }) {
+    const liveReportWeight = `(SELECT COALESCE(SUM(r.weight), 0) FROM image_reports r
+                                WHERE r.image_id = media_images.id AND r.dismissed_at IS NULL)`;
+    const netVoteWeight = `(SELECT COALESCE(SUM(CASE WHEN v.verdict = 'approve' THEN v.weight ELSE -v.weight END), 0)
+                              FROM image_votes v
+                             WHERE v.image_id = media_images.id AND v.dismissed_at IS NULL)`;
+
+    await env.DB.prepare(
+        `UPDATE media_images
+         SET report_weight = ${liveReportWeight},
+             status = CASE
+                 WHEN moderator_status IS NOT NULL THEN moderator_status
+                 WHEN ${liveReportWeight} >= ?1 THEN 'rejected'
+                 WHEN ${netVoteWeight} <= -1 THEN 'rejected'
+                 WHEN ${netVoteWeight} >= 1 THEN 'approved'
+                 ELSE 'pending'
+             END
+         WHERE media_key = ?2`
+    ).bind(autoHideReportWeight, key).run();
+
+    await refreshMediaCounters(env, key);
 }
