@@ -65,6 +65,8 @@ struct SuggestionsScrollView: UIViewRepresentable {
 
         hosting.overrideUserInterfaceStyle = style
         hosting.rootView = SuggestionRowsView(rows: rows, onSelect: onSelect)
+        hosting.view.setNeedsLayout()
+        hosting.view.layoutIfNeeded()
 
         var measuredHeight = suggestionsContentHeight(rows: rows.count)
         if availableWidth > 0 {
