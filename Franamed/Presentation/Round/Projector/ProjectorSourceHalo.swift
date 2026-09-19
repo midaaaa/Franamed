@@ -32,6 +32,7 @@ struct ProjectorSourceHalo: View {
     var radius: CGFloat = 35
     var edgeBlur: CGFloat = 12
     var sourceGap: CGFloat = 5
+    var sourceFade: CGFloat = 5
 
     private var spectrum: RadialGradient {
         RadialGradient(
@@ -60,7 +61,12 @@ struct ProjectorSourceHalo: View {
             .clipped()
             .mask(alignment: .top) {
                 GeometryReader { proxy in
-                    Rectangle().frame(height: max(0, proxy.size.height - sourceGap))
+                    VStack(spacing: 0) {
+                        Rectangle()
+                            .frame(height: max(0, proxy.size.height - sourceGap))
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: min(sourceFade, sourceGap))
+                    }
                 }
             }
             .opacity(opacity)
