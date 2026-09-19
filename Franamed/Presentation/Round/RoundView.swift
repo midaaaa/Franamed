@@ -305,6 +305,7 @@ struct RoundView: View {
             .opacity(isProjectorLit ? 1 : 0)
             .animation(isProjectorLit ? Self.projectorFadeIn : Self.projectorFadeOut, value: isProjectorLit)
             .allowsHitTesting(false)
+            .geometryGroup()
         }
     }
 
