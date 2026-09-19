@@ -46,14 +46,8 @@ struct AnswerBarActionShape: View, Animatable {
         let expandedCenterX = width / 2
         let shapeCenterX = collapsedCenterX + (expandedCenterX - collapsedCenterX) * progress
 
-        let isAtRest = progress == 0 || progress == 1
-        let glassShape: AnyShape = progress < 0.02
-            ? AnyShape(Circle())
-            : AnyShape(RoundedRectangle(cornerRadius: cornerRadius))
-
-        let glassStyle = isAtRest
-            ? Glass.regular.tint(isBlocked ? .gray : .accentColor).interactive()
-            : Glass.regular.tint(isBlocked ? .gray : .accentColor)
+        let glassShape = RoundedRectangle(cornerRadius: cornerRadius)
+        let glassStyle = Glass.regular.tint(isBlocked ? .gray : .accentColor).interactive()
 
         Button(action: progress < 0.5 ? onSubmit : onNewGame) {
             ZStack {
