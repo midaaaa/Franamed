@@ -8,22 +8,49 @@
 import SwiftUI
 
 private let suggestionFadeHeight: CGFloat = 16
+private let suggestionsGlassEdge: CGFloat = 1
+
+private struct SuggestionsClipShape: Shape {
+    let cornerRadius: CGFloat
+    let edgeInset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let inset = max(0, min(edgeInset, rect.width / 2, rect.height))
+        let box = CGRect(x: rect.minX + inset, y: rect.minY + inset,
+                         width: max(rect.width - inset * 2, 0),
+                         height: max(rect.height - inset, 0))
+        let radius = max(0, min(cornerRadius - inset, box.width / 2, box.height))
+        return UnevenRoundedRectangle(
+            cornerRadii: RectangleCornerRadii(topLeading: radius, bottomLeading: 0,
+                                              bottomTrailing: 0, topTrailing: radius),
+            style: .continuous
+        ).path(in: box)
+    }
+}
 
 private struct SuggestionsRevealMask: View {
     let revealedHeight: CGFloat
     let showsFade: Bool
 
+    private var shape: SuggestionsClipShape {
+        SuggestionsClipShape(cornerRadius: min(suggestionRowHeight / 2, revealedHeight),
+                             edgeInset: suggestionsGlassEdge)
+    }
+
     var body: some View {
-        if showsFade {
-            VStack(spacing: 0) {
+        Group {
+            if showsFade {
+                VStack(spacing: 0) {
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: min(suggestionFadeHeight, revealedHeight))
+                }
+            } else {
                 Rectangle()
-                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: min(suggestionFadeHeight, revealedHeight))
             }
-            .frame(height: revealedHeight)
-        } else {
-            Rectangle().frame(height: revealedHeight)
         }
+        .frame(height: revealedHeight)
+        .clipShape(shape)
     }
 }
 
