@@ -68,11 +68,15 @@ struct SuggestionsScrollView: UIViewRepresentable {
         hosting.view.setNeedsLayout()
         hosting.view.layoutIfNeeded()
 
+        let grid = PixelGrid(displayScale: context.environment.displayScale)
         var measuredHeight = suggestionsContentHeight(rows: rows.count)
+        var restHeight = min(measuredHeight, suggestionsContentHeight(rows: minVisibleSuggestions))
         if availableWidth > 0 {
             let fitting = hosting.sizeThatFits(in: CGSize(width: availableWidth, height: .greatestFiniteMagnitude))
             if fitting.height > 0 {
-                measuredHeight = fitting.height
+                measuredHeight = grid.aligned(fitting.height, rule: .up)
+                restHeight = coordinator.restHeight(width: availableWidth, style: style,
+                                                    grid: grid, total: measuredHeight)
             }
         }
 
@@ -80,7 +84,7 @@ struct SuggestionsScrollView: UIViewRepresentable {
         scrollView.setNeedsLayout()
         scrollView.layoutIfNeeded()
 
-        let minHeight = min(measuredHeight, suggestionsContentHeight(rows: minVisibleSuggestions))
+        let minHeight = restHeight
         scrollView.contentInset.top = max(0, slotHeight - minHeight)
 
         guard rowsChanged else {
@@ -107,9 +111,47 @@ struct SuggestionsScrollView: UIViewRepresentable {
         var lastWidth: CGFloat = -1
         var lastStyle: UIUserInterfaceStyle?
         var isProgrammaticScroll = false
+        private var rowMeasuringController: UIHostingController<SuggestionRowsView>?
+        private var cachedRowHeight: CGFloat?
+        private var cachedRowWidth: CGFloat = -1
+        private var cachedRowStyle: UIUserInterfaceStyle?
 
         init(revealedHeight: Binding<CGFloat>) {
             self.revealedHeightBinding = revealedHeight
+        }
+
+        func restHeight(width: CGFloat, style: UIUserInterfaceStyle,
+                        grid: PixelGrid, total: CGFloat) -> CGFloat {
+            let rowHeight = oneLineRowHeight(width: width, style: style) ?? suggestionRowHeight
+            let rows = CGFloat(minVisibleSuggestions)
+            let cap = grid.aligned(rowHeight * rows + suggestionDividerHeight * (rows - 1), rule: .up)
+            return min(total, cap)
+        }
+
+        private func oneLineRowHeight(width: CGFloat, style: UIUserInterfaceStyle) -> CGFloat? {
+            if let cached = cachedRowHeight, cachedRowWidth == width, cachedRowStyle == style {
+                return cached
+            }
+
+            let controller = rowMeasuringController ?? {
+                let created = UIHostingController(rootView: SuggestionRowsView(rows: [], onSelect: { _ in }))
+                created.safeAreaRegions.remove(.keyboard)
+                rowMeasuringController = created
+                return created
+            }()
+
+            controller.overrideUserInterfaceStyle = style
+            controller.rootView = SuggestionRowsView(rows: [.empty], onSelect: { _ in })
+            controller.view.setNeedsLayout()
+            controller.view.layoutIfNeeded()
+
+            let fitting = controller.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+            guard fitting.height > 0 else { return nil }
+
+            cachedRowHeight = fitting.height
+            cachedRowWidth = width
+            cachedRowStyle = style
+            return fitting.height
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {

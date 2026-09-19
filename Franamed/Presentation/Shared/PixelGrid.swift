@@ -18,6 +18,10 @@ struct PixelGrid {
         (value * scale).rounded() / scale
     }
 
+    func aligned(_ value: CGFloat, rule: FloatingPointRoundingRule) -> CGFloat {
+        (value * scale).rounded(rule) / scale
+    }
+
     func snapped(_ size: CGSize) -> CGSize {
         CGSize(width: snapped(size.width), height: snapped(size.height))
     }
