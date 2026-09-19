@@ -18,8 +18,11 @@ struct RoundView: View {
     @State private var pendingAnimatedHeightCatchUp = false
     @State private var stripTints: [ProjectorStripTint] = []
     @State private var displayedURL: URL?
-    @State private var isBeamFillLit = true
+    @State private var isBeamFillLit = false
     @State private var isWaitingForFrame = false
+    @State private var isProjectorLit = false
+    @State private var showsProjector = true
+    @State private var showsResult = false
     @State private var beamAnimation: Animation?
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
@@ -40,6 +43,9 @@ struct RoundView: View {
     private var beamMaxExpectedGap: CGFloat { max(containerHeight * 0.25, 1) }
 
     private static let beamShrink = Animation.timingCurve(0.38, 0.7, 0.125, 1, duration: 0.28)
+    private static let projectorFadeOut = Animation.easeOut(duration: 0.32)
+    private static let projectorFadeIn = Animation.easeIn(duration: 0.4)
+    private static let resultReveal = Animation.easeOut(duration: 0.25)
     private var beamIntensity: Double {
         guard beamGap > 0 else { return 0 }
         return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
@@ -65,7 +71,7 @@ struct RoundView: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
                     .layoutPriority(1)
 
-                    if viewModel.outcome == nil {
+                    if showsProjector {
                         ProjectorBeam(
                             intensity: beamIntensity,
                             stripTints: stripTints,
@@ -76,17 +82,20 @@ struct RoundView: View {
                         )
                             .frame(maxHeight: beamHeight)
                             .clipped()
+                            .opacity(isProjectorLit ? 1 : 0)
+                            .animation(isProjectorLit ? nil : Self.projectorFadeOut, value: isProjectorLit)
                             .animation(beamAnimation, value: containerHeight)
                             .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
                             .allowsHitTesting(false)
                     }
 
-                    if let outcome = viewModel.outcome, let mediaItemWithBackdrops = viewModel.mediaItemWithBackdrops {
+                    if showsResult, let outcome = viewModel.outcome, let mediaItemWithBackdrops = viewModel.mediaItemWithBackdrops {
                         ResultBanner(
                             outcome: outcome,
                             movieTitle: mediaItemWithBackdrops.item.originalTitle
                         )
                         .padding(.top, 16)
+                        .transition(.opacity)
                     }
 
                     Spacer(minLength: 0)
@@ -130,16 +139,29 @@ struct RoundView: View {
                 DispatchQueue.main.async { resignKeyboard() }
             }
         )
+        .onChange(of: beamIntensity) { _, intensity in
+            guard !isProjectorLit, intensity > 0, viewModel.outcome == nil else { return }
+            withAnimation(Self.projectorFadeIn) { isProjectorLit = true }
+        }
         .onChange(of: viewModel.outcome) { _, newOutcome in
             isMorphAnimating = true
             if newOutcome != nil {
                 isAnswerFieldFocused = false
+                withAnimation(Self.projectorFadeOut, completionCriteria: .logicallyComplete) {
+                    isProjectorLit = false
+                } completion: {
+                    showsProjector = false
+                    withAnimation(Self.resultReveal) { showsResult = true }
+                }
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 1
                 } completion: {
                     isMorphAnimating = false
                 }
             } else {
+                withAnimation(Self.resultReveal) { showsResult = false }
+                showsProjector = true
+                withAnimation(Self.projectorFadeIn) { isProjectorLit = true }
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 0
                 } completion: {
@@ -271,14 +293,17 @@ struct RoundView: View {
 
     @ViewBuilder
     private var beamSource: some View {
-        if viewModel.outcome == nil {
+        if showsProjector {
             ZStack(alignment: .bottom) {
                 ProjectorSourceHalo()
                 ProjectorLineSource()
             }
             .frame(height: beamHeight)
+            .clipped()
             .offset(y: -beamHeight)
             .opacity(max(beamIntensity, ProjectorBeam.imperceptibleOpacity))
+            .opacity(isProjectorLit ? 1 : 0)
+            .animation(isProjectorLit ? Self.projectorFadeIn : Self.projectorFadeOut, value: isProjectorLit)
             .allowsHitTesting(false)
         }
     }
