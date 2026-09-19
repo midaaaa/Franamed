@@ -18,6 +18,7 @@ struct TicketFaceView: View, Equatable {
             && lhs.hidesStub == rhs.hidesStub
             && lhs.showsMesh == rhs.showsMesh
             && lhs.tintsPaper == rhs.tintsPaper
+            && lhs.edgeStyle == rhs.edgeStyle
             && lhs.returnToken == rhs.returnToken
             && lhs.returnStyle == rhs.returnStyle
             && lhs.posterZoom == rhs.posterZoom
@@ -35,6 +36,7 @@ struct TicketFaceView: View, Equatable {
     var hidesStub: Bool = false
     var showsMesh: Bool = true
     var tintsPaper: Bool = false
+    var edgeStyle: TicketEdgeStyle = .scalloped
     let returnToken: Int
     var returnStyle: TearReturnStyle = .flat
     let posterZoom: Namespace.ID
@@ -53,7 +55,8 @@ struct TicketFaceView: View, Equatable {
 
     private var stubHeight: CGFloat {
         guard measuredStubHeight > 0 else { return 0 }
-        return pixelGrid.evenAligned(measuredStubHeight, rule: .up)
+        let trim = edgeStyle == .straight ? TicketPerforationShape.scallopDepth(width: width) : 0
+        return pixelGrid.evenAligned(max(measuredStubHeight - trim, 1), rule: .up)
     }
 
     private var tearConfig: TicketTearConfig {
@@ -117,7 +120,8 @@ struct TicketFaceView: View, Equatable {
         }
         .frame(width: width)
         .mask(TicketPerforationShape(tearLineOffset: posterHeight,
-                                     tearLineSlots: TearPerforation(config: tearConfig, length: width)))
+                                     tearLineSlots: TearPerforation(config: tearConfig, length: width),
+                                     edgeStyle: edgeStyle))
     }
 
     private var paper: Color { tintsPaper ? .red : .white }

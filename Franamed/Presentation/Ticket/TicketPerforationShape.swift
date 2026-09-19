@@ -7,11 +7,17 @@
 
 import SwiftUI
 
+enum TicketEdgeStyle: Hashable {
+    case scalloped
+    case straight
+}
+
 struct TicketPerforationShape: Shape {
     var tearLineOffset: CGFloat?
     var tearLineSlots: TearPerforation?
     var scallopedEdges: VerticalEdge.Set = .all
     var tearNotchEdges: VerticalEdge.Set = []
+    var edgeStyle: TicketEdgeStyle = .scalloped
 
     var tabCount: Int = 10
     var cornerScallopScale: CGFloat = 1.6
@@ -19,15 +25,26 @@ struct TicketPerforationShape: Shape {
 
     var tearNotchRadius: CGFloat = TicketStyle.tearNotchRadius
 
+    static func scallopDepth(width: CGFloat, tabCount: Int = 10,
+                             cornerScallopScale: CGFloat = 1.6,
+                             scallopFillRatio: CGFloat = 0.8) -> CGFloat {
+        let interior = max(tabCount - 1, 2)
+        let inset = 1 + scallopFillRatio / 2 * (cornerScallopScale - 1)
+        let step = width / (CGFloat(interior - 1) + 2 * inset)
+        return step / 2 * scallopFillRatio
+    }
+
     func path(in rect: CGRect) -> Path {
         var cuts = Path()
 
-        for scallop in scallops(in: rect) {
-            if scallopedEdges.contains(.top) {
-                cuts.addCircle(x: scallop.x, y: rect.minY, radius: scallop.radius)
-            }
-            if scallopedEdges.contains(.bottom) {
-                cuts.addCircle(x: scallop.x, y: rect.maxY, radius: scallop.radius)
+        if edgeStyle == .scalloped {
+            for scallop in scallops(in: rect) {
+                if scallopedEdges.contains(.top) {
+                    cuts.addCircle(x: scallop.x, y: rect.minY, radius: scallop.radius)
+                }
+                if scallopedEdges.contains(.bottom) {
+                    cuts.addCircle(x: scallop.x, y: rect.maxY, radius: scallop.radius)
+                }
             }
         }
 
@@ -45,7 +62,19 @@ struct TicketPerforationShape: Shape {
             addTearNotches(to: &cuts, in: rect, y: rect.maxY)
         }
 
-        return Path(rect).subtracting(cuts)
+        return base(in: rect).subtracting(cuts)
+    }
+
+    private func base(in rect: CGRect) -> Path {
+        guard edgeStyle == .straight else { return Path(rect) }
+        let radius = min(tearNotchRadius, rect.width / 2, rect.height / 2)
+        let radii = RectangleCornerRadii(
+            topLeading: scallopedEdges.contains(.top) ? radius : 0,
+            bottomLeading: scallopedEdges.contains(.bottom) ? radius : 0,
+            bottomTrailing: scallopedEdges.contains(.bottom) ? radius : 0,
+            topTrailing: scallopedEdges.contains(.top) ? radius : 0
+        )
+        return UnevenRoundedRectangle(cornerRadii: radii).path(in: rect)
     }
 
     private func addTearSlots(to cuts: inout Path, in rect: CGRect, y: CGFloat,
@@ -108,6 +137,14 @@ private extension Path {
     Color.white
         .frame(width: 260, height: 420)
         .mask(TicketPerforationShape(tearLineOffset: 300))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+}
+
+#Preview("Прямой край") {
+    Color.white
+        .frame(width: 260, height: 420)
+        .mask(TicketPerforationShape(tearLineOffset: 300, edgeStyle: .straight))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
 }

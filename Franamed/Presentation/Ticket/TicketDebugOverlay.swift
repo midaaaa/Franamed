@@ -12,6 +12,7 @@ struct TicketDebugOverlay: View {
     let probe: TearFrameRateProbe
     @Binding var showsMesh: Bool
     @Binding var tintsPaper: Bool
+    @Binding var usesStraightEdges: Bool
 
     @AppStorage(DebugSettings.hapticsKey) private var hapticsEnabled = true
 
@@ -28,6 +29,7 @@ struct TicketDebugOverlay: View {
                     Haptics.isEnabled = hapticsEnabled
                 }
                 toggle("бумага", isOn: tintsPaper) { tintsPaper.toggle() }
+                toggle("прямой край", isOn: usesStraightEdges) { usesStraightEdges.toggle() }
             }
         }
         .padding(.top, 8)
