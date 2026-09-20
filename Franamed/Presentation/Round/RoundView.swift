@@ -45,7 +45,10 @@ struct RoundView: View {
     private static let beamShrink = Animation.timingCurve(0.38, 0.7, 0.125, 1, duration: 0.28)
     private static let projectorFadeOut = Animation.easeOut(duration: 0.32)
     private static let projectorFadeIn = Animation.easeIn(duration: 0.4)
-    private static let resultReveal = Animation.easeOut(duration: 0.25)
+    private static let resultReveal = Animation.easeOut(duration: 0.32)
+    private static let sourceSlideIn = Animation.spring(response: 0.34, dampingFraction: 0.9)
+    private static let sourceSlideOut = Animation.easeIn(duration: 0.22)
+    private static let sourceTravel = ProjectorLineSource.height * 2
     private var beamIntensity: Double {
         guard beamGap > 0 else { return 0 }
         return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
@@ -89,18 +92,10 @@ struct RoundView: View {
                             .allowsHitTesting(false)
                     }
 
-                    if showsResult, let outcome = viewModel.outcome, let mediaItemWithBackdrops = viewModel.mediaItemWithBackdrops {
-                        ResultBanner(
-                            outcome: outcome,
-                            movieTitle: mediaItemWithBackdrops.item.originalTitle
-                        )
-                        .padding(.top, 16)
-                        .transition(.opacity)
-                    }
-
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
+                .overlay(alignment: .top) { resultBanner }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newHeight in
                     beamAnimation = newHeight < containerHeight ? Self.beamShrink : nil
                     containerHeight = newHeight
@@ -151,8 +146,8 @@ struct RoundView: View {
                     isProjectorLit = false
                 } completion: {
                     showsProjector = false
-                    withAnimation(Self.resultReveal) { showsResult = true }
                 }
+                withAnimation(Self.resultReveal) { showsResult = true }
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 1
                 } completion: {
@@ -292,18 +287,30 @@ struct RoundView: View {
     }
 
     @ViewBuilder
+    private var resultBanner: some View {
+        if showsResult, let outcome = viewModel.outcome, let media = viewModel.mediaItemWithBackdrops {
+            ResultBanner(outcome: outcome,
+                         movieTitle: media.item.originalTitle,
+                         releaseYear: media.item.releaseDate.map { String($0.prefix(4)) })
+                .padding(.top, frameHeight + 16)
+                .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
     private var beamSource: some View {
         if showsProjector {
             ZStack(alignment: .bottom) {
                 ProjectorSourceHalo()
+                    .opacity(isProjectorLit ? 1 : 0)
                 ProjectorLineSource()
+                    .offset(y: isProjectorLit ? 0 : Self.sourceTravel)
             }
             .frame(height: beamHeight)
             .clipped()
             .offset(y: -beamHeight)
             .opacity(max(beamIntensity, ProjectorBeam.imperceptibleOpacity))
-            .opacity(isProjectorLit ? 1 : 0)
-            .animation(isProjectorLit ? Self.projectorFadeIn : Self.projectorFadeOut, value: isProjectorLit)
+            .animation(isProjectorLit ? Self.sourceSlideIn : Self.sourceSlideOut, value: isProjectorLit)
             .allowsHitTesting(false)
             .geometryGroup()
         }
