@@ -25,6 +25,7 @@ final class RoundViewModel: ObservableObject {
 
     @Published var answerText = ""
     private var selectedSuggestion: MediaItem?
+    private var searchToken = 0
     @Published private(set) var attemptsRemaining: Int
     @Published private(set) var outcome: RoundOutcome?
     @Published private(set) var revealedCount = 1
@@ -49,8 +50,7 @@ final class RoundViewModel: ObservableObject {
         isLoading = true
         error = nil
         outcome = nil
-        searchResults = []
-        hasSearched = false
+        closeSearch()
         attemptsRemaining = frameCount
         answerText = ""
         revealedCount = 1
@@ -78,6 +78,7 @@ final class RoundViewModel: ObservableObject {
 
     func submitAnswer() {
         guard outcome == nil, let mediaItemWithBackdrops else { return }
+        closeSearch()
         answerText = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
         let submittedAnswer = answerText
         let item = mediaItemWithBackdrops.item
@@ -123,14 +124,23 @@ final class RoundViewModel: ObservableObject {
         currentFrameIndex = min(currentFrameIndex + 1, revealedCount - 1)
     }
 
+    private func closeSearch() {
+        searchToken &+= 1
+        searchResults = []
+        hasSearched = false
+    }
+
     func searchAnswer() async {
         let trimmedQuery = answerText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = searchToken
 
         do {
             try await Task.sleep(for: .milliseconds(400))
         } catch {
             return
         }
+
+        guard token == searchToken, outcome == nil else { return }
 
         guard !trimmedQuery.isEmpty else {
             searchResults = []
@@ -141,11 +151,13 @@ final class RoundViewModel: ObservableObject {
         do {
             let language = detectTMDBLanguage(from: trimmedQuery)
             let results = try await mediaFacade.searchMedia(mediaType: mediaType, query: trimmedQuery, language: language)
+            guard token == searchToken, outcome == nil else { return }
 
             var seenTitles = Set<String>()
             searchResults = results.filter { seenTitles.insert($0.title).inserted }
             hasSearched = true
         } catch {
+            guard token == searchToken, outcome == nil else { return }
             searchResults = []
             hasSearched = true
         }
