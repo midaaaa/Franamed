@@ -27,6 +27,7 @@ struct TicketTear<Content: View>: View {
     private let contentID: AnyHashable
     private let probe: TearFrameRateProbe?
     private let isGrabEnabled: Bool
+    private let isContentComplete: Bool
     private let rasterizesContent: Bool
     private let returnToken: Int
     private let onReturnChange: ((Bool) -> Void)?
@@ -38,6 +39,7 @@ struct TicketTear<Content: View>: View {
     @State private var accepted = false
     @State private var refused = false
     @State private var canResumeTear = false
+    @State private var needsSnapshot = false
     @State private var phase = TearPhase.rest
     @State private var completionToken = 0
     @GestureState private var isGrabbing = false
@@ -50,6 +52,7 @@ struct TicketTear<Content: View>: View {
          resetToken: Int = 0,
          contentID: AnyHashable = 0,
          isGrabEnabled: Bool = true,
+         isContentComplete: Bool = true,
          rasterizesContent: Bool = false,
          returnToken: Int = 0,
          onComplete: (() -> Void)? = nil,
@@ -63,6 +66,7 @@ struct TicketTear<Content: View>: View {
         self.resetToken = resetToken
         self.contentID = contentID
         self.isGrabEnabled = isGrabEnabled
+        self.isContentComplete = isContentComplete
         self.rasterizesContent = rasterizesContent
         self.returnToken = returnToken
         self.onReturnChange = onReturnChange
@@ -129,6 +133,9 @@ struct TicketTear<Content: View>: View {
             }
             .onChange(of: contentID) { _, _ in
                 snapshotTexture()
+            }
+            .onChange(of: isContentComplete) { _, complete in
+                if complete, needsSnapshot { snapshotTexture() }
             }
             .onChange(of: completionToken) { _, _ in
                 let finished = onComplete
@@ -216,7 +223,10 @@ struct TicketTear<Content: View>: View {
 
     private func snapshotTexture() {
         guard size.width > 1, size.height > 1 else { return }
-        texture = TicketSnapshot.texture(of: content, scale: displayScale)
+        needsSnapshot = !isContentComplete
+        guard isContentComplete,
+              let rendered = TicketSnapshot.texture(of: content, scale: displayScale) else { return }
+        texture = rendered
     }
 
     // MARK: Gesture
