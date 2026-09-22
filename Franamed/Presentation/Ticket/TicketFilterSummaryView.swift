@@ -11,17 +11,17 @@ struct TicketFilterSummaryView: View {
     let summary: TicketFilterSummary
 
     var body: some View {
-        Grid(alignment: .topLeading,
-             horizontalSpacing: TicketStyle.fieldColumnGap,
-             verticalSpacing: TicketStyle.fieldRowSpacing) {
-            GridRow {
-                column(summary.genres).gridCellColumns(2)
-                column(summary.rating)
+        VStack(alignment: .leading, spacing: TicketStyle.fieldRowSpacing) {
+            HStack(alignment: .top, spacing: TicketStyle.fieldColumnGap) {
+                column(summary.genres).frame(maxWidth: .infinity, alignment: .leading)
+                column(summary.rating).frame(width: TicketStyle.fieldTrailingWidth)
             }
-            GridRow {
-                column(summary.year)
-                column(summary.votes)
-                column(summary.languages)
+            HStack(alignment: .top, spacing: 0) {
+                column(summary.year).frame(width: TicketStyle.fieldYearWidth)
+                Spacer(minLength: TicketStyle.fieldColumnGap)
+                column(summary.votes).frame(width: TicketStyle.fieldVotesWidth)
+                Spacer(minLength: TicketStyle.fieldColumnGap)
+                column(summary.languages).frame(width: TicketStyle.fieldTrailingWidth)
             }
         }
     }

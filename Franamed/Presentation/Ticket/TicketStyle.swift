@@ -16,6 +16,7 @@ enum TicketStyle {
     static let serial = Font.system(size: 10, weight: .medium, design: .monospaced)
 
     static let placeholderInk = Color.black.opacity(0.32)
+    static let paper = Color(white: 0.9)
 
     static let fieldLabelTracking: CGFloat = 1.1
     static let serialTracking: CGFloat = 1.5
@@ -30,6 +31,9 @@ enum TicketStyle {
     static let fieldRowSpacing: CGFloat = 6
     static let fieldLabelSpacing: CGFloat = 0
     static let fieldColumnGap: CGFloat = 12
+    static let fieldYearWidth: CGFloat = 84
+    static let fieldVotesWidth: CGFloat = 66
+    static let fieldTrailingWidth: CGFloat = 60
     static let symbolTextSpacing: CGFloat = 3
     static let metaSpacing: CGFloat = 6
 

@@ -125,7 +125,7 @@ struct TicketFaceView: View, Equatable {
                                      edgeStyle: edgeStyle))
     }
 
-    private var paper: Color { tintsPaper ? .red : .white }
+    private var paper: Color { tintsPaper ? .red : TicketStyle.paper }
 
     @ViewBuilder
     private var poster: some View {
