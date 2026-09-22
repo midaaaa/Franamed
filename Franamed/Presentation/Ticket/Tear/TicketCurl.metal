@@ -10,15 +10,21 @@ using namespace metal;
 
 // MARK: - Perforation pattern
 
-inline float hash11(float n) {
-    return fract(sin(n * 127.1) * 43758.5453123);
+inline float hashCell(float n) {
+    uint h = uint(max(n, 0.0));
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    h ^= h >> 15;
+    h *= 0x846ca68bu;
+    h ^= h >> 16;
+    return float(h >> 8) * (1.0 / 16777216.0);
 }
 
 inline float vnoise(float x) {
     float i = floor(x);
     float f = fract(x);
     f = f * f * (3.0 - 2.0 * f);
-    return mix(hash11(i), hash11(i + 1.0), f) * 2.0 - 1.0;
+    return mix(hashCell(i), hashCell(i + 1.0), f) * 2.0 - 1.0;
 }
 
 inline float tearJitter(float a, float amp) {
@@ -44,7 +50,7 @@ inline float perfSD(float a, float b, float pitch, float holeLen, float hw,
         float ci = cell + float(k);
         float s = abs(ci - strainCell) < 0.5 ? strainAmt : 0.0;
 
-        float amount = neckFrac * (0.94 + 0.12 * hash11(ci * 1.37));
+        float amount = neckFrac * (0.94 + 0.12 * hashCell(ci + 4096.0));
         float neck = min(s * amount, 0.95) * tabLen;
 
         float c0 = ci * pitch + 0.5 * holeLen;
