@@ -16,15 +16,28 @@ struct TicketStubView: View {
     let onStart: () -> Void
 
     var body: some View {
+        TicketStubBody(card: card, setup: setup, genreNames: genreNames,
+                       onOpenFilters: onOpenFilters, onStart: onStart)
+            .padding(TicketStyle.stubPadding)
+            .allowsHitTesting(isInteractive)
+    }
+}
+
+struct TicketStubBody: View {
+    let card: TicketCard
+    let setup: RoundSetup
+    let genreNames: [String]
+    var onOpenFilters: () -> Void = {}
+    var onStart: () -> Void = {}
+
+    var body: some View {
         VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
             title
             filtersButton
             startButton
         }
         .buttonStyle(.plain)
-        .padding(TicketStyle.stubPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .allowsHitTesting(isInteractive)
     }
 
     private var title: some View {
