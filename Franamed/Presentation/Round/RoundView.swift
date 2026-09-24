@@ -92,7 +92,7 @@ struct RoundView: View {
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
-                .overlay(alignment: .top) { resultBanner }
+                .overlay(alignment: .top) { resultStub }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newHeight in
                     beamAnimation = newHeight < containerHeight ? Self.beamShrink : nil
                     containerHeight = newHeight
@@ -147,7 +147,7 @@ struct RoundView: View {
                 } completion: {
                     showsProjector = false
                 }
-                withAnimation(Self.resultReveal) { showsResult = true }
+                showsResult = true
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 1
                 } completion: {
@@ -217,13 +217,18 @@ struct RoundView: View {
     }
 
     @ViewBuilder
-    private var resultBanner: some View {
+    private var resultStub: some View {
         if showsResult, let outcome = viewModel.outcome, let media = viewModel.mediaItemWithBackdrops {
-            ResultBanner(outcome: outcome,
-                         movieTitle: media.item.originalTitle,
-                         releaseYear: media.item.releaseDate.map { String($0.prefix(4)) })
-                .padding(.top, frameHeight + 16)
-                .transition(.opacity)
+            ResultStubStage(item: media.item,
+                            mediaType: viewModel.mediaType,
+                            details: viewModel.details,
+                            outcome: outcome,
+                            attemptsUsed: max(viewModel.attemptsMade, 1),
+                            frameCount: viewModel.frameCount,
+                            filters: viewModel.filters,
+                            genreNames: viewModel.genreNames,
+                            topInset: frameHeight,
+                            restingOffset: max(0, (beamGap - ResultStubMetrics.height) / 2))
         }
     }
 

@@ -14,8 +14,8 @@ final class RoundViewModel: ObservableObject {
     let mediaType: MediaType
     let frameCount: Int
     private let modelContext: ModelContext
-    private var attemptsMade = 0
-    private let filters: MediaFilters
+    @Published private(set) var attemptsMade = 0
+    let filters: MediaFilters
 
     @Published private(set) var mediaItemWithBackdrops: MediaItemWithBackdrops?
     @Published private(set) var isLoading = true
