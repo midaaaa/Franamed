@@ -14,6 +14,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
     var ticketSize: CGSize
     var texture: MTLTexture?
     var canvasPadding: CGFloat
+    var stubShape: (any Shape & Hashable)?
     var probe: TearFrameRateProbe?
     var onDrawn: (() -> Void)?
     var onPark: (() -> Void)?
@@ -61,6 +62,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
         c.ticketSize = ticketSize
         c.canvasPadding = canvasPadding
         c.texture = texture
+        c.stubShape = stubShape
         c.probe = probe
         c.onDrawn = onDrawn
         c.onPark = onPark
@@ -75,15 +77,13 @@ struct TicketCurlRenderer: UIViewRepresentable {
         var ticketSize: CGSize = .zero
         var canvasPadding: CGFloat = 0
         var texture: MTLTexture?
+        var stubShape: (any Shape & Hashable)?
         var probe: TearFrameRateProbe?
         var onDrawn: (() -> Void)?
         var onPark: (() -> Void)?
 
-        private var commandQueue: MTLCommandQueue!
-        private var pipeline: MTLRenderPipelineState!
-        private var depthState: MTLDepthStencilState!
-        private var indexBuffer: MTLBuffer!
-        private var sampler: MTLSamplerState!
+        private var commandQueue: MTLCommandQueue?
+        private var pipeline: TicketCurlPipeline?
 
         private var drawnFrames = 0
         private var didNotifyDrawn = false
@@ -107,52 +107,12 @@ struct TicketCurlRenderer: UIViewRepresentable {
         func configure(device: MTLDevice, colorFormat: MTLPixelFormat, depthFormat: MTLPixelFormat,
                        sampleCount: Int) {
             commandQueue = device.makeCommandQueue()
-
-            let indices = TicketCurlTopology.makeIndices()
-            indexBuffer = device.makeBuffer(bytes: indices,
-                                            length: indices.count * MemoryLayout<UInt16>.stride,
-                                            options: .storageModeShared)
-
-            guard let library = device.makeDefaultLibrary(),
-                  let vertexFunction = library.makeFunction(name: "ticketCurlVertex"),
-                  let fragmentFunction = library.makeFunction(name: "ticketCurlFragment") else {
+            guard let library = device.makeDefaultLibrary() else {
                 print("[TicketCurl] shader library unavailable")
                 return
             }
-
-            let pdesc = MTLRenderPipelineDescriptor()
-            pdesc.vertexFunction = vertexFunction
-            pdesc.fragmentFunction = fragmentFunction
-            pdesc.depthAttachmentPixelFormat = depthFormat
-            pdesc.rasterSampleCount = sampleCount
-
-            let color = pdesc.colorAttachments[0]!
-            color.pixelFormat = colorFormat
-            color.isBlendingEnabled = true
-            color.rgbBlendOperation = .add
-            color.alphaBlendOperation = .add
-            color.sourceRGBBlendFactor = .one
-            color.sourceAlphaBlendFactor = .one
-            color.destinationRGBBlendFactor = .oneMinusSourceAlpha
-            color.destinationAlphaBlendFactor = .oneMinusSourceAlpha
-
-            do {
-                pipeline = try device.makeRenderPipelineState(descriptor: pdesc)
-            } catch {
-                print("[TicketCurl] pipeline state creation failed: \(error)")
-            }
-
-            let ddesc = MTLDepthStencilDescriptor()
-            ddesc.depthCompareFunction = .less
-            ddesc.isDepthWriteEnabled = true
-            depthState = device.makeDepthStencilState(descriptor: ddesc)
-
-            let sdesc = MTLSamplerDescriptor()
-            sdesc.minFilter = .linear
-            sdesc.magFilter = .linear
-            sdesc.sAddressMode = .clampToEdge
-            sdesc.tAddressMode = .clampToEdge
-            sampler = device.makeSamplerState(descriptor: sdesc)
+            pipeline = TicketCurlPipeline(device: device, library: library, colorFormat: colorFormat,
+                                          depthFormat: depthFormat, sampleCount: sampleCount)
         }
 
         // MARK: Frame
@@ -198,22 +158,14 @@ struct TicketCurlRenderer: UIViewRepresentable {
             rpd.depthAttachment.loadAction = .clear
             rpd.depthAttachment.clearDepth = 1.0
 
-            guard let cmd = commandQueue.makeCommandBuffer(),
+            guard let cmd = commandQueue?.makeCommandBuffer(),
                   let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return }
 
-            var uniforms = self.uniforms(for: pose, viewSize: view.bounds.size)
-            enc.setRenderPipelineState(pipeline)
-            enc.setDepthStencilState(depthState)
-            enc.setVertexBytes(&uniforms, length: MemoryLayout<CurlUniforms>.stride, index: 1)
-            enc.setFragmentBytes(&uniforms, length: MemoryLayout<CurlUniforms>.stride, index: 1)
-            enc.setFragmentTexture(tex, index: 0)
-            enc.setFragmentSamplerState(sampler, index: 0)
-            enc.setCullMode(.none)
-            enc.drawIndexedPrimitives(type: .triangle,
-                                      indexCount: TicketCurlTopology.indexCount,
-                                      indexType: .uint16,
-                                      indexBuffer: indexBuffer,
-                                      indexBufferOffset: 0)
+            pipeline.setOutline(shape: stubShape, config: config, ticketSize: ticketSize)
+            let uniforms = TicketCurlPipeline.uniforms(for: pose, config: config, ticketSize: ticketSize,
+                                                       canvasPadding: canvasPadding,
+                                                       viewSize: view.bounds.size)
+            pipeline.encode(into: enc, uniforms: uniforms, pose: pose, texture: tex)
             enc.endEncoding()
             cmd.present(drawable)
 
@@ -253,78 +205,6 @@ struct TicketCurlRenderer: UIViewRepresentable {
                 return
             }
             frameDuration = dt
-        }
-
-        private func uniforms(for pose: TearPose, viewSize: CGSize) -> CurlUniforms {
-            CurlUniforms(
-                projection: Self.orthoProjection(width: Float(viewSize.width),
-                                                  height: Float(viewSize.height)),
-                lightDir: SIMD4(-0.42, -0.62, 0.86, 0),
-
-                perfOriginX: Float(pose.perfOrigin.x),
-                perfOriginY: Float(pose.perfOrigin.y),
-                perfDirX: Float(pose.perfDir.dx),
-                perfDirY: Float(pose.perfDir.dy),
-
-                stubNX: Float(pose.stubN.dx),
-                stubNY: Float(pose.stubN.dy),
-                offsetX: Float(pose.offset.dx),
-                offsetY: Float(pose.offset.dy),
-
-                ticketWidth: Float(ticketSize.width),
-                ticketHeight: Float(ticketSize.height),
-                apexA: Float(pose.apexA),
-                theta: Float(pose.theta),
-
-                perfLength: Float(pose.perfLength),
-                stubExtent: Float(config.stubExtent),
-                canvasPadding: Float(canvasPadding),
-                colsA: Float(TicketCurlTopology.colsA),
-
-                colsB: Float(TicketCurlTopology.colsB),
-                opacity: Float(pose.opacity),
-
-                front: Float(pose.front),
-                pitch: Float(pose.pitch),
-                holeLen: Float(pose.holeLen),
-                holeHalfWidth: Float(config.holeHalfWidth),
-
-                jitterAmp: Float(config.tearJitter),
-                strainCell: Float(pose.strainCell),
-                strain: Float(pose.strain),
-                neckFraction: Float(config.neckFraction),
-
-                sheen: Float(config.sheen),
-                patternOrigin: Float(pose.patternOrigin),
-                patternSign: Float(pose.patternSign),
-                patternInset: Float(pose.patternInset),
-
-                crackWidth: Float(config.crackWidth),
-                tornSoftness: Float(config.tornSoftness),
-                slotCorner: Float(config.slotCorner),
-                tornGap: Float(config.tornGap),
-
-                paperBack: Self.rgba(config.backColor))
-        }
-
-        private static func orthoProjection(width: Float, height: Float) -> simd_float4x4 {
-            guard width > 0, height > 0 else { return matrix_identity_float4x4 }
-            return simd_float4x4(
-                SIMD4(2 / width, 0, 0, 0),
-                SIMD4(0, -2 / height, 0, 0),
-                SIMD4(0, 0, 1, 0),
-                SIMD4(-1, 1, 0, 1)
-            )
-        }
-
-        private static func rgba(_ color: Color) -> SIMD4<Float> {
-            #if canImport(UIKit)
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
-            return SIMD4(Float(r), Float(g), Float(b), Float(a))
-            #else
-            return SIMD4(0.96, 0.95, 0.93, 1)
-            #endif
         }
     }
 }

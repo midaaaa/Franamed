@@ -75,8 +75,8 @@ inline float3 coneRuling(float beta, float theta) {
                   st * ct * (1.0 - cos(beta)));
 }
 
-inline float curlDepth(float height, float heightScale) {
-    float t = clamp(height / heightScale, 0.0, 1.0);
+inline float curlDepth(float height, float heightScale, float thickness) {
+    float t = clamp((height + thickness) / (heightScale + 2.0 * thickness), 0.0, 1.0);
     return 0.999 - 0.99 * t;
 }
 
@@ -87,7 +87,13 @@ struct VertexOut {
     float3 normal;
     float2 uv;
     float2 paperAB;
-    float  faceSign;
+    float  skin [[flat]];
+};
+
+struct EdgeOut {
+    float4 position [[position]];
+    float3 normal;
+    float2 paperAB;
 };
 
 struct CurlUniforms {
@@ -116,8 +122,8 @@ struct CurlUniforms {
 
     float colsB;
     float opacity;
-    float _reserved1;
-    float _reserved2;
+    float thickness;
+    float _reserved;
 
     float front;
     float pitch;
@@ -142,8 +148,78 @@ struct CurlUniforms {
     float4 paperBack;
 };
 
+struct CurlPoint {
+    float2 flat;
+    float3 position;
+    float3 normal;
+    float  radius;
+};
+
+inline CurlPoint curlPoint(float a, float b, constant CurlUniforms &u) {
+    float2 perfOrigin = float2(u.perfOriginX, u.perfOriginY);
+    float2 perfDir = float2(u.perfDirX, u.perfDirY);
+    float2 stubN = float2(u.stubNX, u.stubNY);
+    float2 canvasOffset = float2(u.canvasPadding, u.canvasPadding) + float2(u.offsetX, u.offsetY);
+
+    CurlPoint p;
+    p.flat = perfOrigin + perfDir * a + stubN * b;
+
+    float theta = clamp(u.theta, 0.05, M_PI_F / 2.0);
+    float da = a - u.apexA;
+    p.radius = length(float2(da, b));
+
+    if (p.radius < 0.0001) {
+        p.position = float3(p.flat + canvasOffset, 0.0);
+        p.normal = float3(0.0, 0.0, 1.0);
+        return p;
+    }
+
+    float sinT = sin(theta);
+    float beta = atan2(b, da) / sinT;
+    float3 ruling = coneRuling(beta, theta);
+    float3 dRulingDPhi = float3(-sin(beta) * sinT, cos(beta), sin(beta) * cos(theta));
+    float3 nrm = normalize(cross(ruling, dRulingDPhi));
+
+    float2 apex = perfOrigin + perfDir * u.apexA;
+    float2 placed = apex + perfDir * (p.radius * ruling.x) + stubN * (p.radius * ruling.y);
+    p.position = float3(placed + canvasOffset, p.radius * ruling.z);
+    p.normal = float3(perfDir.x * nrm.x + stubN.x * nrm.y,
+                      perfDir.y * nrm.x + stubN.y * nrm.y,
+                      nrm.z);
+    return p;
+}
+
+inline float3 skinPosition(CurlPoint p, float side, constant CurlUniforms &u) {
+    float taper = smoothstep(0.0, max(6.0 * u.thickness, 0.001), p.radius);
+    return p.position + p.normal * (side * 0.5 * u.thickness * taper);
+}
+
+inline float4 clipPosition(float3 p, constant CurlUniforms &u) {
+    float heightScale = max(length(float2(u.perfLength, u.stubExtent)), 1.0);
+    return u.projection * float4(p.xy, curlDepth(p.z, heightScale, u.thickness), 1.0);
+}
+
+inline float paperA(float aFixed, constant CurlUniforms &u) {
+    return (aFixed - u.patternOrigin) * u.patternSign;
+}
+
+inline half3 shade(half3 base, float3 normal, float tint, constant CurlUniforms &u) {
+    float3 N = normalize(normal);
+    float3 L = normalize(u.lightDir.xyz);
+    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
+
+    float lambertFlat = 0.58 + 0.42 * clamp(L.z, 0.0, 1.0);
+    float lambert = (0.58 + 0.42 * clamp(dot(N, L), 0.0, 1.0)) / max(lambertFlat, 0.001);
+
+    float specFlat = pow(clamp(H.z, 0.0, 1.0), 26.0) * u.sheen;
+    float spec = max(pow(clamp(dot(N, H), 0.0, 1.0), 26.0) * u.sheen - specFlat, 0.0);
+
+    return base * half(lambert * tint) + half3(half(spec * tint));
+}
+
 vertex VertexOut ticketCurlVertex(uint vid [[vertex_id]],
-                                  constant CurlUniforms &u [[buffer(1)]]) {
+                                  constant CurlUniforms &u [[buffer(1)]],
+                                  constant float &skin [[buffer(2)]]) {
     uint colsAi = uint(u.colsA);
     uint colsBi = uint(u.colsB);
     uint rowStride = colsAi + 1;
@@ -158,49 +234,46 @@ vertex VertexOut ticketCurlVertex(uint vid [[vertex_id]],
     }
     float b = u.stubExtent * float(j) / float(colsBi);
 
-    float2 perfOrigin = float2(u.perfOriginX, u.perfOriginY);
-    float2 perfDir = float2(u.perfDirX, u.perfDirY);
-    float2 stubN = float2(u.stubNX, u.stubNY);
-    float2 canvasOffset = float2(u.canvasPadding, u.canvasPadding) + float2(u.offsetX, u.offsetY);
-
-    float2 flat = perfOrigin + perfDir * a + stubN * b;
-    float2 uv = float2(flat.x / u.ticketWidth, flat.y / u.ticketHeight);
-    float aFixed = u.patternOrigin + u.patternSign * a;
+    CurlPoint p = curlPoint(a, b, u);
 
     VertexOut out;
-    out.uv = uv;
-    out.paperAB = float2(aFixed, b);
-
-    float theta = clamp(u.theta, 0.05, M_PI_F / 2.0);
-    float heightScale = max(length(float2(u.perfLength, u.stubExtent)), 1.0);
-    float da = a - u.apexA;
-    float radius = length(float2(da, b));
-
-    if (radius < 0.0001) {
-        float2 atApex = flat + canvasOffset;
-        out.position = u.projection * float4(atApex, curlDepth(0.0, heightScale), 1.0);
-        out.normal = float3(0.0, 0.0, 1.0);
-        out.faceSign = 1.0;
-        return out;
-    }
-
-    float sinT = sin(theta);
-    float beta = atan2(b, da) / sinT;
-    float3 ruling = coneRuling(beta, theta);
-    float3 dRulingDPhi = float3(-sin(beta) * sinT, cos(beta), sin(beta) * cos(theta));
-    float3 nrm = cross(ruling, dRulingDPhi);
-
-    float2 apex = perfOrigin + perfDir * u.apexA;
-    float2 placed = apex + perfDir * (radius * ruling.x) + stubN * (radius * ruling.y);
-    float2 onScreen = placed + canvasOffset;
-    float height = radius * ruling.z;
-
-    out.position = u.projection * float4(onScreen, curlDepth(height, heightScale), 1.0);
-    out.normal = float3(perfDir.x * nrm.x + stubN.x * nrm.y,
-                        perfDir.y * nrm.x + stubN.y * nrm.y,
-                        nrm.z);
-    out.faceSign = nrm.z >= 0.0 ? 1.0 : -1.0;
+    out.position = clipPosition(skinPosition(p, skin, u), u);
+    out.normal = p.normal * skin;
+    out.uv = float2(p.flat.x / u.ticketWidth, p.flat.y / u.ticketHeight);
+    out.paperAB = float2(u.patternOrigin + u.patternSign * a, b);
+    out.skin = skin;
     return out;
+}
+
+vertex EdgeOut ticketCurlEdgeVertex(uint vid [[vertex_id]],
+                                    constant float4 *outline [[buffer(0)]],
+                                    constant CurlUniforms &u [[buffer(1)]],
+                                    constant float &edgeCount [[buffer(2)]]) {
+    float4 point = outline[(vid / 2) % max(uint(edgeCount), 1u)];
+    float side = (vid & 1u) == 0u ? 1.0 : -1.0;
+
+    float a = paperA(point.x, u);
+    float b = max(point.y, 0.0);
+    float2 inward = -float2(point.z * u.patternSign, point.w) * 0.5;
+
+    CurlPoint p = curlPoint(a, b, u);
+    CurlPoint q = curlPoint(a + inward.x, max(b + inward.y, 0.0), u);
+
+    EdgeOut out;
+    out.position = clipPosition(skinPosition(p, side, u), u);
+    out.normal = p.position - q.position;
+    out.paperAB = float2(point.x, b);
+    return out;
+}
+
+fragment half4 ticketCurlEdgeFragment(EdgeOut in [[stage_in]],
+                                      constant CurlUniforms &u [[buffer(1)]]) {
+    float a = paperA(in.paperAB.x, u);
+    if (in.paperAB.y < 3.0 && a > u.front) { discard_fragment(); }
+
+    half3 lit = shade(half3(u.paperBack.rgb) * 0.88h, in.normal, 1.0, u);
+    half outA = half(u.opacity);
+    return half4(lit * outA, outA);
 }
 
 fragment half4 ticketCurlFragment(VertexOut in [[stage_in]],
@@ -235,24 +308,14 @@ fragment half4 ticketCurlFragment(VertexOut in [[stage_in]],
     float alpha = smoothstep(-aa, aa, edge) * float(tex.a) * u.opacity;
     if (alpha <= 0.004) { discard_fragment(); }
 
-    bool backFace = in.faceSign < 0.0;
+    bool backFace = in.skin < 0.0;
     half3 printed = tex.a > 0.002h ? half3(tex.rgb / tex.a) : half3(u.paperBack.rgb);
     half3 base = backFace ? half3(u.paperBack.rgb) : printed;
-
-    float3 N = normalize(in.normal) * (backFace ? -1.0 : 1.0);
-    float3 L = normalize(u.lightDir.xyz);
-    float3 H = normalize(L + float3(0.0, 0.0, 1.0));
-
-    float lambertFlat = 0.58 + 0.42 * clamp(L.z, 0.0, 1.0);
-    float lambert = (0.58 + 0.42 * clamp(dot(N, L), 0.0, 1.0)) / max(lambertFlat, 0.001);
-
-    float specFlat = pow(clamp(H.z, 0.0, 1.0), 26.0) * u.sheen;
-    float spec = max(pow(clamp(dot(N, H), 0.0, 1.0), 26.0) * u.sheen - specFlat, 0.0);
 
     float tornTint = mix(0.94, 1.0, smoothstep(0.0, max(3.0 * aaPunch, 0.5), edge));
     float edgeTint = mix(1.0, tornTint, torn);
 
-    half3 lit = base * half(lambert * edgeTint) + half3(half(spec * edgeTint));
+    half3 lit = shade(base, in.normal, edgeTint, u);
     half outA = half(alpha);
     return half4(lit * outA, outA);
 }

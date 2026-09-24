@@ -21,6 +21,7 @@ private struct TicketTearEngineBox {
 struct TicketTear<Content: View>: View {
 
     private let config: TicketTearConfig
+    private let stubShape: (any Shape & Hashable)?
     private let content: Content
     private let onComplete: (() -> Void)?
     private let resetToken: Int
@@ -49,6 +50,7 @@ struct TicketTear<Content: View>: View {
     private var pixelGrid: PixelGrid { PixelGrid(displayScale: displayScale) }
 
     init(config: TicketTearConfig = TicketTearConfig(),
+         stubShape: (any Shape & Hashable)? = nil,
          resetToken: Int = 0,
          contentID: AnyHashable = 0,
          isGrabEnabled: Bool = true,
@@ -61,6 +63,7 @@ struct TicketTear<Content: View>: View {
          probe: TearFrameRateProbe? = nil,
          @ViewBuilder content: () -> Content) {
         self.config = config
+        self.stubShape = stubShape
         self.content = content()
         self.onComplete = onComplete
         self.resetToken = resetToken
@@ -95,7 +98,7 @@ struct TicketTear<Content: View>: View {
                 if config.showsMesh {
                     TicketCurlRenderer(engine: engine, config: config, ticketSize: size,
                                        texture: texture, canvasPadding: config.canvasPadding,
-                                       probe: probe,
+                                       stubShape: stubShape, probe: probe,
                                        onDrawn: {
                                            if phase == .arming { phase = .tearing }
                                            if phase == .returning { phase = .healing }

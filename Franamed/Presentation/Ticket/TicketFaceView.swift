@@ -81,7 +81,8 @@ struct TicketFaceView: View, Equatable {
     }
 
     var body: some View {
-        TicketTear(config: tearConfig, resetToken: card.mode.rawValue,
+        TicketTear(config: tearConfig, stubShape: ResultStubShape(edgeStyle: edgeStyle),
+                   resetToken: card.mode.rawValue,
                    contentID: contentID, isGrabEnabled: isStubGrabEnabled,
                    isContentComplete: !hidesStub,
                    rasterizesContent: isRasterized, returnToken: returnToken,

@@ -15,6 +15,8 @@ extension TicketTearConfig {
         config.holeFraction = 18.0 / 27.0
         config.holeHalfWidth = 2.0
         config.perfEndInset = TicketStyle.tearNotchRadius
+        config.thickness = TicketStyle.paperThickness
+        config.backColor = TicketStyle.paper
         return config
     }
 }

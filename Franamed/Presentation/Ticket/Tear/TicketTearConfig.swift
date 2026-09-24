@@ -68,6 +68,7 @@ nonisolated struct TicketTearConfig: Sendable, Equatable {
 
     var canvasPadding: CGFloat = 96
     var sheen: CGFloat = 0.30
+    var thickness: CGFloat = 1
     var backColor: Color = Color(red: 0.965, green: 0.950, blue: 0.925)
     var showsGrabZone: Bool = false
 
