@@ -12,6 +12,7 @@ struct ProfileSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.dark
+    @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
     @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
     @AppStorage(DebugSettings.returnShrinkKey) private var shrinksOnReturn = false
@@ -34,6 +35,10 @@ struct ProfileSheet: View {
                     .labelsHidden()
                 } header: {
                     Text("Оформление")
+                }
+
+                Section {
+                    Toggle("Вибрация", isOn: $hapticsEnabled)
                 }
 
                 Section {

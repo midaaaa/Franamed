@@ -11,6 +11,5 @@ enum DebugSettings {
     static let overlayKey = "debugShowsOverlay"
     static let returnStyleKey = "debugStubReturnStyle"
     static let returnShrinkKey = "debugShrinksOnReturn"
-    static let hapticsKey = "debugHapticsEnabled"
     static let screenProtectionKey = "debugScreenProtectionEnabled"
 }

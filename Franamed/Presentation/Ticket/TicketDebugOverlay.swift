@@ -14,7 +14,6 @@ struct TicketDebugOverlay: View {
     @Binding var tintsPaper: Bool
     @Binding var usesStraightEdges: Bool
 
-    @AppStorage(DebugSettings.hapticsKey) private var hapticsEnabled = true
 
     var body: some View {
         VStack(spacing: 6) {
@@ -24,16 +23,11 @@ struct TicketDebugOverlay: View {
 
             HStack(spacing: 6) {
                 toggle("меш", isOn: showsMesh) { showsMesh.toggle() }
-                toggle("гаптика", isOn: hapticsEnabled) {
-                    hapticsEnabled.toggle()
-                    Haptics.isEnabled = hapticsEnabled
-                }
                 toggle("бумага", isOn: tintsPaper) { tintsPaper.toggle() }
                 toggle("прямой край", isOn: usesStraightEdges) { usesStraightEdges.toggle() }
             }
         }
         .padding(.top, 8)
-        .onAppear { Haptics.isEnabled = hapticsEnabled }
     }
 
     private func toggle(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {

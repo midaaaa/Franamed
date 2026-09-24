@@ -143,13 +143,10 @@ struct TicketTear<Content: View>: View {
             }
             .onAppear {
                 engine.onResumableChange = { canResumeTear = $0 }
-                engine.onTabBreak = { Haptics.shared.tabBroke() }
-                engine.onTabHeal = { Haptics.shared.tabHealed() }
+                engine.onTabBreak = { Haptics.shared.play(.tabBreak) }
+                engine.onTabHeal = { Haptics.shared.play(.tabHeal) }
                 engine.onReturnComplete = { onReturnChange?(false) }
-                engine.onComplete = {
-                    Haptics.shared.completed()
-                    phase = .detached
-                }
+                engine.onComplete = { phase = .detached }
                 engine.onDetachPush = {
                     completionToken &+= 1
                 }
