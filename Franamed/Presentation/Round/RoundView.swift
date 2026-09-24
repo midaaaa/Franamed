@@ -24,6 +24,9 @@ struct RoundView: View {
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
+    @AppStorage(DebugSettings.roundBackdropKey) private var backdrop: RoundBackdrop = .beam
+
+    private static let hallSpace = "roundHall"
 
     private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
 
@@ -71,7 +74,7 @@ struct RoundView: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
                     .layoutPriority(1)
 
-                    if showsProjector {
+                    if showsProjector && backdrop == .beam {
                         ProjectorBeam(
                             intensity: beamIntensity,
                             stripTints: frames.stripTints,
@@ -109,12 +112,19 @@ struct RoundView: View {
                         )
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
+                        Button {
+                            backdrop = backdrop.next
+                        } label: {
+                            Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
+        .background { if backdrop == .hall, frameHeight > 0 { cinemaHall } }
+        .coordinateSpace(.named(Self.hallSpace))
         .task { await viewModel.loadRound() }
         .task(id: FrameRequest(url: currentFrameURL, isRoundLoading: viewModel.isLoading)) {
             await frames.show(currentFrameURL, isRoundLoading: viewModel.isLoading)
@@ -232,9 +242,22 @@ struct RoundView: View {
         }
     }
 
+    private var cinemaHall: some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .named(Self.hallSpace)).minY
+            ProtectedContent(isProtected: isScreenProtected) {
+                CinemaHall(imageURL: frames.displayedURL, scene: HallScene(), size: proxy.size,
+                           frameTop: -origin, frameBottom: frameHeight - origin)
+                    .equatable()
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
     @ViewBuilder
     private var beamSource: some View {
-        if showsProjector {
+        if showsProjector && backdrop == .beam {
             ZStack(alignment: .bottom) {
                 ProjectorSourceHalo()
                     .opacity(isProjectorLit ? 1 : 0)
