@@ -33,6 +33,8 @@ private final class ProjectorTintCache: @unchecked Sendable {
 }
 
 enum ProjectorFrameTint {
+    static let stripCount = 14
+
     private static let context = CIContext()
 
     nonisolated static func cachedTints(for url: URL) -> [ProjectorStripTint]? {
@@ -43,8 +45,8 @@ enum ProjectorFrameTint {
         ProjectorTintCache.shared.store(tints, for: url)
     }
 
-    nonisolated static func averageStripTints(from image: UIImage, stripCount: Int) -> [ProjectorStripTint] {
-        guard stripCount > 0, let cgImage = image.cgImage else { return [] }
+    nonisolated static func averageStripTints(from image: UIImage) -> [ProjectorStripTint] {
+        guard let cgImage = image.cgImage else { return [] }
         let ciImage = CIImage(cgImage: cgImage)
         let extent = ciImage.extent
         guard extent.width > 0, extent.height > 0 else { return [] }
@@ -80,25 +82,5 @@ enum ProjectorFrameTint {
 
             return ProjectorStripTint(color: Color(vividColor), brightness: Double(brightness))
         }
-    }
-
-    nonisolated static func loadAndSample(url: URL, stripCount: Int) async -> [ProjectorStripTint] {
-        if let cachedTints = cachedTints(for: url) {
-            return cachedTints
-        }
-
-        let image: UIImage
-        if let cached = ImageCache.shared.image(for: url) {
-            image = cached
-        } else {
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let downloaded = UIImage(data: data) else { return [] }
-            ImageCache.shared.store(downloaded, for: url)
-            image = downloaded
-        }
-
-        let tints = averageStripTints(from: image, stripCount: stripCount)
-        storeTints(tints, for: url)
-        return tints
     }
 }

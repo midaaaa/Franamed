@@ -11,15 +11,12 @@ import UIKit
 
 struct RoundView: View {
     @StateObject private var viewModel: RoundViewModel
+    @StateObject private var frames = RoundFrames()
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var containerHeight: CGFloat = 0
     @State private var frameHeight: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
-    @State private var stripTints: [ProjectorStripTint] = []
-    @State private var displayedURL: URL?
-    @State private var isBeamFillLit = false
-    @State private var isWaitingForFrame = false
     @State private var isProjectorLit = false
     @State private var showsProjector = true
     @State private var showsResult = false
@@ -65,8 +62,8 @@ struct RoundView: View {
             } else {
                 VStack(spacing: 0) {
                     FrameView(
-                        imageURL: displayedURL,
-                        isWaitingForFrame: isWaitingForFrame,
+                        imageURL: frames.displayedURL,
+                        isWaitingForFrame: frames.isWaiting,
                         isProtected: isScreenProtected && viewModel.outcome == nil,
                         onTapPrevious: { viewModel.showPreviousFrame() },
                         onTapNext: { viewModel.showNextFrame() }
@@ -77,8 +74,8 @@ struct RoundView: View {
                     if showsProjector {
                         ProjectorBeam(
                             intensity: beamIntensity,
-                            stripTints: stripTints,
-                            isFillLit: isBeamFillLit,
+                            stripTints: frames.stripTints,
+                            isFillLit: frames.isFillLit,
                             referenceHeight: beamReferenceHeight,
                             isProtected: isScreenProtected,
                             showsSource: false
@@ -119,8 +116,11 @@ struct RoundView: View {
             }
         }
         .task { await viewModel.loadRound() }
-        .task(id: currentBackdropURL) {
-            await transitionToCurrentFrame()
+        .task(id: FrameRequest(url: currentFrameURL, isRoundLoading: viewModel.isLoading)) {
+            await frames.show(currentFrameURL, isRoundLoading: viewModel.isLoading)
+        }
+        .task(id: frameURLs) {
+            await frames.preload(frameURLs)
         }
         .onChange(of: viewModel.hasSearched) { _, _ in
             pendingAnimatedHeightCatchUp = true
@@ -166,89 +166,19 @@ struct RoundView: View {
         }
     }
 
-    private var visibleBackdrops: [Backdrop] {
-        guard !viewModel.isLoading, let mediaItemWithBackdrops = viewModel.mediaItemWithBackdrops else { return [] }
-        return Array(mediaItemWithBackdrops.backdrops.prefix(viewModel
-            .frameCount))
+    private var frameURLs: [URL] {
+        guard !viewModel.isLoading, let media = viewModel.mediaItemWithBackdrops else { return [] }
+        return media.backdrops.prefix(viewModel.frameCount).compactMap { URL(string: $0.filePath) }
     }
 
-    private var currentBackdropURL: URL? {
-        guard let backdrop = visibleBackdrops[safe: viewModel.currentFrameIndex] else { return nil }
-        return URL(string: backdrop.filePath)
+    private var currentFrameURL: URL? {
+        frameURLs[safe: viewModel.currentFrameIndex]
     }
 
-    private func transitionToCurrentFrame() async {
-        guard let url = currentBackdropURL else {
-            displayedURL = nil
-            stripTints = []
-            isBeamFillLit = false
-            isWaitingForFrame = false
-            return
-        }
-        guard url != displayedURL else { return }
-
-        if let cachedImage = ImageCache.shared.image(for: url) {
-            displayedURL = url
-
-            if let cachedTints = ProjectorFrameTint.cachedTints(for: url) {
-                stripTints = cachedTints
-                isBeamFillLit = true
-                isWaitingForFrame = false
-                return
-            }
-
-            let tints = await Task.detached(priority: .userInitiated) {
-                ProjectorFrameTint.averageStripTints(from: cachedImage, stripCount: 14)
-            }.value
-            guard !Task.isCancelled, url == currentBackdropURL else { return }
-            ProjectorFrameTint.storeTints(tints, for: url)
-            stripTints = tints
-            isBeamFillLit = true
-            isWaitingForFrame = false
-            return
-        }
-
-        displayedURL = nil
-        isBeamFillLit = false
-        isWaitingForFrame = false
-
-        let loadTask = Task { await ProjectorFrameTint.loadAndSample(url: url, stripCount: 14) }
-
-        let timedOut = await withTaskGroup(of: Bool.self) { group -> Bool in
-            group.addTask { _ = await loadTask.value; return false }
-            group.addTask {
-                try? await Task.sleep(for: .milliseconds(180))
-                return true
-            }
-            let first = await group.next() ?? false
-            group.cancelAll()
-            return first
-        }
-
-        guard !Task.isCancelled else {
-            loadTask.cancel()
-            return
-        }
-
-        if timedOut {
-            isWaitingForFrame = true
-        }
-
-        let tints = await loadTask.value
-        guard !Task.isCancelled else { return }
-
-        displayedURL = url
-        stripTints = tints
-        isBeamFillLit = true
-        isWaitingForFrame = false
-    }
-
-    private var startNewRound: () -> Void {
-        {
-            answerBarHeight = 44
-            pendingAnimatedHeightCatchUp = false
-            Task { await viewModel.loadRound() }
-        }
+    private func startNewRound() {
+        answerBarHeight = 44
+        pendingAnimatedHeightCatchUp = false
+        Task { await viewModel.loadRound() }
     }
 
     private var bottomActionBar: some View {
@@ -333,6 +263,11 @@ struct RoundView: View {
             answerBarHeight = newHeight
         }
     }
+}
+
+private struct FrameRequest: Equatable {
+    let url: URL?
+    let isRoundLoading: Bool
 }
 
 private struct RoundViewPreviewHost: View {

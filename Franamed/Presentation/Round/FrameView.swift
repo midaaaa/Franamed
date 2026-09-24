@@ -15,7 +15,7 @@ struct FrameView: View {
     let onTapNext: () -> Void
 
     var body: some View {
-        Color.black
+        Color.clear
             .frame(maxWidth: .infinity)
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .overlay {

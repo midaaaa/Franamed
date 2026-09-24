@@ -10,16 +10,20 @@ import SwiftUI
 struct CachedAsyncImage: View {
     let url: URL?
     var isProtected: Bool?
-    @State private var uiImage: UIImage?
+    @State private var loaded: (url: URL, image: UIImage)?
 
     private var displayed: UIImage? {
-        uiImage ?? url.flatMap { ImageCache.shared.image(for: $0) }
+        guard let url else { return nil }
+        return ImageCache.shared.image(for: url) ?? (loaded?.url == url ? loaded?.image : nil)
     }
 
     var body: some View {
         Group {
             if let isProtected {
                 ProtectedImage(image: displayed, isProtected: isProtected)
+                    .overlay {
+                        if displayed == nil { ProgressView().tint(.white) }
+                    }
             } else if let uiImage = displayed {
                 Image(uiImage: uiImage)
                     .resizable()
@@ -34,25 +38,12 @@ struct CachedAsyncImage: View {
     }
 
     private func loadImage() async {
-        guard let url else {
-            uiImage = nil
-            return
-        }
-
-        if let cachedImage = ImageCache.shared.image(for: url) {
-            uiImage = cachedImage
-            return
-        }
-
-        uiImage = nil
-
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let downloadedImage = UIImage(data: data) else {
-            return
-        }
+        guard let url, ImageCache.shared.image(for: url) == nil,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let downloadedImage = UIImage(data: data) else { return }
 
         ImageCache.shared.store(downloadedImage, for: url)
-        uiImage = downloadedImage
+        loaded = (url, downloadedImage)
     }
 }
 
