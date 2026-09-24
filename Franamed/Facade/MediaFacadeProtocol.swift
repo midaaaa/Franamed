@@ -11,6 +11,7 @@ protocol MediaFacadeProtocol {
     func fetchRandomMediaItemAndBackdrops(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> MediaItemWithBackdrops
     func searchMedia(mediaType: MediaType, query: String, language: String) async throws -> [MediaItem]
     func fetchGenres(mediaType: MediaType) async throws -> [Genre]
+    func fetchDetails(mediaType: MediaType, id: Int) async throws -> MediaDetails
     func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int
 
     func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, excludeWatched: Bool) async throws -> RoundPayload

@@ -31,6 +31,9 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var revealedCount = 1
     @Published private(set) var currentFrameIndex = 0
     @Published private(set) var answeredFrameIndex: Int?
+    @Published private(set) var details: MediaDetails?
+    @Published private(set) var genreNames: [String] = []
+    private var detailsTask: Task<Void, Never>?
     private let mediaFacade: MediaFacadeProtocol
 
     init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
@@ -57,10 +60,14 @@ final class RoundViewModel: ObservableObject {
         currentFrameIndex = 0
         answeredFrameIndex = nil
         attemptsMade = 0
+        details = nil
         selectedSuggestion = nil
 
         do {
-            mediaItemWithBackdrops = try await mediaFacade.fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
+            let loaded = try await mediaFacade.fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
+            mediaItemWithBackdrops = loaded
+            prefetchDetails(for: loaded.item)
+            prefetchGenreNames()
         } catch {
             self.error = error
         }
@@ -113,6 +120,25 @@ final class RoundViewModel: ObservableObject {
                 outcome = .incorrect
                 modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
             }
+        }
+    }
+
+    private func prefetchDetails(for item: MediaItem) {
+        detailsTask?.cancel()
+        detailsTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let fetched = try? await mediaFacade.fetchDetails(mediaType: mediaType, id: item.id)
+            guard !Task.isCancelled else { return }
+            details = fetched
+        }
+    }
+
+    private func prefetchGenreNames() {
+        guard genreNames.isEmpty, let ids = filters.genres, !ids.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let all = (try? await mediaFacade.fetchGenres(mediaType: mediaType)) ?? []
+            genreNames = all.filter { ids.contains($0.id) }.map(\.name)
         }
     }
 

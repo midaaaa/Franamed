@@ -39,6 +39,10 @@ final class MediaFacade: MediaFacadeProtocol {
         try await tmdbClient.fetchGenres(mediaType: mediaType)
     }
 
+    func fetchDetails(mediaType: MediaType, id: Int) async throws -> MediaDetails {
+        try await tmdbClient.fetchDetails(mediaType: mediaType, id: id)
+    }
+
     func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
         try await tmdbClient.fetchResultsCount(mediaType: mediaType, filters: filters)
     }

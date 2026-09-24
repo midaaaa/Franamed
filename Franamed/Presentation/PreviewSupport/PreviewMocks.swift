@@ -22,6 +22,10 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
         )
     }
 
+    func fetchDetails(mediaType: MediaType, id: Int) async throws -> MediaDetails {
+        PreviewDetails.movie
+    }
+
     func fetchGenres(mediaType: MediaType) async throws -> [Genre] {
         [
             Genre(id: 1, name: "Драма"),
@@ -175,3 +179,11 @@ extension BackendUser {
 }
 #endif
 
+enum PreviewDetails {
+    static let movie = MediaDetails(
+        runtimeMinutes: 181,
+        firstYear: 2023,
+        certification: "16+",
+        authors: ["Кристофер Нолан"]
+    )
+}

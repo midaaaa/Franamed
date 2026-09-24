@@ -197,6 +197,30 @@ final class TMDBClient: TMDBClientProtocol {
         return genresResponse.genres
     }
 
+    func get<T: Decodable>(path: String, query: [URLQueryItem]) async throws -> T {
+        guard var components = URLComponents(string: "\(baseURL)\(path)") else {
+            throw TMDBError.invalidResponse
+        }
+
+        components.queryItems = [URLQueryItem(name: "api_key", value: apiKey)] + query
+
+        guard let url = components.url else {
+            throw TMDBError.invalidResponse
+        }
+
+        let (data, response) = try await session.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TMDBError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw TMDBError.httpError(statusCode: httpResponse.statusCode)
+        }
+
+        return try decoder.decode(T.self, from: data)
+    }
+
     private func decodeList(mediaType: MediaType, data: Data) throws -> MediaListResponse {
         switch mediaType {
         case .movie:
