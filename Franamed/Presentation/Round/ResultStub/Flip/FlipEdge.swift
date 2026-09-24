@@ -1,5 +1,5 @@
 //
-//  TicketFlipEdge.swift
+//  FlipEdge.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 22.09.2026.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-enum TicketFlipEdge {
+enum FlipEdge {
     typealias Vertex = EdgeOutline.Vertex
     typealias Outline = EdgeOutline.Outline
 

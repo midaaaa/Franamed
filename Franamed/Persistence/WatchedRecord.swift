@@ -1,5 +1,5 @@
 //
-//  WatchedMovieCache.swift
+//  WatchedRecord.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 20.08.2026.
@@ -9,8 +9,8 @@ import Foundation
 import SwiftData
 
 @Model
-final class WatchedMovieCache {
-    #Unique<WatchedMovieCache>([\.tmdbId, \.mediaTypeRawValue])
+final class WatchedRecord {
+    #Unique<WatchedRecord>([\.tmdbId, \.mediaTypeRawValue])
     var tmdbId: Int
     var mediaTypeRawValue: String = MediaType.movie.rawValue
     var addedAt: Date

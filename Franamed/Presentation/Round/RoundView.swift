@@ -246,7 +246,7 @@ struct RoundView: View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .named(Self.hallSpace)).minY
             ProtectedContent(isProtected: isScreenProtected) {
-                CinemaHall(imageURL: frames.displayedURL, scene: HallScene(), size: proxy.size,
+                HallView(imageURL: frames.displayedURL, scene: HallScene(), size: proxy.size,
                            frameTop: -origin, frameBottom: frameHeight - origin)
                     .equatable()
             }
@@ -308,5 +308,5 @@ private struct RoundViewPreviewHost: View {
 
 #Preview {
     RoundViewPreviewHost()
-        .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
+        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

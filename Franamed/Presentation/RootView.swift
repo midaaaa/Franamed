@@ -56,5 +56,5 @@ struct RootView: View {
 
 #Preview {
     RootView(session: SessionStore(auth: PreviewAuthService()))
-        .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
+        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

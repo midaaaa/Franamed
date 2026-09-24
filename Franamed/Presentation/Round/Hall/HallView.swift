@@ -1,5 +1,5 @@
 //
-//  CinemaHall.swift
+//  HallView.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 23.09.2026.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct CinemaHall: View, Equatable {
+struct HallView: View, Equatable {
     let imageURL: URL?
     let scene: HallScene
     let size: CGSize
@@ -19,7 +19,7 @@ struct CinemaHall: View, Equatable {
 
     private static let movingScale: CGFloat = 0.65
 
-    nonisolated static func == (lhs: CinemaHall, rhs: CinemaHall) -> Bool {
+    nonisolated static func == (lhs: HallView, rhs: HallView) -> Bool {
         lhs.imageURL == rhs.imageURL && lhs.scene == rhs.scene && lhs.size == rhs.size
             && lhs.frameTop == rhs.frameTop && lhs.frameBottom == rhs.frameBottom
     }

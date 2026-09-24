@@ -91,7 +91,7 @@ final class RoundViewModel: ObservableObject {
         let item = mediaItemWithBackdrops.item
         attemptsMade += 1
         if attemptsMade == 1 {
-            modelContext.insert(WatchedMovieCache(tmdbId: item.id, mediaType: mediaType, addedAt: .now))
+            modelContext.insert(WatchedRecord(tmdbId: item.id, mediaType: mediaType, addedAt: .now))
         }
         let isCorrect: Bool
         if let pickedId = pickedSuggestionId {

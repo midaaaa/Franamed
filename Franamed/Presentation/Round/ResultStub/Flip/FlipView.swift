@@ -1,5 +1,5 @@
 //
-//  TicketFlipView.swift
+//  FlipView.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 22.09.2026.
@@ -8,14 +8,14 @@
 import SwiftUI
 import UIKit
 
-struct TicketFlipView<Front: View, Back: View>: View {
+struct FlipView<Front: View, Back: View>: View {
     let size: CGSize
     let contentID: AnyHashable
-    let menuItems: [StubMenuItem]
+    let menuItems: [FlipMenuItem]
     @ViewBuilder let front: () -> Front
     @ViewBuilder let back: () -> Back
 
-    @StateObject private var engine = TicketFlipEngine()
+    @StateObject private var engine = FlipEngine()
     @StateObject private var faces = FlipFaces()
     @State private var isMenuActive = false
 
@@ -57,12 +57,12 @@ struct TicketFlipView<Front: View, Back: View>: View {
 }
 
 private struct FlipInteractionView: UIViewRepresentable {
-    let engine: TicketFlipEngine
+    let engine: FlipEngine
     let size: CGSize
     let frontImage: UIImage?
     let backImage: UIImage?
     let edgeStyle: TicketEdgeStyle
-    let menuItems: [StubMenuItem]
+    let menuItems: [FlipMenuItem]
     let onMenuActiveChange: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -96,12 +96,12 @@ private struct FlipInteractionView: UIViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, UIGestureRecognizerDelegate, UIContextMenuInteractionDelegate {
-        var engine: TicketFlipEngine?
+        var engine: FlipEngine?
         var size: CGSize = .zero
         var frontImage: UIImage?
         var backImage: UIImage?
         var edgeStyle: TicketEdgeStyle = .scalloped
-        var menuItems: [StubMenuItem] = []
+        var menuItems: [FlipMenuItem] = []
         var onMenuActiveChange: (Bool) -> Void = { _ in }
 
         private static let highlightTimeout: TimeInterval = 1.0

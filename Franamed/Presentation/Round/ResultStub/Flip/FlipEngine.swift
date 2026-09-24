@@ -1,5 +1,5 @@
 //
-//  TicketFlipEngine.swift
+//  FlipEngine.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 21.09.2026.
@@ -9,7 +9,7 @@ import SwiftUI
 import Combine
 
 @MainActor
-final class TicketFlipEngine: ObservableObject {
+final class FlipEngine: ObservableObject {
     @Published private(set) var isFrontVisible = true
 
     private(set) var angle: Double = 0 {

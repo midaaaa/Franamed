@@ -335,5 +335,5 @@ struct TicketView: View {
 
 #Preview {
     TicketView(coordinator: AppCoordinator())
-        .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
+        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

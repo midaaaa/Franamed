@@ -1,5 +1,5 @@
 //
-//  TicketFlipRenderer.swift
+//  FlipRenderer.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 21.09.2026.
@@ -57,10 +57,10 @@ enum FlipMesh {
     }
 }
 
-struct TicketFlipRenderer: UIViewRepresentable {
+struct FlipRenderer: UIViewRepresentable {
     static let sampleCount = 4
 
-    let engine: TicketFlipEngine
+    let engine: FlipEngine
     let frontTexture: MTLTexture?
     let backTexture: MTLTexture?
     let stubSize: CGSize
@@ -105,13 +105,13 @@ struct TicketFlipRenderer: UIViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, MTKViewDelegate {
-        let engine: TicketFlipEngine
+        let engine: FlipEngine
         var frontTexture: MTLTexture?
         var backTexture: MTLTexture?
         var stubSize: CGSize = .zero
         private(set) var outlineChanged = false
 
-        init(engine: TicketFlipEngine) {
+        init(engine: FlipEngine) {
             self.engine = engine
         }
 
@@ -123,7 +123,7 @@ struct TicketFlipRenderer: UIViewRepresentable {
         private var depthState: MTLDepthStencilState!
 
         private var device: MTLDevice!
-        private var outline = TicketFlipEdge.Outline()
+        private var outline = FlipEdge.Outline()
         private var outlineBuffer: MTLBuffer?
         private var outlineSize: CGSize = .zero
         private var outlineStyle: TicketEdgeStyle = .scalloped
@@ -133,10 +133,10 @@ struct TicketFlipRenderer: UIViewRepresentable {
             guard outlineChanged else { return }
             outlineSize = size
             outlineStyle = edgeStyle
-            outline = TicketFlipEdge.outline(size: size, edgeStyle: edgeStyle)
+            outline = FlipEdge.outline(size: size, edgeStyle: edgeStyle)
             outlineBuffer = outline.vertices.isEmpty ? nil : device?.makeBuffer(
                 bytes: outline.vertices,
-                length: outline.vertices.count * MemoryLayout<TicketFlipEdge.Vertex>.stride,
+                length: outline.vertices.count * MemoryLayout<FlipEdge.Vertex>.stride,
                 options: .storageModeShared)
         }
 
@@ -163,7 +163,7 @@ struct TicketFlipRenderer: UIViewRepresentable {
             descriptor.depthAttachmentPixelFormat = depthFormat
             descriptor.colorAttachments[0].pixelFormat = colorFormat
 
-            descriptor.rasterSampleCount = TicketFlipRenderer.sampleCount
+            descriptor.rasterSampleCount = FlipRenderer.sampleCount
             descriptor.isAlphaToCoverageEnabled = true
 
             pipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
@@ -231,7 +231,7 @@ struct TicketFlipRenderer: UIViewRepresentable {
                     encoder.setVertexBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
                     encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
                     encoder.setVertexBufferOffset(
-                        range.lowerBound * MemoryLayout<TicketFlipEdge.Vertex>.stride, index: 0)
+                        range.lowerBound * MemoryLayout<FlipEdge.Vertex>.stride, index: 0)
                     encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
                                            vertexCount: (range.count + 1) * 2)
                 }

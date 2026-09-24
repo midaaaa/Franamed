@@ -1,5 +1,5 @@
 //
-//  StubShake.swift
+//  ResultStubShake.swift
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 21.09.2026.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct StubShake: GeometryEffect {
+struct ResultStubShake: GeometryEffect {
     static let duration: Double = 0.42
 
     var travel: CGFloat = 12

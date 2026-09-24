@@ -11,7 +11,7 @@ import SwiftData
 @main
 struct FranamedApp: App {
     let container: ModelContainer = {
-        let schema = Schema([RoundRecord.self, WatchedMovieCache.self])
+        let schema = Schema([RoundRecord.self, WatchedRecord.self])
         let configuration = ModelConfiguration(schema: schema)
 
         do {

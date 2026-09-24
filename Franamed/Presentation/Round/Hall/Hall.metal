@@ -1,5 +1,5 @@
 //
-//  CinemaHall.metal
+//  Hall.metal
 //  Franamed
 //
 //  Created by Дмитрий Филимонов on 24.09.2026.

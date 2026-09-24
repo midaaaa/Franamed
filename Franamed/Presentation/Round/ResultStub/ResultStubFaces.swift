@@ -7,67 +7,6 @@
 
 import SwiftUI
 
-enum ResultStubMetrics {
-    static let height: CGFloat = 210
-    static let tornInset: CGFloat = 6
-
-    @MainActor
-    static var scallopInset: CGFloat {
-        TicketPerforationShape.scallopDepth(width: width)
-    }
-
-    @MainActor
-    static var width: CGFloat {
-        max(200, WindowMetrics.size.width - TicketStyle.screenInset * 2)
-    }
-}
-
-struct ResultStubPaper<Content: View>: View {
-    var mirrored = false
-    @ViewBuilder let content: Content
-
-    @AppStorage(DebugSettings.straightEdgeKey) private var usesStraightEdges = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            content
-        }
-        .padding(.top, TicketStyle.stubPadding + ResultStubMetrics.tornInset)
-        .padding(.bottom, TicketStyle.stubPadding
-                 + (usesStraightEdges ? 0 : ResultStubMetrics.scallopInset))
-        .padding(.horizontal, TicketStyle.stubPadding)
-        .frame(width: ResultStubMetrics.width,
-               height: ResultStubMetrics.height,
-               alignment: .topLeading)
-        .background(TicketStyle.paper)
-        .clipShape(ResultStubShape(edgeStyle: TicketEdgeStyle(usesStraightEdges: usesStraightEdges),
-                                   mirrored: mirrored))
-        .environment(\.colorScheme, .light)
-    }
-}
-
-struct ResultStubDots: View {
-    let used: Int
-    let total: Int
-    let isCorrect: Bool
-
-    var body: some View {
-        HStack(spacing: 5) {
-            ForEach(0..<total, id: \.self) { index in
-                Circle()
-                    .fill(color(at: index))
-                    .frame(width: 6, height: 6)
-            }
-        }
-    }
-
-    private func color(at index: Int) -> Color {
-        guard index < used else { return .black.opacity(0.18) }
-        if index == used - 1 { return isCorrect ? .green : .red }
-        return .black.opacity(0.45)
-    }
-}
-
 struct ResultStubFront: View {
     let content: ResultStubContent
 

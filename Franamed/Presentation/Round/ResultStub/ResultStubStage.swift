@@ -54,7 +54,7 @@ struct ResultStubStage: View {
             Color.clear
                 .frame(width: ResultStubMetrics.width, height: travel)
                 .overlay(alignment: .bottom) {
-                    TicketFlipView(size: CGSize(width: ResultStubMetrics.width, height: ResultStubMetrics.height),
+                    FlipView(size: CGSize(width: ResultStubMetrics.width, height: ResultStubMetrics.height),
                                    contentID: FacesID(content: content, genreNames: genreNames),
                                    menuItems: menuItems(content)) {
                         ResultStubFront(content: content)
@@ -63,7 +63,7 @@ struct ResultStubStage: View {
                                             frameCount: frameCount, genreNames: genreNames)
                     }
                     .offset(y: -travel * (1 - reveal))
-                    .modifier(StubShake(animatableData: shake))
+                    .modifier(ResultStubShake(animatableData: shake))
                 }
                 .mask(alignment: .top) {
                     Rectangle()
@@ -89,17 +89,17 @@ struct ResultStubStage: View {
             withAnimation(.easeOut(duration: Self.slideDuration)) { reveal = 1 }
             try? await Task.sleep(for: .seconds(Self.slideDuration))
             guard !Task.isCancelled else { return }
-            withAnimation(.linear(duration: StubShake.duration)) { shake = 1 }
+            withAnimation(.linear(duration: ResultStubShake.duration)) { shake = 1 }
             Haptics.shared.play(.answerWrong)
         }
     }
 
-    private func menuItems(_ content: ResultStubContent) -> [StubMenuItem] {
+    private func menuItems(_ content: ResultStubContent) -> [FlipMenuItem] {
         [
-            StubMenuItem(title: "Скопировать название", systemImage: "doc.on.doc") {
+            FlipMenuItem(title: "Скопировать название", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = content.title
             },
-            StubMenuItem(title: "Загуглить", systemImage: "magnifyingglass") {
+            FlipMenuItem(title: "Загуглить", systemImage: "magnifyingglass") {
                 webSearch = WebSearchLink(query: searchQuery(content))
             }
         ]

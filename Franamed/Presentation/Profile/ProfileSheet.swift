@@ -63,7 +63,7 @@ struct ProfileSheet: View {
                         Text("Удалить всю историю просмотренных фильмов и сериалов? Это нельзя отменить.")
                             .foregroundStyle(.secondary)
                         Button("Подтвердить удаление", role: .destructive) {
-                            try? modelContext.delete(model: WatchedMovieCache.self)
+                            try? modelContext.delete(model: WatchedRecord.self)
                             isConfirming = false
                         }
                         Button("Отмена") {
@@ -107,5 +107,5 @@ struct ProfileSheet: View {
 #Preview {
     ProfileSheet()
         .environmentObject(SessionStore(auth: PreviewAuthService()))
-        .modelContainer(for: [RoundRecord.self, WatchedMovieCache.self], inMemory: true)
+        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

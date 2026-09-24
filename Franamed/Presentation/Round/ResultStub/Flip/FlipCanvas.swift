@@ -29,13 +29,13 @@ final class FlipFaces: ObservableObject {
 }
 
 struct FlipCanvas: View {
-    let engine: TicketFlipEngine
+    let engine: FlipEngine
     @ObservedObject var faces: FlipFaces
     let size: CGSize
     let edgeStyle: TicketEdgeStyle
 
     var body: some View {
-        TicketFlipRenderer(
+        FlipRenderer(
             engine: engine,
             frontTexture: faces.frontTexture,
             backTexture: faces.backTexture,
