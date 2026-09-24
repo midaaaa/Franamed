@@ -10,6 +10,10 @@ import SwiftUI
 enum TicketEdgeStyle: Hashable {
     case scalloped
     case straight
+
+    init(usesStraightEdges: Bool) {
+        self = usesStraightEdges ? .straight : .scalloped
+    }
 }
 
 struct TicketPerforationShape: Shape {

@@ -39,7 +39,7 @@ struct TicketView: View {
 
     @State private var showsMesh = true
     @State private var tintsPaper = false
-    @State private var usesStraightEdges = false
+    @AppStorage(DebugSettings.straightEdgeKey) private var usesStraightEdges = false
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
     @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
     @AppStorage(DebugSettings.returnShrinkKey) private var shrinksOnReturn = false
@@ -150,7 +150,7 @@ struct TicketView: View {
             hidesStub: hidesStub,
             showsMesh: showsMesh,
             tintsPaper: tintsPaper,
-            edgeStyle: usesStraightEdges ? .straight : .scalloped,
+            edgeStyle: TicketEdgeStyle(usesStraightEdges: usesStraightEdges),
             returnToken: stubReturnToken,
             returnStyle: returnStyle,
             posterZoom: posterZoom,
