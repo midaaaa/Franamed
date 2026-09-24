@@ -26,6 +26,7 @@ enum TicketStyle {
     static let screenInset: CGFloat = 50
     static let posterAspectRatio: CGFloat = 1.5
     static let tearNotchRadius: CGFloat = 16
+    static let paperThickness: CGFloat = 1
     static let stubPadding: CGFloat = 12
     static let stubSpacing: CGFloat = 8
     static let fieldRowSpacing: CGFloat = 6

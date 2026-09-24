@@ -25,13 +25,19 @@ enum TicketSnapshot {
         }
         #endif
 
+        return image(of: content, scale: scale).flatMap(texture(from:))
+    }
+
+    @MainActor
+    static func image(of content: some View, scale: CGFloat) -> CGImage? {
         let renderer = ImageRenderer(content: content)
         renderer.scale = scale
-        guard let rendered = renderer.cgImage,
-              let normalized = normalized(rendered),
-              let loader = textureLoader else { return nil }
+        return renderer.cgImage.flatMap(normalized)
+    }
 
-        return try? loader.newTexture(cgImage: normalized, options: [
+    @MainActor
+    static func texture(from image: CGImage) -> MTLTexture? {
+        try? textureLoader?.newTexture(cgImage: image, options: [
             .SRGB: false,
             .origin: MTKTextureLoader.Origin.topLeft,
             .generateMipmaps: true
