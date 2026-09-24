@@ -4,8 +4,8 @@ Cloudflare Worker + D1. Serves everything the app needs beyond TMDB itself:
 accounts, the curated catalogue, curation, playlists, the daily puzzle, and the
 attempt economy.
 
-The TMDB image proxy stays a separate worker (`../tmdb-proxy`) — this one never
-serves images, only the paths to them.
+Images come straight from `image.tmdb.org` — this worker never serves images,
+only the paths to them.
 
 ## Deploy
 

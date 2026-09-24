@@ -8,7 +8,8 @@
 import Foundation
 
 final class TMDBClient: TMDBClientProtocol {
-    private static let defaultBaseURL = "https://franamed-tmdb-proxy.fildima8423.workers.dev"
+    private static let defaultBaseURL = "https://api.themoviedb.org"
+    private static let imageBaseURL = "https://image.tmdb.org"
 
     private let apiKey: String
     private let baseURL: String
@@ -130,7 +131,7 @@ final class TMDBClient: TMDBClientProtocol {
         return backdropsResponse.backdrops
             .filter { $0.iso6391 == nil }
             .map { rawBackdrop in
-                Backdrop(filePath: "\(baseURL)/t/p/w1280\(rawBackdrop.filePath)")
+                Backdrop(filePath: "\(Self.imageBaseURL)/t/p/w1280\(rawBackdrop.filePath)")
             }
     }
 

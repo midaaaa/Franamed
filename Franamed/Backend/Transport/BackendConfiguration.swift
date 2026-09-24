@@ -13,6 +13,6 @@ struct BackendConfiguration: Sendable {
 
     static let `default` = BackendConfiguration(
         apiBaseURL: "https://franamed-api.fildima8423.workers.dev",
-        imageBaseURL: "https://franamed-tmdb-proxy.fildima8423.workers.dev"
+        imageBaseURL: "https://image.tmdb.org"
     )
 }
