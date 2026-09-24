@@ -60,13 +60,8 @@ struct TicketFaceView: View, Equatable {
     }
 
     private var tearConfig: TicketTearConfig {
-        var config = TicketTearConfig()
-        config.stubSide = .bottom
+        var config = TicketTearConfig.ticket(width: width)
         config.stubExtent = stubHeight > 0 ? stubHeight : 140
-        config.pitch = max(width - 2 * TicketStyle.tearNotchRadius, 1) / 9
-        config.holeFraction = 18.0 / 27.0
-        config.holeHalfWidth = 2.0
-        config.perfEndInset = TicketStyle.tearNotchRadius
         config.showsMesh = showsMesh
         config.returnStyle = returnStyle
         return config

@@ -23,26 +23,46 @@ struct TicketPerforationShape: Shape {
     var tearNotchEdges: VerticalEdge.Set = []
     var edgeStyle: TicketEdgeStyle = .scalloped
 
-    var tabCount: Int = 10
-    var cornerScallopScale: CGFloat = 1.6
-    var scallopFillRatio: CGFloat = 0.8
-
     var tearNotchRadius: CGFloat = TicketStyle.tearNotchRadius
 
-    static func scallopDepth(width: CGFloat, tabCount: Int = 10,
-                             cornerScallopScale: CGFloat = 1.6,
-                             scallopFillRatio: CGFloat = 0.8) -> CGFloat {
-        let interior = max(tabCount - 1, 2)
-        let inset = 1 + scallopFillRatio / 2 * (cornerScallopScale - 1)
-        let step = width / (CGFloat(interior - 1) + 2 * inset)
-        return step / 2 * scallopFillRatio
+    struct Scallop {
+        let x: CGFloat
+        let radius: CGFloat
+    }
+
+    private static let scallopCount = 10
+    private static let cornerScallopScale: CGFloat = 1.6
+    private static let scallopFillRatio: CGFloat = 0.8
+    private static let interiorScallops = max(scallopCount - 1, 2)
+    private static let scallopInset = 1 + scallopFillRatio / 2 * (cornerScallopScale - 1)
+
+    private static func scallopStep(width: CGFloat) -> CGFloat {
+        width / (CGFloat(interiorScallops - 1) + 2 * scallopInset)
+    }
+
+    static func scallopDepth(width: CGFloat) -> CGFloat {
+        scallopStep(width: width) / 2 * scallopFillRatio
+    }
+
+    static func scallops(in rect: CGRect) -> [Scallop] {
+        let step = scallopStep(width: rect.width)
+        let radius = scallopDepth(width: rect.width)
+        let cornerRadius = radius * cornerScallopScale
+        let firstCenter = rect.minX + step * scallopInset
+
+        var result = [Scallop(x: rect.minX, radius: cornerRadius)]
+        result += (0..<interiorScallops).map {
+            Scallop(x: firstCenter + step * CGFloat($0), radius: radius)
+        }
+        result.append(Scallop(x: rect.maxX, radius: cornerRadius))
+        return result
     }
 
     func path(in rect: CGRect) -> Path {
         var cuts = Path()
 
         if edgeStyle == .scalloped {
-            for scallop in scallops(in: rect) {
+            for scallop in Self.scallops(in: rect) {
                 if scallopedEdges.contains(.top) {
                     cuts.addCircle(x: scallop.x, y: rect.minY, radius: scallop.radius)
                 }
@@ -107,27 +127,6 @@ struct TicketPerforationShape: Shape {
     private func addTearNotches(to cuts: inout Path, in rect: CGRect, y: CGFloat) {
         cuts.addCircle(x: rect.minX, y: y, radius: tearNotchRadius)
         cuts.addCircle(x: rect.maxX, y: y, radius: tearNotchRadius)
-    }
-
-    private struct Scallop {
-        let x: CGFloat
-        let radius: CGFloat
-    }
-
-    private func scallops(in rect: CGRect) -> [Scallop] {
-        let interior = max(tabCount - 1, 2)
-        let inset = 1 + scallopFillRatio / 2 * (cornerScallopScale - 1)
-        let step = rect.width / (CGFloat(interior - 1) + 2 * inset)
-        let radius = step / 2 * scallopFillRatio
-        let cornerRadius = radius * cornerScallopScale
-        let firstCenter = rect.minX + step * inset
-
-        var result = [Scallop(x: rect.minX, radius: cornerRadius)]
-        result += (0..<interior).map {
-            Scallop(x: firstCenter + step * CGFloat($0), radius: radius)
-        }
-        result.append(Scallop(x: rect.maxX, radius: cornerRadius))
-        return result
     }
 }
 
