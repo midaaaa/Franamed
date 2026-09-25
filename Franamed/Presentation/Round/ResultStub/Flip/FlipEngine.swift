@@ -24,8 +24,9 @@ final class FlipEngine: ObservableObject {
     private var target: Double = 0
     private(set) var isDragging = false
     private var dragOrigin: Double = 0
-    private var previousAngle: Double = 0
-    private var lastTick: Date?
+    private var dragWidth: CGFloat = 0
+    private var tracker = FlipVelocityTracker()
+    private var lastTick: TimeInterval?
     private let parameters = FlipParameters()
     var settlesInstantly = false
 
@@ -60,7 +61,16 @@ final class FlipEngine: ObservableObject {
 
     func drag(translation: CGFloat, width: CGFloat) {
         guard isDragging, width > 1 else { return }
+        dragWidth = width
         angle = dragOrigin + .pi * Double(translation / width)
+    }
+
+    func resetTouches() {
+        tracker.reset()
+    }
+
+    func recordTouch(time: TimeInterval, x: CGFloat) {
+        tracker.add(time: time, x: x)
     }
 
     func endDrag(releaseVelocity: CGFloat? = nil, width: CGFloat = 0) {
@@ -92,7 +102,6 @@ final class FlipEngine: ObservableObject {
         angle = target
         velocity = 0
         bendVelocity = 0
-        previousAngle = angle
         lastTick = nil
         onWake?()
     }
@@ -103,18 +112,17 @@ final class FlipEngine: ObservableObject {
 
     // MARK: Simulation
 
-    func step(now: Date) {
+    func step(now: TimeInterval) {
         guard let last = lastTick else {
             lastTick = now
-            previousAngle = angle
             return
         }
-        let dt = min(now.timeIntervalSince(last), 1.0 / 30.0)
+        let dt = min(now - last, 1.0 / 30.0)
         lastTick = now
         guard dt > 0 else { return }
 
         if isDragging {
-            velocity = (angle - previousAngle) / dt
+            velocity = dragWidth > 1 ? .pi * Double(tracker.velocity(at: now) / dragWidth) : 0
         } else {
             let stiffness = pow(2 * .pi / max(parameters.response, 0.05), 2)
             let dampingCoefficient = 4 * .pi * parameters.damping / max(parameters.response, 0.05)
@@ -128,6 +136,5 @@ final class FlipEngine: ObservableObject {
         }
 
         bendVelocity += (velocity - bendVelocity) * (1 - exp(-dt / max(parameters.bendTau, 0.01)))
-        previousAngle = angle
     }
 }

@@ -71,8 +71,12 @@ private struct FlipInteractionView: UIViewRepresentable {
         let view = UIView()
         view.backgroundColor = .clear
 
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
+        let pan = FlipPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
         pan.delegate = context.coordinator
+        pan.onTouchesBegan = { [weak coordinator = context.coordinator] in coordinator?.engine?.resetTouches() }
+        pan.onTouchSample = { [weak coordinator = context.coordinator] time, x in
+            coordinator?.engine?.recordTouch(time: time, x: x)
+        }
         view.addGestureRecognizer(pan)
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))

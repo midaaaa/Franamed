@@ -191,7 +191,7 @@ struct FlipRenderer: UIViewRepresentable {
         }
 
         private func render(in view: MTKView) {
-            engine.step(now: Date())
+            engine.step(now: CACurrentMediaTime())
             let parking = frontTexture != nil && !engine.isAnimating
             view.isPaused = parking
             if parking { engine.park() }
