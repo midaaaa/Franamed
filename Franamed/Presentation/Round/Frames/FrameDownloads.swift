@@ -41,7 +41,6 @@ actor FrameDownloads {
         }
 
         ProjectorFrameTint.storeTints(ProjectorFrameTint.averageStripTints(from: image), for: url)
-        _ = HallFrameSampleCache.sample(for: url)
         return true
     }
 }

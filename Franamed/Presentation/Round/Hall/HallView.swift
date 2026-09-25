@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct HallView: View, Equatable {
-    let imageURL: URL?
+    let sample: HallFrameSample
     let scene: HallScene
     let size: CGSize
     let frameTop: CGFloat
@@ -20,7 +20,7 @@ struct HallView: View, Equatable {
     private static let movingScale: CGFloat = 0.65
 
     nonisolated static func == (lhs: HallView, rhs: HallView) -> Bool {
-        lhs.imageURL == rhs.imageURL && lhs.scene == rhs.scene && lhs.size == rhs.size
+        lhs.sample == rhs.sample && lhs.scene == rhs.scene && lhs.size == rhs.size
             && lhs.frameTop == rhs.frameTop && lhs.frameBottom == rhs.frameBottom
     }
 
@@ -44,7 +44,6 @@ struct HallView: View, Equatable {
 
     private func shader(scale: CGFloat) -> Shader {
         let camera = HallCamera(scene: scene, frameTop: frameTop, frameBottom: frameBottom)
-        let sample = imageURL.flatMap(HallFrameSampleCache.sample(for:)) ?? .dark
         let sway = motion.sway
         let eye = scene.eye + SIMD3(sway.x, sway.y, 0)
         let focal = Float(camera.focal)

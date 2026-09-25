@@ -246,7 +246,7 @@ struct RoundView: View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .named(Self.hallSpace)).minY
             ProtectedContent(isProtected: isScreenProtected) {
-                HallView(imageURL: frames.displayedURL, scene: HallScene(), size: proxy.size,
+                HallView(sample: frames.hallSample, scene: HallScene(), size: proxy.size,
                            frameTop: -origin, frameBottom: frameHeight - origin)
                     .equatable()
             }

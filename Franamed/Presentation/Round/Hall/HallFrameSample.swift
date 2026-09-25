@@ -9,7 +9,7 @@ import CoreGraphics
 import Foundation
 import UIKit
 
-struct HallFrameSample: Sendable {
+struct HallFrameSample: Sendable, Equatable {
     static let columns = 24
     static let rows = 14
     static var cellCount: Int { columns * rows }
@@ -90,26 +90,5 @@ struct HallFrameSample: Sendable {
         }
         let r = blur(red), g = blur(green), b = blur(blue)
         return (0..<Self.cellCount).flatMap { [r[$0], g[$0], b[$0]] }
-    }
-}
-
-private final class HallFrameSampleBox {
-    let sample: HallFrameSample
-    init(_ sample: HallFrameSample) { self.sample = sample }
-}
-
-enum HallFrameSampleCache {
-    nonisolated(unsafe) private static let cache: NSCache<NSURL, HallFrameSampleBox> = {
-        let cache = NSCache<NSURL, HallFrameSampleBox>()
-        cache.countLimit = 60
-        return cache
-    }()
-
-    nonisolated static func sample(for url: URL) -> HallFrameSample? {
-        if let box = cache.object(forKey: url as NSURL) { return box.sample }
-        guard let image = ImageCache.shared.image(for: url),
-              let sample = HallFrameSample(image: image) else { return nil }
-        cache.setObject(HallFrameSampleBox(sample), forKey: url as NSURL)
-        return sample
     }
 }
