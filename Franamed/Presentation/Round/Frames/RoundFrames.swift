@@ -15,13 +15,18 @@ final class RoundFrames: ObservableObject {
     @Published private(set) var stripTints: [ProjectorStripTint] = []
     @Published private(set) var isFillLit = false
     @Published private(set) var isWaiting = false
-    @Published private(set) var hallSample: HallFrameSample = .dark
+    @Published private(set) var hasPresentedFrame = false
+    @Published private var frameLight: HallFrameSample = .dark
 
     private var target: URL?
-    private var hallSamples: [URL: HallFrameSample] = [:]
+    private var frameLights: [URL: HallFrameSample] = [:]
 
     private static let spinnerDelay = Duration.milliseconds(180)
-    private static let retryLimit = 4
+    private static let retryCap = Duration.seconds(2)
+
+    var hallLight: HallFrameSample {
+        displayedURL == nil && isWaiting ? SpinnerGlyph.hallLight : frameLight
+    }
 
     func show(_ url: URL?, isRoundLoading: Bool) async {
         target = url
@@ -31,23 +36,30 @@ final class RoundFrames: ObservableObject {
         }
         guard url != displayedURL else { return }
 
-        if ImageCache.shared.image(for: url) != nil {
-            displayedURL = url
-            hallSample = hallSamples[url] ?? .dark
+        if ImageCache.shared.image(for: url) == nil {
+            await download(url)
+        } else {
             isWaiting = false
-            if !FrameDownloads.isPrepared(url) {
-                _ = await FrameDownloads.shared.prepare(url)
-                guard !Task.isCancelled else { return }
-            }
-            await prepareHallSample(url)
-            guard !Task.isCancelled else { return }
-            present(url)
-            return
+            if !FrameDownloads.isPrepared(url) { _ = await FrameDownloads.shared.prepare(url) }
         }
+        guard !Task.isCancelled else { return }
+        await prepareLight(url)
+        guard !Task.isCancelled else { return }
+        present(url)
+    }
 
+    func preload(_ urls: [URL]) async {
+        for url in urls {
+            guard !Task.isCancelled else { return }
+            _ = await FrameDownloads.shared.prepare(url)
+            await prepareLight(url)
+        }
+    }
+
+    private func download(_ url: URL) async {
         if displayedURL != nil { isWaiting = true }
         displayedURL = nil
-        hallSample = .dark
+        frameLight = .dark
         isFillLit = false
 
         let spinner = Task {
@@ -58,39 +70,28 @@ final class RoundFrames: ObservableObject {
         defer { spinner.cancel() }
 
         var attempt = 0
-        while await !FrameDownloads.shared.prepare(url), attempt < Self.retryLimit, !Task.isCancelled {
+        while await !FrameDownloads.shared.prepare(url), !Task.isCancelled {
             isWaiting = true
             attempt += 1
-            try? await Task.sleep(for: .milliseconds(400 * attempt))
-        }
-        guard !Task.isCancelled else { return }
-        await prepareHallSample(url)
-        guard !Task.isCancelled else { return }
-        present(url)
-    }
-
-    func preload(_ urls: [URL]) async {
-        for url in urls {
-            guard !Task.isCancelled else { return }
-            _ = await FrameDownloads.shared.prepare(url)
-            await prepareHallSample(url)
+            try? await Task.sleep(for: min(.milliseconds(400 * attempt), Self.retryCap))
         }
     }
 
-    private func prepareHallSample(_ url: URL) async {
-        guard hallSamples[url] == nil, let image = ImageCache.shared.image(for: url) else { return }
-        if let sample = await Self.makeHallSample(image) { hallSamples[url] = sample }
+    private func prepareLight(_ url: URL) async {
+        guard frameLights[url] == nil, let image = ImageCache.shared.image(for: url) else { return }
+        if let light = await Self.makeLight(image) { frameLights[url] = light }
     }
 
     @concurrent
-    private nonisolated static func makeHallSample(_ image: UIImage) async -> HallFrameSample? {
+    private nonisolated static func makeLight(_ image: UIImage) async -> HallFrameSample? {
         HallFrameSample(image: image)
     }
 
     private func present(_ url: URL) {
         displayedURL = url
         stripTints = ProjectorFrameTint.cachedTints(for: url) ?? []
-        hallSample = hallSamples[url] ?? .dark
+        frameLight = frameLights[url] ?? .dark
+        hasPresentedFrame = true
         isFillLit = true
         isWaiting = false
     }
@@ -98,7 +99,8 @@ final class RoundFrames: ObservableObject {
     private func waitForRound(isLoading: Bool) async {
         displayedURL = nil
         stripTints = []
-        hallSample = .dark
+        frameLight = .dark
+        hasPresentedFrame = false
         isFillLit = false
         guard isLoading else {
             isWaiting = false

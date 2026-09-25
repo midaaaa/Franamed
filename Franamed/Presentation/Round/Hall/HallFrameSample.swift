@@ -7,6 +7,7 @@
 
 import CoreGraphics
 import Foundation
+import SwiftUI
 import UIKit
 
 struct HallFrameSample: Sendable, Equatable {
@@ -90,5 +91,22 @@ struct HallFrameSample: Sendable, Equatable {
         }
         let r = blur(red), g = blur(green), b = blur(blue)
         return (0..<Self.cellCount).flatMap { [r[$0], g[$0], b[$0]] }
+    }
+}
+
+extension HallFrameSample {
+    var brightness: Float { (mean.x + mean.y + mean.z) / 3 }
+
+    func withBrightness(_ target: Float) -> HallFrameSample {
+        guard brightness > 0 else { return .dark }
+        let factor = target / brightness
+        return HallFrameSample(mean: mean * factor, blurredInterleaved: blurredInterleaved.map { $0 * factor })
+    }
+
+    @MainActor
+    static func rendering(_ content: some View) -> HallFrameSample {
+        let renderer = ImageRenderer(content: content.frame(width: 320, height: 180))
+        renderer.scale = 1
+        return renderer.uiImage.flatMap(HallFrameSample.init(image:)) ?? .dark
     }
 }

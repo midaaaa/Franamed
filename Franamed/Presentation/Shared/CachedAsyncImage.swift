@@ -22,7 +22,7 @@ struct CachedAsyncImage: View {
             if let isProtected {
                 ProtectedImage(image: displayed, isProtected: isProtected)
                     .overlay {
-                        if displayed == nil { ProgressView().tint(.white) }
+                        if displayed == nil { WaitingSpinner(hidesFromCapture: isProtected) }
                     }
             } else if let uiImage = displayed {
                 Image(uiImage: uiImage)

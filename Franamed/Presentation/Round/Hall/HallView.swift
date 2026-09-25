@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct HallView: View, Equatable {
+struct LiveHallView: View {
     let sample: HallFrameSample
     let scene: HallScene
     let size: CGSize
@@ -17,22 +17,10 @@ struct HallView: View, Equatable {
     @StateObject private var motion = HallMotion()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let movingScale: CGFloat = 0.65
-
-    nonisolated static func == (lhs: HallView, rhs: HallView) -> Bool {
-        lhs.sample == rhs.sample && lhs.scene == rhs.scene && lhs.size == rhs.size
-            && lhs.frameTop == rhs.frameTop && lhs.frameBottom == rhs.frameBottom
-    }
-
     var body: some View {
-        let scale = motion.isMoving ? Self.movingScale : 1
-
-        Rectangle()
-            .fill(.black)
-            .frame(width: size.width * scale, height: size.height * scale)
-            .colorEffect(shader(scale: scale))
-            .scaleEffect(1 / scale, anchor: .topLeading)
-            .frame(width: size.width, height: size.height, alignment: .topLeading)
+        HallView(sample: sample, scene: scene, size: size, frameTop: frameTop, frameBottom: frameBottom,
+                 sway: motion.sway, scale: motion.isMoving ? HallView.movingScale : 1)
+            .equatable()
             .onAppear { updateMotion() }
             .onDisappear { motion.stop() }
             .onChange(of: reduceMotion) { _, _ in updateMotion() }
@@ -41,10 +29,36 @@ struct HallView: View, Equatable {
     private func updateMotion() {
         if reduceMotion { motion.stop() } else { motion.start() }
     }
+}
+
+struct HallView: View, Equatable {
+    let sample: HallFrameSample
+    let scene: HallScene
+    let size: CGSize
+    let frameTop: CGFloat
+    let frameBottom: CGFloat
+    var sway: SIMD2<Float> = .zero
+    var scale: CGFloat = 1
+
+    static let movingScale: CGFloat = 0.65
+
+    nonisolated static func == (lhs: HallView, rhs: HallView) -> Bool {
+        lhs.sample == rhs.sample && lhs.scene == rhs.scene && lhs.size == rhs.size
+            && lhs.frameTop == rhs.frameTop && lhs.frameBottom == rhs.frameBottom
+            && lhs.sway == rhs.sway && lhs.scale == rhs.scale
+    }
+
+    var body: some View {
+        Rectangle()
+            .fill(.black)
+            .frame(width: size.width * scale, height: size.height * scale)
+            .colorEffect(shader(scale: scale))
+            .scaleEffect(1 / scale, anchor: .topLeading)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+    }
 
     private func shader(scale: CGFloat) -> Shader {
         let camera = HallCamera(scene: scene, frameTop: frameTop, frameBottom: frameBottom)
-        let sway = motion.sway
         let eye = scene.eye + SIMD3(sway.x, sway.y, 0)
         let focal = Float(camera.focal)
         let centerX = Float(size.width / 2) + focal * sway.x / eye.z

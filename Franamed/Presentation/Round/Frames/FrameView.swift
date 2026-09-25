@@ -11,6 +11,7 @@ struct FrameView: View {
     let imageURL: URL?
     var isWaitingForFrame: Bool = false
     var isProtected: Bool = false
+    var hidesSpinnerFromCapture: Bool = false
     let onTapPrevious: () -> Void
     let onTapNext: () -> Void
 
@@ -22,7 +23,7 @@ struct FrameView: View {
                 if let imageURL {
                     CachedAsyncImage(url: imageURL, isProtected: isProtected)
                 } else if isWaitingForFrame {
-                    ProgressView().tint(.white)
+                    WaitingSpinner(hidesFromCapture: hidesSpinnerFromCapture)
                 }
             }
             .overlay {

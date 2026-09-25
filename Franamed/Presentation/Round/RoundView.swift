@@ -26,7 +26,7 @@ struct RoundView: View {
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
     @AppStorage(DebugSettings.roundBackdropKey) private var backdrop: RoundBackdrop = .beam
 
-    private static let hallSpace = "roundHall"
+    private static let backgroundSpace = "roundBackground"
 
     private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
 
@@ -67,7 +67,8 @@ struct RoundView: View {
                     FrameView(
                         imageURL: frames.displayedURL,
                         isWaitingForFrame: frames.isWaiting,
-                        isProtected: isScreenProtected && viewModel.outcome == nil,
+                        isProtected: isFrameProtected,
+                        hidesSpinnerFromCapture: showsCaptureBanner,
                         onTapPrevious: { viewModel.showPreviousFrame() },
                         onTapNext: { viewModel.showNextFrame() }
                     )
@@ -123,8 +124,14 @@ struct RoundView: View {
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
-        .background { if backdrop == .hall, frameHeight > 0 { cinemaHall } }
-        .coordinateSpace(.named(Self.hallSpace))
+        .background {
+            if frameHeight > 0, backdrop == .hall || isScreenProtected {
+                RoundBackground(backdrop: backdrop, light: frames.hallLight, frameHeight: frameHeight,
+                                isProtected: isFrameProtected, showsCaptureBanner: showsCaptureBanner,
+                                coordinateSpace: Self.backgroundSpace)
+            }
+        }
+        .coordinateSpace(.named(Self.backgroundSpace))
         .task { await viewModel.loadRound() }
         .task(id: FrameRequest(url: currentFrameURL, isRoundLoading: viewModel.isLoading)) {
             await frames.show(currentFrameURL, isRoundLoading: viewModel.isLoading)
@@ -199,7 +206,7 @@ struct RoundView: View {
                 hasSearched: viewModel.hasSearched,
                 isFocused: $isAnswerFieldFocused,
                 onSelectSuggestion: { viewModel.selectSuggestion($0) },
-                onSubmit: { viewModel.submitAnswer() },
+                onSubmit: submitIfReady,
                 onAnswerTextChange: { await viewModel.searchAnswer() },
                 onVisibleHeightChange: updateAnswerBarHeight,
                 hasOutcome: viewModel.outcome != nil
@@ -211,9 +218,9 @@ struct RoundView: View {
                 AnswerBarActionShape(
                     progress: morphProgress,
                     width: proxy.size.width,
-                    isBlocked: isInputBlocked,
+                    isBlocked: isSubmitBlocked,
                     isTransitioning: isMorphAnimating,
-                    onSubmit: { viewModel.submitAnswer() },
+                    onSubmit: submitIfReady,
                     onNewGame: startNewRound
                 )
             }
@@ -242,19 +249,6 @@ struct RoundView: View {
         }
     }
 
-    private var cinemaHall: some View {
-        GeometryReader { proxy in
-            let origin = proxy.frame(in: .named(Self.hallSpace)).minY
-            ProtectedContent(isProtected: isScreenProtected) {
-                HallView(sample: frames.hallSample, scene: HallScene(), size: proxy.size,
-                           frameTop: -origin, frameBottom: frameHeight - origin)
-                    .equatable()
-            }
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-    }
-
     @ViewBuilder
     private var beamSource: some View {
         if showsProjector && backdrop == .beam {
@@ -277,6 +271,27 @@ struct RoundView: View {
     private func resignKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)
+    }
+
+    private var isFrameProtected: Bool {
+        isScreenProtected && viewModel.outcome == nil
+    }
+
+    private var showsCaptureBanner: Bool {
+        isFrameProtected && frames.hasPresentedFrame
+    }
+
+    private var isFrameReady: Bool {
+        frames.displayedURL != nil && frames.displayedURL == currentFrameURL
+    }
+
+    private var isSubmitBlocked: Bool {
+        isInputBlocked || (viewModel.outcome == nil && !isFrameReady)
+    }
+
+    private func submitIfReady() {
+        guard !isSubmitBlocked else { return }
+        viewModel.submitAnswer()
     }
 
     private var isInputBlocked: Bool {
