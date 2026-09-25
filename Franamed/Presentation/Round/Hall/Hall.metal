@@ -14,7 +14,7 @@ namespace hall {
 constant int gridColumns = 24;
 constant int gridRows = 14;
 constant float3 luma = float3(0.2126, 0.7152, 0.0722);
-constant float underSeat = 0.0006;
+constant float underSeat = 0.0;
 
 struct Hall {
     float focal;
@@ -111,8 +111,8 @@ float3 perceive(float3 c) {
     if (y <= 1e-6) return 0;
     float shown = 0.9 * (1.0 - exp(-0.3 * pow(y, 0.85)));
     float dim = 1.0 - smoothstep(0.0, 0.35, shown);
-    float3 chroma = mix(c / y, float3(1), 0.45 + 0.35 * dim);
-    chroma *= mix(float3(1), float3(0.9, 0.97, 1.14), dim);
+    float3 chroma = mix(c / y, float3(1), 0.2 + 0.25 * dim);
+    chroma *= mix(float3(1), float3(0.95, 0.99, 1.07), dim);
     return chroma / dot(chroma, luma) * shown;
 }
 
@@ -309,7 +309,7 @@ float4 march(thread const Hall &h, thread const Row &row, float3 d) {
     }
 
     accumulated += (1.0 - alpha) * h.mean * underSeat;
-    float3 shown = perceive(accumulated) + float3(0.0003, 0.00025, 0.0004);
+    float3 shown = perceive(accumulated);
     shown = pow(max(shown, 0.0), 1.0 / 2.2);
     return half4(half3(shown), 1.0h);
 }
