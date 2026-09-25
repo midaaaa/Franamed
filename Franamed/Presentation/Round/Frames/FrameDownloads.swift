@@ -14,7 +14,7 @@ actor FrameDownloads {
     private var running: [URL: Task<Bool, Never>] = [:]
 
     nonisolated static func isPrepared(_ url: URL) -> Bool {
-        ImageCache.shared.image(for: url) != nil && ProjectorFrameTint.cachedTints(for: url) != nil
+        ImageCache.shared.image(for: url) != nil
     }
 
     func prepare(_ url: URL) async -> Bool {
@@ -30,17 +30,9 @@ actor FrameDownloads {
 
     @concurrent
     private static func download(_ url: URL) async -> Bool {
-        let image: UIImage
-        if let cached = ImageCache.shared.image(for: url) {
-            image = cached
-        } else {
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let downloaded = await UIImage(data: data)?.byPreparingForDisplay() else { return false }
-            ImageCache.shared.store(downloaded, for: url)
-            image = downloaded
-        }
-
-        ProjectorFrameTint.storeTints(ProjectorFrameTint.averageStripTints(from: image), for: url)
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let image = await UIImage(data: data)?.byPreparingForDisplay() else { return false }
+        ImageCache.shared.store(image, for: url)
         return true
     }
 }

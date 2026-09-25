@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct RoundBackground: View {
-    let backdrop: RoundBackdrop
     let light: HallFrameSample
     let frameHeight: CGFloat
     let isProtected: Bool
@@ -31,26 +30,17 @@ struct RoundBackground: View {
         .allowsHitTesting(false)
     }
 
-    @ViewBuilder
     private func liveLayer(size: CGSize, origin: CGFloat) -> some View {
-        if backdrop == .hall {
-            LiveHallView(sample: light, scene: HallScene(), size: size,
-                         frameTop: -origin, frameBottom: frameHeight - origin)
-        } else {
-            Color(.systemBackground)
-        }
+        LiveHallView(sample: light, scene: HallScene(), size: size,
+                     frameTop: -origin, frameBottom: frameHeight - origin)
     }
 
     private func captureLayer(size: CGSize, origin: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            if backdrop == .hall {
-                HallView(sample: showsCaptureBanner ? CaptureWarningBanner.hallLight : light,
-                         scene: HallScene(), size: size,
-                         frameTop: -origin, frameBottom: frameHeight - origin)
-                    .equatable()
-            } else {
-                Color(.systemBackground)
-            }
+            HallView(sample: showsCaptureBanner ? CaptureWarningBanner.hallLight : light,
+                     scene: HallScene(), size: size,
+                     frameTop: -origin, frameBottom: frameHeight - origin)
+                .equatable()
             if showsCaptureBanner {
                 CaptureWarningBanner()
                     .frame(width: size.width, height: frameHeight)

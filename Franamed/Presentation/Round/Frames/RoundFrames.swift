@@ -12,8 +12,6 @@ import UIKit
 @MainActor
 final class RoundFrames: ObservableObject {
     @Published private(set) var displayedURL: URL?
-    @Published private(set) var stripTints: [ProjectorStripTint] = []
-    @Published private(set) var isFillLit = false
     @Published private(set) var isWaiting = false
     @Published private(set) var hasPresentedFrame = false
     @Published private var frameLight: HallFrameSample = .dark
@@ -40,7 +38,6 @@ final class RoundFrames: ObservableObject {
             await download(url)
         } else {
             isWaiting = false
-            if !FrameDownloads.isPrepared(url) { _ = await FrameDownloads.shared.prepare(url) }
         }
         guard !Task.isCancelled else { return }
         await prepareLight(url)
@@ -60,7 +57,6 @@ final class RoundFrames: ObservableObject {
         if displayedURL != nil { isWaiting = true }
         displayedURL = nil
         frameLight = .dark
-        isFillLit = false
 
         let spinner = Task {
             try? await Task.sleep(for: Self.spinnerDelay)
@@ -89,19 +85,15 @@ final class RoundFrames: ObservableObject {
 
     private func present(_ url: URL) {
         displayedURL = url
-        stripTints = ProjectorFrameTint.cachedTints(for: url) ?? []
         frameLight = frameLights[url] ?? .dark
         hasPresentedFrame = true
-        isFillLit = true
         isWaiting = false
     }
 
     private func waitForRound(isLoading: Bool) async {
         displayedURL = nil
-        stripTints = []
         frameLight = .dark
         hasPresentedFrame = false
-        isFillLit = false
         guard isLoading else {
             isWaiting = false
             return

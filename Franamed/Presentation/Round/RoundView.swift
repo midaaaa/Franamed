@@ -17,14 +17,10 @@ struct RoundView: View {
     @State private var frameHeight: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
-    @State private var isProjectorLit = false
-    @State private var showsProjector = true
     @State private var showsResult = false
-    @State private var beamAnimation: Animation?
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
-    @AppStorage(DebugSettings.roundBackdropKey) private var backdrop: RoundBackdrop = .beam
 
     private static let backgroundSpace = "roundBackground"
 
@@ -34,25 +30,9 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
 
-    private var beamReferenceHeight: CGFloat {
-        max(0, WindowMetrics.size.height - frameHeight - suggestionRowHeight)
-    }
+    private var stubGap: CGFloat { (containerHeight - barBottomInset - answerBarHeight) - frameHeight }
 
-    private var beamGap: CGFloat { (containerHeight - barBottomInset - answerBarHeight) - frameHeight }
-    private var beamHeight: CGFloat { max(beamGap, 1) }
-    private var beamMaxExpectedGap: CGFloat { max(containerHeight * 0.25, 1) }
-
-    private static let beamShrink = Animation.timingCurve(0.38, 0.7, 0.125, 1, duration: 0.28)
-    private static let projectorFadeOut = Animation.easeOut(duration: 0.32)
-    private static let projectorFadeIn = Animation.easeIn(duration: 0.4)
     private static let resultReveal = Animation.easeOut(duration: 0.32)
-    private static let sourceSlideIn = Animation.spring(response: 0.34, dampingFraction: 0.9)
-    private static let sourceSlideOut = Animation.easeIn(duration: 0.22)
-    private static let sourceTravel = ProjectorLineSource.height * 2
-    private var beamIntensity: Double {
-        guard beamGap > 0 else { return 0 }
-        return Double(min(1, max(0, beamGap / beamMaxExpectedGap)))
-    }
 
     init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
         _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, modelContext: modelContext, mediaType: mediaType, filters: filters, frameCount: frameCount))
@@ -75,32 +55,11 @@ struct RoundView: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
                     .layoutPriority(1)
 
-                    if showsProjector && backdrop == .beam {
-                        ProjectorBeam(
-                            intensity: beamIntensity,
-                            stripTints: frames.stripTints,
-                            isFillLit: frames.isFillLit,
-                            referenceHeight: beamReferenceHeight,
-                            isProtected: isScreenProtected,
-                            showsSource: false
-                        )
-                            .frame(maxHeight: beamHeight)
-                            .clipped()
-                            .opacity(isProjectorLit ? 1 : 0)
-                            .animation(isProjectorLit ? nil : Self.projectorFadeOut, value: isProjectorLit)
-                            .animation(beamAnimation, value: containerHeight)
-                            .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
-                            .allowsHitTesting(false)
-                    }
-
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
                 .overlay(alignment: .top) { resultStub }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { newHeight in
-                    beamAnimation = newHeight < containerHeight ? Self.beamShrink : nil
-                    containerHeight = newHeight
-                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { containerHeight = $0 }
                 .overlay(alignment: .bottom) { bottomActionBar }
                 .toolbar {
                     ToolbarItem(placement: .principal) {
@@ -113,20 +72,15 @@ struct RoundView: View {
                         )
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            backdrop = backdrop.next
-                        } label: {
-                            Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
-                        }
-                        .buttonStyle(.plain)
+                        Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
                     }
                 }
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
         .background {
-            if frameHeight > 0, backdrop == .hall || isScreenProtected {
-                RoundBackground(backdrop: backdrop, light: frames.hallLight, frameHeight: frameHeight,
+            if frameHeight > 0 {
+                RoundBackground(light: frames.hallLight, frameHeight: frameHeight,
                                 isProtected: isFrameProtected, showsCaptureBanner: showsCaptureBanner,
                                 coordinateSpace: Self.backgroundSpace)
             }
@@ -151,19 +105,10 @@ struct RoundView: View {
                 DispatchQueue.main.async { resignKeyboard() }
             }
         )
-        .onChange(of: beamIntensity) { _, intensity in
-            guard !isProjectorLit, intensity > 0, viewModel.outcome == nil else { return }
-            withAnimation(Self.projectorFadeIn) { isProjectorLit = true }
-        }
         .onChange(of: viewModel.outcome) { _, newOutcome in
             isMorphAnimating = true
             if newOutcome != nil {
                 isAnswerFieldFocused = false
-                withAnimation(Self.projectorFadeOut, completionCriteria: .logicallyComplete) {
-                    isProjectorLit = false
-                } completion: {
-                    showsProjector = false
-                }
                 showsResult = true
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 1
@@ -172,8 +117,6 @@ struct RoundView: View {
                 }
             } else {
                 withAnimation(Self.resultReveal) { showsResult = false }
-                showsProjector = true
-                withAnimation(Self.projectorFadeIn) { isProjectorLit = true }
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 0
                 } completion: {
@@ -227,7 +170,6 @@ struct RoundView: View {
             .frame(height: suggestionRowHeight)
         }
         .padding(.horizontal, barInset)
-        .overlay(alignment: .top) { beamSource }
         .padding(.bottom, barBottomInset)
         .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
         .disabled(isInputBlocked)
@@ -245,26 +187,7 @@ struct RoundView: View {
                             filters: viewModel.filters,
                             genreNames: viewModel.genreNames,
                             topInset: frameHeight,
-                            restingOffset: max(0, (beamGap - ResultStubMetrics.height) / 2))
-        }
-    }
-
-    @ViewBuilder
-    private var beamSource: some View {
-        if showsProjector && backdrop == .beam {
-            ZStack(alignment: .bottom) {
-                ProjectorSourceHalo()
-                    .opacity(isProjectorLit ? 1 : 0)
-                ProjectorLineSource()
-                    .offset(y: isProjectorLit ? 0 : Self.sourceTravel)
-            }
-            .frame(height: beamHeight)
-            .clipped()
-            .offset(y: -beamHeight)
-            .opacity(max(beamIntensity, ProjectorBeam.imperceptibleOpacity))
-            .animation(isProjectorLit ? Self.sourceSlideIn : Self.sourceSlideOut, value: isProjectorLit)
-            .allowsHitTesting(false)
-            .geometryGroup()
+                            restingOffset: max(0, (stubGap - ResultStubMetrics.height) / 2))
         }
     }
 

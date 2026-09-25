@@ -13,5 +13,4 @@ enum DebugSettings {
     static let returnShrinkKey = "debugShrinksOnReturn"
     static let screenProtectionKey = "debugScreenProtectionEnabled"
     static let straightEdgeKey = "debugStraightTicketEdge"
-    static let roundBackdropKey = "debugRoundBackdrop"
 }
