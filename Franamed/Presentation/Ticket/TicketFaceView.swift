@@ -16,11 +16,8 @@ struct TicketFaceView: View, Equatable {
             && lhs.isStubGrabEnabled == rhs.isStubGrabEnabled
             && lhs.isRasterized == rhs.isRasterized
             && lhs.hidesStub == rhs.hidesStub
-            && lhs.showsMesh == rhs.showsMesh
-            && lhs.tintsPaper == rhs.tintsPaper
             && lhs.edgeStyle == rhs.edgeStyle
             && lhs.returnToken == rhs.returnToken
-            && lhs.returnStyle == rhs.returnStyle
             && lhs.posterZoom == rhs.posterZoom
             && lhs.filtersZoom == rhs.filtersZoom
             && lhs.probe === rhs.probe
@@ -34,11 +31,8 @@ struct TicketFaceView: View, Equatable {
     let isStubGrabEnabled: Bool
     let isRasterized: Bool
     var hidesStub: Bool = false
-    var showsMesh: Bool = true
-    var tintsPaper: Bool = false
-    var edgeStyle: TicketEdgeStyle = .scalloped
+    var edgeStyle: TicketEdgeStyle = .straight
     let returnToken: Int
-    var returnStyle: TearReturnStyle = .flat
     let posterZoom: Namespace.ID
     let filtersZoom: Namespace.ID
     let onOpenFilters: () -> Void
@@ -62,8 +56,6 @@ struct TicketFaceView: View, Equatable {
     private var tearConfig: TicketTearConfig {
         var config = TicketTearConfig.ticket(width: width)
         config.stubExtent = stubHeight > 0 ? stubHeight : 140
-        config.showsMesh = showsMesh
-        config.returnStyle = returnStyle
         return config
     }
 
@@ -121,7 +113,7 @@ struct TicketFaceView: View, Equatable {
                                      edgeStyle: edgeStyle))
     }
 
-    private var paper: Color { tintsPaper ? .red : TicketStyle.paper }
+    private var paper: Color { TicketStyle.paper }
 
     @ViewBuilder
     private var poster: some View {

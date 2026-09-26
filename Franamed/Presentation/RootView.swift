@@ -12,7 +12,6 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var coordinator = AppCoordinator()
     @StateObject private var session: SessionStore
-    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.dark
 
     init(session: SessionStore = SessionStore()) {
         _session = StateObject(wrappedValue: session)
@@ -34,7 +33,6 @@ struct RootView: View {
                 tabs
             }
         }
-        .preferredColorScheme(appearance.colorScheme)
         .task { await session.start() }
     }
 

@@ -11,11 +11,9 @@ import SwiftData
 struct ProfileSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.dark
     @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
+    @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
-    @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
-    @AppStorage(DebugSettings.returnShrinkKey) private var shrinksOnReturn = false
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
 
     @EnvironmentObject private var session: SessionStore
@@ -26,19 +24,8 @@ struct ProfileSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Picker("Оформление", selection: $appearance) {
-                        ForEach(AppAppearance.allCases, id: \.self) { option in
-                            Text(option.displayName).tag(option)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                } header: {
-                    Text("Оформление")
-                }
-
-                Section {
                     Toggle("Вибрация", isOn: $hapticsEnabled)
+                    Toggle("Вырезы по краю билета", isOn: $hasScallops)
                 }
 
                 Section {
@@ -81,12 +68,6 @@ struct ProfileSheet: View {
                 #if DEBUG
                 Section {
                     Toggle("Отладочный оверлей", isOn: $showsDebugOverlay)
-                    Picker("Возврат корешка", selection: $returnStyle) {
-                        ForEach(TearReturnStyle.allCases) { style in
-                            Text(style.displayName).tag(style)
-                        }
-                    }
-                    Toggle("Ужимать билет", isOn: $shrinksOnReturn)
                     Toggle("Прятать кадр от съёмки", isOn: $isScreenProtected)
                 } header: {
                     Text("Отладка")

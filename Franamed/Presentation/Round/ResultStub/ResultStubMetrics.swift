@@ -26,7 +26,7 @@ struct ResultStubPaper<Content: View>: View {
     var mirrored = false
     @ViewBuilder let content: Content
 
-    @AppStorage(DebugSettings.straightEdgeKey) private var usesStraightEdges = false
+    @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -34,13 +34,13 @@ struct ResultStubPaper<Content: View>: View {
         }
         .padding(.top, TicketStyle.stubPadding + ResultStubMetrics.tornInset)
         .padding(.bottom, TicketStyle.stubPadding
-                 + (usesStraightEdges ? 0 : ResultStubMetrics.scallopInset))
+                 + (hasScallops ? ResultStubMetrics.scallopInset : 0))
         .padding(.horizontal, TicketStyle.stubPadding)
         .frame(width: ResultStubMetrics.width,
                height: ResultStubMetrics.height,
                alignment: .topLeading)
         .background(TicketStyle.paper)
-        .clipShape(ResultStubShape(edgeStyle: TicketEdgeStyle(usesStraightEdges: usesStraightEdges),
+        .clipShape(ResultStubShape(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops),
                                    mirrored: mirrored))
         .environment(\.colorScheme, .light)
     }

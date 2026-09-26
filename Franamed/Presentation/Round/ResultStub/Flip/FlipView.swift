@@ -21,10 +21,10 @@ struct FlipView<Front: View, Back: View>: View {
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(DebugSettings.straightEdgeKey) private var usesStraightEdges = false
+    @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
     var body: some View {
-        let edgeStyle = TicketEdgeStyle(usesStraightEdges: usesStraightEdges)
+        let edgeStyle = TicketEdgeStyle(hasScallops: hasScallops)
 
         ZStack {
             FlipCanvas(engine: engine, faces: faces, size: size, edgeStyle: edgeStyle)

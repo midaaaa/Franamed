@@ -9,8 +9,5 @@ import Foundation
 
 enum DebugSettings {
     static let overlayKey = "debugShowsOverlay"
-    static let returnStyleKey = "debugStubReturnStyle"
-    static let returnShrinkKey = "debugShrinksOnReturn"
     static let screenProtectionKey = "debugScreenProtectionEnabled"
-    static let straightEdgeKey = "debugStraightTicketEdge"
 }

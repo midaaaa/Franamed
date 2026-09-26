@@ -95,17 +95,15 @@ struct TicketTear<Content: View>: View {
             }
             .padding(config.canvasPadding)
             .overlay {
-                if config.showsMesh {
-                    TicketCurlRenderer(engine: engine, config: config, ticketSize: size,
-                                       texture: texture, canvasPadding: config.canvasPadding,
-                                       stubShape: stubShape, probe: probe,
-                                       onDrawn: {
-                                           if phase == .arming { phase = .tearing }
-                                           if phase == .returning { phase = .healing }
-                                       },
-                                       onPark: { phase = phase == .detached ? .gone : .rest })
-                        .opacity(phase.showsShader ? 1 : 0)
-                }
+                TicketCurlRenderer(engine: engine, config: config, ticketSize: size,
+                                   texture: texture, canvasPadding: config.canvasPadding,
+                                   stubShape: stubShape, probe: probe,
+                                   onDrawn: {
+                                       if phase == .arming { phase = .tearing }
+                                       if phase == .returning { phase = .healing }
+                                   },
+                                   onPark: { phase = phase == .detached ? .gone : .rest })
+                    .opacity(phase.showsShader ? 1 : 0)
             }
             .overlay { grabArea }
             .padding(-config.canvasPadding)

@@ -37,12 +37,8 @@ struct TicketView: View {
     @State private var isRasterized = false
     @GestureState private var isDraggingCard = false
 
-    @State private var showsMesh = true
-    @State private var tintsPaper = false
-    @AppStorage(DebugSettings.straightEdgeKey) private var usesStraightEdges = false
+    @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
-    @AppStorage(DebugSettings.returnStyleKey) private var returnStyle = TearReturnStyle.curled
-    @AppStorage(DebugSettings.returnShrinkKey) private var shrinksOnReturn = false
     @State private var tearFrameRate = TearFrameRateProbe()
 
     @Namespace private var posterZoom
@@ -148,11 +144,8 @@ struct TicketView: View {
             isStubGrabEnabled: !isDraggingCard,
             isRasterized: isRasterized,
             hidesStub: hidesStub,
-            showsMesh: showsMesh,
-            tintsPaper: tintsPaper,
-            edgeStyle: TicketEdgeStyle(usesStraightEdges: usesStraightEdges),
+            edgeStyle: TicketEdgeStyle(hasScallops: hasScallops),
             returnToken: stubReturnToken,
-            returnStyle: returnStyle,
             posterZoom: posterZoom,
             filtersZoom: filtersZoom,
             onOpenFilters: { present { filtersSheetMediaType = mediaType } },
@@ -183,7 +176,6 @@ struct TicketView: View {
         isCardLocked = true
         withAnimation(TicketMotion.roundCoverIn) { hidesStub = true }
         coordinator.showRound(mediaType: mediaType)
-        guard shrinksOnReturn else { return }
         withAnimation(.easeOut(duration: TicketMotion.returnShrinkDuration)) {
             cardScale = 1 - TicketMotion.returnShrink
         }
@@ -324,10 +316,7 @@ struct TicketView: View {
     private var frameRateReadout: some View {
         #if DEBUG
         if showsDebugOverlay {
-            TicketDebugOverlay(probe: tearFrameRate,
-                               showsMesh: $showsMesh,
-                               tintsPaper: $tintsPaper,
-                               usesStraightEdges: $usesStraightEdges)
+            TicketDebugOverlay(probe: tearFrameRate)
         }
         #endif
     }

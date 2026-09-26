@@ -11,8 +11,10 @@ enum TicketEdgeStyle: Hashable {
     case scalloped
     case straight
 
-    init(usesStraightEdges: Bool) {
-        self = usesStraightEdges ? .straight : .scalloped
+    static let storageKey = "ticketHasScallops"
+
+    init(hasScallops: Bool) {
+        self = hasScallops ? .scalloped : .straight
     }
 }
 

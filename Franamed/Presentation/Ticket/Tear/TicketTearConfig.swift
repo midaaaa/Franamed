@@ -57,7 +57,6 @@ nonisolated struct TicketTearConfig: Sendable, Equatable {
 
     // MARK: Return
 
-    var returnStyle: TearReturnStyle = .curled
     var returnFlightDuration: TimeInterval = 0.42
     var returnZipDuration: TimeInterval = 0.45
     var returnFlightDistance: CGFloat = 0
@@ -71,12 +70,6 @@ nonisolated struct TicketTearConfig: Sendable, Equatable {
     var thickness: CGFloat = 1
     var backColor: Color = Color(red: 0.965, green: 0.950, blue: 0.925)
     var showsGrabZone: Bool = false
-
-    // MARK: Отладочные тумблеры производительности
-
-    var showsMesh: Bool = true
-    var multisampling: Bool = true
-    var opaqueLayerProbe: Bool = false
 
     init() {}
 }

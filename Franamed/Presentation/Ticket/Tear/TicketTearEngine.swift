@@ -176,7 +176,7 @@ final class TicketTearEngine {
         releaseStrain = 0
         clearStrain()
 
-        releasedFinger = config.returnStyle == .curled ? geometry.farCorner : geometry.handle
+        releasedFinger = geometry.farCorner
         smoothedFinger = releasedFinger
         returnCurlTheta = currentTheta(apexA: geometry.perfLength)
         shownTheta = returnCurlTheta
@@ -185,7 +185,7 @@ final class TicketTearEngine {
 
         relax = 0
         isReturning = true
-        returnProgress = config.returnStyle == .zip ? 1 : 0
+        returnProgress = 0
         lastTick = nil
         onWake?()
         return true

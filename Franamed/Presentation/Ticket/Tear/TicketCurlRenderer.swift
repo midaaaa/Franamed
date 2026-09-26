@@ -25,17 +25,16 @@ struct TicketCurlRenderer: UIViewRepresentable {
         let view = MTKView()
         let device = MTLCreateSystemDefaultDevice()
         view.device = device
-        let opaque = config.opaqueLayerProbe
-        view.isOpaque = opaque
-        view.backgroundColor = opaque ? .black : .clear
+        view.isOpaque = false
+        view.backgroundColor = .clear
         if let metalLayer = view.layer as? CAMetalLayer {
-            metalLayer.isOpaque = opaque
+            metalLayer.isOpaque = false
         }
         view.colorPixelFormat = .bgra8Unorm
         view.depthStencilPixelFormat = .depth32Float
-        let samples = config.multisampling && device?.supportsTextureSampleCount(4) == true ? 4 : 1
+        let samples = device?.supportsTextureSampleCount(4) == true ? 4 : 1
         view.sampleCount = samples
-        view.clearColor = MTLClearColorMake(0, 0, 0, opaque ? 1 : 0)
+        view.clearColor = MTLClearColorMake(0, 0, 0, 0)
         view.preferredFramesPerSecond = 60
         view.isPaused = false
         view.enableSetNeedsDisplay = false
