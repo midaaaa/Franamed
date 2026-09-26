@@ -8,10 +8,6 @@
 import Foundation
 
 protocol BackendCurationServiceProtocol: Sendable {
-    func queue(mediaType: MediaType?, limit: Int) async throws -> [CurationQueueEntry]
-
-    func vote(imageId: Int, approve: Bool) async throws -> CurationVoteResult
-
     func report(imageId: Int, reason: ReportReason) async throws -> CurationReportResult
 
     func updateImage(
@@ -33,10 +29,6 @@ protocol BackendCurationServiceProtocol: Sendable {
 }
 
 extension BackendCurationServiceProtocol {
-    func queue(mediaType: MediaType?) async throws -> [CurationQueueEntry] {
-        try await queue(mediaType: mediaType, limit: 20)
-    }
-
     func contested() async throws -> [ContestedFrame] {
         try await contested(limit: 50)
     }

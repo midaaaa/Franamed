@@ -87,8 +87,7 @@ exactly six approved frames has no spares — which is why the curation target
 | POST | `/v1/catalog/import`, `/import-popular` | moderator |
 | POST | `/v1/catalog/items/{key}/curate` | moderator |
 | PATCH | `/v1/catalog/items/{key}` | moderator |
-| GET | `/v1/curation/queue` | signed in |
-| POST | `/v1/curation/vote`, `/report` | signed in |
+| POST | `/v1/curation/report` | signed in |
 | PATCH | `/v1/curation/images/{id}` | signed in (hash) / moderator (rest) |
 | POST | `/v1/curation/images/{id}/lock`, `/dismiss-disputes` | moderator |
 | GET | `/v1/curation/reports`, `/contested` | moderator |
@@ -111,16 +110,16 @@ counters are per Cloudflare location and eventually consistent, so a burst leaks
 through before it bites — measured at 19 of 40 rapid sign-ins getting through
 before the first 429. It caps sustained hammering, not patience.
 
-**Vote weight earned by playing** is the one that matters. Weighted voting
-assumes accounts are scarce; anonymous accounts are free, so a hundred throwaway
-sign-ins could otherwise swing any frame. A vote counts for nothing until the
+**Report weight earned by playing** is the one that matters. Weighted reports
+assume accounts are scarce; anonymous accounts are free, so a hundred throwaway
+sign-ins could otherwise hide any frame. A report counts for nothing until the
 account has played `voteWeightMinRounds` rounds (default 5). Minting accounts is
-cheap; playing five rounds on each is not. Attempts are still awarded while the
-weight is zero, since curating is how a new player unlocks rounds.
+cheap; playing five rounds on each is not.
 
-A moderator lock overrides both: votes and reports keep landing on a locked
-frame — that is how a moderator learns they were wrong, surfaced by
-`/v1/curation/contested` — they just stop deciding.
+Players never make a frame playable — only a moderator does. A moderator lock
+also overrides reports: they keep landing on a locked frame — that is how a
+moderator learns they were wrong, surfaced by `/v1/curation/contested` — they
+just stop deciding.
 
 ## Free plan headroom
 

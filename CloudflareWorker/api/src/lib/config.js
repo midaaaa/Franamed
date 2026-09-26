@@ -1,15 +1,13 @@
 // Runtime knobs that live in the database so they can change without a deploy.
 
 const DEFAULTS = {
-    curationGateEnabled: false,
     dailyFreeAttempts: 6,
     attemptsPerCorrectStreak: 1,
-    curationRewardAttempts: 1,
     playlistCompletionReward: 3,
     autoHideReportWeight: 3,
     catalogCacheTTLSeconds: 86400,
-    // Rounds an account must have played before its curation vote carries any
-    // weight. Set to 0 to let brand new accounts vote at full strength.
+    // Rounds an account must have played before its frame reports carry any
+    // weight. Set to 0 to let brand new accounts report at full strength.
     voteWeightMinRounds: 5,
     // Approved frames after which a title stops being offered for curation.
     // Not a playability gate — six approved frames already make a title

@@ -7,8 +7,8 @@
 // per minute over a day sails straight through.
 //
 // So this is deliberately only half the answer. The other half is that a brand
-// new account's vote carries no weight until it has actually played (see
-// `voterWeight`), which attacks the economics rather than the request rate:
+// new account's report carries no weight until it has actually played (see
+// `reporterWeight`), which attacks the economics rather than the request rate:
 // minting accounts is cheap, playing rounds on each of them is not.
 
 import { tooManyRequests } from "./http.js";
@@ -38,10 +38,10 @@ export async function limitByUser(env, uid, name) {
 // How much a user's judgement counts.
 //
 // `report_multiplier` is the admin's dial on an individual. On top of it, an
-// account that has not played yet counts for nothing at all: weighted voting
-// assumes accounts are scarce, and anonymous accounts are free, so without this
-// a hundred throwaway sign-ins could swing any frame.
-export async function voterWeight(env, user) {
+// account that has not played yet counts for nothing at all: weighted reports
+// assume accounts are scarce, and anonymous accounts are free, so without this
+// a hundred throwaway sign-ins could hide any frame.
+export async function reporterWeight(env, user) {
     const config = await readConfig(env);
     if (config.voteWeightMinRounds <= 0) return user.report_multiplier;
 

@@ -8,10 +8,8 @@
 import Foundation
 
 struct AppGameConfig: Codable, Sendable, Equatable {
-    let curationGateEnabled: Bool
     let dailyFreeAttempts: Int
     let attemptsPerCorrectStreak: Int
-    let curationRewardAttempts: Int
     let playlistCompletionReward: Int
     let autoHideReportWeight: Double
     let catalogCacheTTLSeconds: Int

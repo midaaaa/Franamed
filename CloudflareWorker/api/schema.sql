@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS media_images (
     difficulty_tier   TEXT,                                      -- hard | medium | easy
     difficulty_rank   INTEGER,                                   -- optional exact 1..6 override
 
-    -- A moderator verdict community voting cannot overturn. Votes and reports
-    -- keep accruing on a locked frame, they just stop deciding its status.
+    -- A moderator verdict reports cannot overturn. Reports keep accruing on a
+    -- locked frame, they just stop deciding its status.
     moderator_status  TEXT,                                      -- approved | rejected, NULL = not locked
     moderator_uid     TEXT,
     moderator_at      INTEGER,
@@ -127,22 +127,6 @@ CREATE INDEX IF NOT EXISTS idx_images_media  ON media_images(media_key);
 CREATE INDEX IF NOT EXISTS idx_images_status ON media_images(status);
 CREATE INDEX IF NOT EXISTS idx_images_locked ON media_images(moderator_status);
 CREATE INDEX IF NOT EXISTS idx_media_title  ON media_items(title);
-
--- Votes are per user so a vote can be changed: the old weight is subtracted and
--- the new one added, instead of an anonymous counter that can only go up.
-CREATE TABLE IF NOT EXISTS image_votes (
-    image_id   INTEGER NOT NULL REFERENCES media_images(id) ON DELETE CASCADE,
-    uid        TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    verdict    TEXT    NOT NULL,                                 -- approve | reject
-    weight     REAL    NOT NULL,
-    created_at INTEGER NOT NULL,
-    -- A dismissed row stops counting but is never removed: it is the evidence
-    -- for judging whoever cast it.
-    dismissed_at INTEGER,                                      -- NULL = still counts
-    dismissed_by TEXT,
-    PRIMARY KEY (image_id, uid)
-);
-CREATE INDEX IF NOT EXISTS idx_votes_live ON image_votes(image_id, dismissed_at);
 
 CREATE TABLE IF NOT EXISTS image_reports (
     image_id   INTEGER NOT NULL REFERENCES media_images(id) ON DELETE CASCADE,
@@ -297,10 +281,8 @@ CREATE TABLE IF NOT EXISTS app_config (
 );
 
 INSERT OR IGNORE INTO app_config (key, value) VALUES
-    ('curationGateEnabled',      'false'),
     ('dailyFreeAttempts',        '6'),
     ('attemptsPerCorrectStreak', '1'),
-    ('curationRewardAttempts',   '1'),
     ('playlistCompletionReward', '3'),
     ('autoHideReportWeight',     '3'),
     ('catalogCacheTTLSeconds',   '86400'),

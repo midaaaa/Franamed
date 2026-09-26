@@ -20,10 +20,6 @@ struct ContestedFrame: Codable, Sendable, Identifiable, Equatable {
     let title: String
     let releaseYear: Int?
     let reportCount: Int
-    let shadowApproveWeight: Double
-    let shadowRejectWeight: Double
-
-    var disagreement: Double { shadowRejectWeight - shadowApproveWeight }
 
     func imageURL(imageBaseURL: String) -> URL? {
         URL(string: "\(imageBaseURL)/t/p/w1280\(filePath)")

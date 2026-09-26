@@ -12,5 +12,4 @@ struct AttemptBudget: Codable, Sendable, Equatable {
     let bonusAttempts: Int
     let attemptsUsedToday: Int
     let attemptsRemaining: Int
-    let gateEnabled: Bool
 }

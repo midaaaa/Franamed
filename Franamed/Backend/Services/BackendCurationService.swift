@@ -14,26 +14,6 @@ final class BackendCurationService: BackendCurationServiceProtocol {
         self.client = client
     }
 
-    func queue(mediaType: MediaType?, limit: Int) async throws -> [CurationQueueEntry] {
-        struct Response: Decodable, Sendable {
-            let items: [CurationQueueEntry]
-        }
-
-        var query = [URLQueryItem(name: "limit", value: "\(limit)")]
-        if let mediaType { query.append(URLQueryItem(name: "mediaType", value: mediaType.rawValue)) }
-
-        let response: Response = try await client.get("/v1/curation/queue", query: query)
-        return response.items
-    }
-
-    func vote(imageId: Int, approve: Bool) async throws -> CurationVoteResult {
-        struct Payload: Encodable, Sendable {
-            let imageId: Int
-            let verdict: String
-        }
-        return try await client.post("/v1/curation/vote", body: Payload(imageId: imageId, verdict: approve ? "approve" : "reject"))
-    }
-
     func report(imageId: Int, reason: ReportReason) async throws -> CurationReportResult {
         struct Payload: Encodable, Sendable {
             let imageId: Int

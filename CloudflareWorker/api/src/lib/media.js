@@ -248,7 +248,7 @@ export async function refreshMediaCounters(env, key) {
     // A title becomes playable the moment it has an approved image; admin
     // finalisation is queue housekeeping and deliberately not a gameplay gate.
     //
-    // 'rejected' is sticky: without that first branch any vote on any frame
+    // 'rejected' is sticky: without that first branch any lock on any frame
     // would put a thrown-out title back in the playable pool. Undoing a
     // rejection is `/catalog/items/{key}/reset`, never a side effect.
     await env.DB.prepare(
@@ -263,15 +263,12 @@ export async function refreshMediaCounters(env, key) {
     ).bind(counts.total || 0, counts.reviewed || 0, approved, approved, key).run();
 }
 
-// Every frame's status on one title, re-derived from the live votes and
-// reports in a single statement: a title can carry 170 frames and D1 allows 50
+// Every frame's status on one title, re-derived from the live reports in a
+// single statement: a title can carry 170 frames and D1 allows 50
 // queries per invocation, so the per-frame path cannot be looped.
 export async function recomputeTitleImageStatuses(env, key, { autoHideReportWeight }) {
     const liveReportWeight = `(SELECT COALESCE(SUM(r.weight), 0) FROM image_reports r
                                 WHERE r.image_id = media_images.id AND r.dismissed_at IS NULL)`;
-    const netVoteWeight = `(SELECT COALESCE(SUM(CASE WHEN v.verdict = 'approve' THEN v.weight ELSE -v.weight END), 0)
-                              FROM image_votes v
-                             WHERE v.image_id = media_images.id AND v.dismissed_at IS NULL)`;
 
     await env.DB.prepare(
         `UPDATE media_images
@@ -279,8 +276,6 @@ export async function recomputeTitleImageStatuses(env, key, { autoHideReportWeig
              status = CASE
                  WHEN moderator_status IS NOT NULL THEN moderator_status
                  WHEN ${liveReportWeight} >= ?1 THEN 'rejected'
-                 WHEN ${netVoteWeight} <= -1 THEN 'rejected'
-                 WHEN ${netVoteWeight} >= 1 THEN 'approved'
                  ELSE 'pending'
              END
          WHERE media_key = ?2`

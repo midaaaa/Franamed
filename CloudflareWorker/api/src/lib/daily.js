@@ -116,8 +116,7 @@ export async function attemptBudget(env, user) {
         freeAttempts: free,
         bonusAttempts: bonus,
         attemptsUsedToday: used,
-        attemptsRemaining: Math.max(0, free - used) + bonus,
-        gateEnabled: config.curationGateEnabled
+        attemptsRemaining: Math.max(0, free - used) + bonus
     };
 }
 
