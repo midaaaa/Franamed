@@ -104,7 +104,8 @@ struct TicketTear<Content: View>: View {
                                        if phase == .returning { phase = .healing }
                                    },
                                    onPark: { phase = phase == .detached ? .gone : .rest },
-                                   clearToken: clearToken)
+                                   clearToken: clearToken,
+                                   isShown: phase.showsShader)
                     .opacity(phase.showsShader ? 1 : 0)
             }
             .overlay { grabArea }

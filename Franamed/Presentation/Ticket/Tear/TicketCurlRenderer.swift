@@ -19,6 +19,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
     var onDrawn: (() -> Void)?
     var onPark: (() -> Void)?
     var clearToken = 0
+    var isShown = false
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
 
@@ -66,6 +67,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
         c.probe = probe
         c.onDrawn = onDrawn
         c.onPark = onPark
+        c.isShown = isShown
 
         if c.clearToken != clearToken {
             c.clearToken = clearToken
@@ -86,6 +88,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
         var stubShape: (any Shape & Hashable)?
         var probe: TearFrameRateProbe?
         var clearToken = 0
+        var isShown = false
         var pendingClear = false
         var onDrawn: (() -> Void)?
         var onPark: (() -> Void)?
@@ -132,11 +135,13 @@ struct TicketCurlRenderer: UIViewRepresentable {
         }
 
         private func render(in view: MTKView) {
-            if pendingClear, !engine.isAnimating {
+            if pendingClear {
                 pendingClear = false
-                presentClear(in: view)
-                view.isPaused = true
-                return
+                if !engine.isAnimating, drawnFrames == 0 {
+                    presentClear(in: view)
+                    view.isPaused = true
+                    return
+                }
             }
             trackFrameRate()
             cpuStart = CACurrentMediaTime()
@@ -158,6 +163,12 @@ struct TicketCurlRenderer: UIViewRepresentable {
                         onPark?()
                     }
                 }
+            }
+
+            if parking, drawnFrames == 0, !isShown {
+                presentClear(in: view)
+                drawnFrames += 1
+                return
             }
 
             guard let tex = texture, let pipeline else { return }
