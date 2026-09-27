@@ -30,7 +30,6 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var outcome: RoundOutcome?
     @Published private(set) var revealedCount = 1
     @Published private(set) var currentFrameIndex = 0
-    @Published private(set) var answeredFrameIndex: Int?
     @Published private(set) var details: MediaDetails?
     @Published private(set) var genreNames: [String] = []
     private var detailsTask: Task<Void, Never>?
@@ -58,7 +57,6 @@ final class RoundViewModel: ObservableObject {
         answerText = ""
         revealedCount = 1
         currentFrameIndex = 0
-        answeredFrameIndex = nil
         attemptsMade = 0
         details = nil
         selectedSuggestion = nil
@@ -102,7 +100,6 @@ final class RoundViewModel: ObservableObject {
             }
         }
         if isCorrect {
-            answeredFrameIndex = currentFrameIndex
             outcome = .correct
             modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
             revealedCount = frameCount
@@ -116,7 +113,6 @@ final class RoundViewModel: ObservableObject {
             }
 
             if attemptsRemaining == 0 {
-                answeredFrameIndex = currentFrameIndex
                 outcome = .incorrect
                 modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
             }

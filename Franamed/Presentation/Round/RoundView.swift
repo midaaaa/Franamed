@@ -66,7 +66,7 @@ struct RoundView: View {
                         FrameIndicatorDots(
                             revealedCount: viewModel.revealedCount,
                             currentFrameIndex: viewModel.currentFrameIndex,
-                            answeredFrameIndex: viewModel.answeredFrameIndex,
+                            attemptsMade: viewModel.attemptsMade,
                             outcome: viewModel.outcome,
                             totalFrames: viewModel.frameCount
                         )

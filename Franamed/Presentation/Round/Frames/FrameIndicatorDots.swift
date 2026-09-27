@@ -10,7 +10,7 @@ import SwiftUI
 struct FrameIndicatorDots: View {
     let revealedCount: Int
     let currentFrameIndex: Int
-    let answeredFrameIndex: Int?
+    let attemptsMade: Int
     let outcome: RoundOutcome?
     let totalFrames: Int
 
@@ -19,24 +19,11 @@ struct FrameIndicatorDots: View {
     }
 
     private func state(for index: Int) -> DotState {
-        if let answeredFrameIndex {
-            if index == answeredFrameIndex {
-                return outcome == .correct ? .correct : .wrong
-            }
-            
-            if outcome == .correct {
-                return index < answeredFrameIndex ? .wrong : .unseen
-            }
-            return index < revealedCount ? .wrong : .unseen
-        }
-
-        if index >= revealedCount {
-            return .unseen
-        }
-        if index < revealedCount - 1 {
-            return .wrong
-        }
-        return .active
+        let misses = outcome == .correct ? attemptsMade - 1 : attemptsMade
+        if index < misses { return .wrong }
+        if outcome == .correct, index == misses { return .correct }
+        if outcome == nil, index == revealedCount - 1 { return .active }
+        return .unseen
     }
 
     private func color(for state: DotState) -> Color {
@@ -69,19 +56,19 @@ struct FrameIndicatorDots: View {
 #Preview("Indicator dots") {
     VStack(alignment: .leading, spacing: 20) {
         Text("First attempt").font(.caption)
-        FrameIndicatorDots(revealedCount: 1, currentFrameIndex: 0, answeredFrameIndex: nil, outcome: nil, totalFrames: 6)
+        FrameIndicatorDots(revealedCount: 1, currentFrameIndex: 0, attemptsMade: 0, outcome: nil, totalFrames: 6)
 
-        Text("3 wrong guesses so far, on the 4th").font(.caption)
-        FrameIndicatorDots(revealedCount: 4, currentFrameIndex: 3, answeredFrameIndex: nil, outcome: nil, totalFrames: 6)
+        Text("3 wrong guesses so far, browsing back to frame 2").font(.caption)
+        FrameIndicatorDots(revealedCount: 4, currentFrameIndex: 1, attemptsMade: 3, outcome: nil, totalFrames: 6)
 
-        Text("Correct on the 3rd attempt (1–2 wrong, 4–6 never attempted)").font(.caption)
-        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, answeredFrameIndex: 2, outcome: .correct, totalFrames: 6)
+        Text("Correct on the 4th attempt while browsing frame 2").font(.caption)
+        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 1, attemptsMade: 4, outcome: .correct, totalFrames: 6)
 
-        Text("Wrong on the 6th (final) attempt").font(.caption)
-        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 5, answeredFrameIndex: 5, outcome: .incorrect, totalFrames: 6)
+        Text("Correct on the 1st attempt").font(.caption)
+        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 0, attemptsMade: 1, outcome: .correct, totalFrames: 6)
 
-        Text("Wrong on the 6th, submitted while browsing back to frame 3").font(.caption)
-        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, answeredFrameIndex: 2, outcome: .incorrect, totalFrames: 6)
+        Text("Wrong on the 6th, browsing back to frame 3").font(.caption)
+        FrameIndicatorDots(revealedCount: 6, currentFrameIndex: 2, attemptsMade: 6, outcome: .incorrect, totalFrames: 6)
     }
     .padding()
 }
