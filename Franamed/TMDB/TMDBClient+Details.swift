@@ -28,6 +28,7 @@ private struct DetailsResponse: Decodable {
     let credits: Credits?
     let releaseDates: ReleaseDates?
     let contentRatings: ContentRatings?
+    let originCountry: [String]?
 }
 
 extension TMDBClient {
@@ -53,8 +54,8 @@ extension TMDBClient {
         details.isCanceled = response.status == "Canceled"
         details.certification = Self.certification(from: response)
         details.authors = mediaType == .movie
-            ? (response.credits?.crew ?? []).filter { $0.job == "Director" }.prefix(2).map(\.name)
-            : (response.createdBy ?? []).prefix(2).map(\.name)
+            ? (response.credits?.crew ?? []).filter { $0.job == "Director" }.map(\.name)
+            : (response.createdBy ?? []).map(\.name)
 
         return details
     }
@@ -65,20 +66,17 @@ extension TMDBClient {
     }
 
     private static func certification(from response: DetailsResponse) -> String? {
-        let region = Locale.current.region?.identifier ?? "US"
+        let regions = [Locale.current.region?.identifier, response.originCountry?.first, "US"].compactMap { $0 }
+        return regions.lazy.compactMap { certification(in: $0, from: response) }.first
+    }
 
+    private static func certification(in region: String, from response: DetailsResponse) -> String? {
         if let countries = response.releaseDates?.results {
-            let mine = countries.first { $0.iso31661 == region }?.releaseDates ?? []
-            let theatrical = mine.first { $0.type == 3 }?.certification
-            let any = mine.compactMap(\.certification).first { !$0.isEmpty }
-            return normalized(theatrical ?? any)
+            let dates = countries.first { $0.iso31661 == region }?.releaseDates ?? []
+            let theatrical = dates.first { $0.type == 3 }.flatMap { normalized($0.certification) }
+            return theatrical ?? dates.lazy.compactMap { normalized($0.certification) }.first
         }
-
-        if let ratings = response.contentRatings?.results {
-            return normalized(ratings.first { $0.iso31661 == region }?.rating)
-        }
-
-        return nil
+        return normalized(response.contentRatings?.results.first { $0.iso31661 == region }?.rating)
     }
 
     private static func normalized(_ value: String?) -> String? {
