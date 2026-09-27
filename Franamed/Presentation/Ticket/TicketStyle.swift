@@ -12,7 +12,8 @@ enum TicketStyle {
     static let fieldLabel = Font.system(size: 10, weight: .semibold)
     static let fieldValue = Font.system(size: 15, weight: .medium, design: .monospaced)
     static let fieldPlaceholder = Font.system(size: 15, weight: .regular, design: .monospaced)
-    static let meta = Font.system(size: 13, weight: .medium)
+    static let metaUIFont = UIFont.systemFont(ofSize: 13, weight: .medium)
+    static let meta = Font(metaUIFont)
     static let serial = Font.system(size: 10, weight: .medium, design: .monospaced)
 
     static let placeholderInk = Color.black.opacity(0.32)

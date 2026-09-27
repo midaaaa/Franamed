@@ -6,42 +6,59 @@
 //
 
 import Foundation
+import UIKit
 
 struct ResultStubContent: Hashable {
     let title: String
-    let authorsLabel: String
-    let authors: String?
+    let credits: [String]
     let meta: String
     let verdict: String
     let session: String
-    let attemptsUsed: Int
-    let frameCount: Int
-    let isCorrect: Bool
+    let searchQuery: String
+    let marks: [ResultStubMark]
+    let currentFrame: Int?
 
     init(item: MediaItem,
          mediaType: MediaType,
          details: MediaDetails?,
-         outcome: RoundOutcome,
+         outcome: RoundOutcome?,
          attemptsUsed: Int,
-         frameCount: Int,
-         playedAt: Date = .now) {
+         playedAt: Date = .now,
+         marks: [ResultStubMark],
+         currentFrame: Int? = nil) {
         title = item.originalTitle
-        authorsLabel = mediaType == .movie ? "реж." : "создатели"
-        authors = details?.authors.isEmpty == false
-            ? details?.authors.joined(separator: ", ")
-            : nil
+        credits = Self.credits(mediaType: mediaType, authors: details?.authors ?? [])
         meta = Self.meta(mediaType: mediaType, item: item, details: details)
-        isCorrect = outcome == .correct
-        self.attemptsUsed = attemptsUsed
-        self.frameCount = frameCount
-        verdict = isCorrect ? "УГАДАНО С \(attemptsUsed)-Й ПОПЫТКИ" : "НЕ УГАДАНО"
+        switch outcome {
+        case .correct: verdict = "УГАДАНО С \(attemptsUsed)-Й ПОПЫТКИ"
+        case .incorrect: verdict = "НЕ УГАДАНО"
+        case nil: verdict = ""
+        }
         session = Self.session(playedAt)
+        let year = item.releaseDate?.prefix(4) ?? ""
+        searchQuery = year.isEmpty ? title : "\(title) \(year)"
+        self.marks = marks
+        self.currentFrame = currentFrame
     }
 
     private static func session(_ date: Date) -> String {
-        let parts = Calendar.current.dateComponents([.day, .month, .hour, .minute], from: date)
-        return String(format: "%02d.%02d %02d:%02d",
-                      parts.day ?? 0, parts.month ?? 0, parts.hour ?? 0, parts.minute ?? 0)
+        let parts = Calendar.current.dateComponents([.day, .month, .year, .hour, .minute], from: date)
+        return String(format: "%02d.%02d.%02d %02d:%02d", parts.day ?? 0, parts.month ?? 0,
+                      (parts.year ?? 0) % 100, parts.hour ?? 0, parts.minute ?? 0)
+    }
+
+    // MARK: Credits
+
+    private static func credits(mediaType: MediaType, authors: [String]) -> [String] {
+        let label = switch mediaType {
+        case .movie: "реж."
+        case .tv: authors.count == 1 ? "создатель" : "создатели"
+        }
+        return stride(from: authors.count, through: 1, by: -1).map { shown in
+            let names = authors.prefix(shown).joined(separator: ", ")
+            let rest = authors.count - shown
+            return rest == 0 ? "\(label) \(names)" : "\(label) \(names) и ещё \(rest)"
+        }
     }
 
     // MARK: Meta line
@@ -89,5 +106,18 @@ struct ResultStubContent: Hashable {
         case 2...4: return "\(count) сезона"
         default: return "\(count) сезонов"
         }
+    }
+}
+
+extension ResultStubContent {
+    func menuItems(onWebSearch: @escaping (String) -> Void) -> [FlipMenuItem] {
+        [
+            FlipMenuItem(title: "Скопировать название", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = title
+            },
+            FlipMenuItem(title: "Загуглить", systemImage: "magnifyingglass") {
+                onWebSearch(searchQuery)
+            }
+        ]
     }
 }

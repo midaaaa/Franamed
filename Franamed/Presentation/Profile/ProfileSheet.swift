@@ -15,6 +15,7 @@ struct ProfileSheet: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
+    @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
     @EnvironmentObject private var session: SessionStore
 
@@ -69,6 +70,10 @@ struct ProfileSheet: View {
                 Section {
                     Toggle("Отладочный оверлей", isOn: $showsDebugOverlay)
                     Toggle("Прятать кадр от съёмки", isOn: $isScreenProtected)
+                    Toggle("Обрезать корешок формой", isOn: Binding(
+                        get: { stubPlacement == .clippedByForm },
+                        set: { stubPlacement = $0 ? .clippedByForm : .behindForm }
+                    ))
                 } header: {
                     Text("Отладка")
                 }

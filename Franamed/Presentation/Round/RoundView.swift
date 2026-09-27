@@ -13,26 +13,29 @@ struct RoundView: View {
     @StateObject private var viewModel: RoundViewModel
     @StateObject private var frames = RoundFrames()
     @FocusState private var isAnswerFieldFocused: Bool
-    @State private var containerHeight: CGFloat = 0
+    @State private var fullHeight: CGFloat = 0
     @State private var frameHeight: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
-    @State private var showsResult = false
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
+    @State private var keyboardLift: CGFloat = 0
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
+    @State private var isStubLeaving = false
+    @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
     private static let backgroundSpace = "roundBackground"
 
-    private var barInset: CGFloat { isAnswerFieldFocused ? 6 : 24 }
+    private static let focusedBarInset: CGFloat = 6
+    private static let restingBarInset: CGFloat = 24
 
-    private var barBottomInset: CGFloat { isAnswerFieldFocused ? 6 : 24 - homeIndicatorInset }
+    private var barInset: CGFloat { isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset }
+
+    private var barBottomInset: CGFloat {
+        isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset - homeIndicatorInset
+    }
 
     private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
-
-    private var stubGap: CGFloat { (containerHeight - barBottomInset - answerBarHeight) - frameHeight }
-
-    private static let resultReveal = Animation.easeOut(duration: 0.32)
 
     init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
         _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, modelContext: modelContext, mediaType: mediaType, filters: filters, frameCount: frameCount))
@@ -58,23 +61,14 @@ struct RoundView: View {
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
-                .overlay(alignment: .top) { resultStub }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { containerHeight = $0 }
-                .overlay(alignment: .bottom) { bottomActionBar }
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        FrameIndicatorDots(
-                            revealedCount: viewModel.revealedCount,
-                            currentFrameIndex: viewModel.currentFrameIndex,
-                            attemptsMade: viewModel.attemptsMade,
-                            outcome: viewModel.outcome,
-                            totalFrames: viewModel.frameCount
-                        )
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Text("\(viewModel.attemptsRemaining)/\(viewModel.frameCount)")
-                    }
+                .background {
+                    Color.clear
+                        .ignoresSafeArea(.keyboard)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            if !isAnswerFieldFocused || height > fullHeight { fullHeight = height }
+                        }
                 }
+                .overlay(alignment: .bottom) { bottomActionBar }
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
@@ -105,18 +99,24 @@ struct RoundView: View {
                 DispatchQueue.main.async { resignKeyboard() }
             }
         )
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let keyboardHeight = WindowMetrics.size.height - frame.minY
+            keyboardLift = max(0, keyboardHeight + Self.focusedBarInset - Self.restingBarInset)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            withAnimation(ResultStubPeek.tuckAnimation) { keyboardLift = 0 }
+        }
         .onChange(of: viewModel.outcome) { _, newOutcome in
             isMorphAnimating = true
             if newOutcome != nil {
                 isAnswerFieldFocused = false
-                showsResult = true
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 1
                 } completion: {
                     isMorphAnimating = false
                 }
             } else {
-                withAnimation(Self.resultReveal) { showsResult = false }
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 0
                 } completion: {
@@ -138,7 +138,11 @@ struct RoundView: View {
     private func startNewRound() {
         answerBarHeight = 44
         pendingAnimatedHeightCatchUp = false
-        Task { await viewModel.loadRound() }
+        withAnimation(ResultStubPeek.exitAnimation) { isStubLeaving = true }
+        Task {
+            await viewModel.loadRound()
+            isStubLeaving = false
+        }
     }
 
     private var bottomActionBar: some View {
@@ -169,6 +173,7 @@ struct RoundView: View {
             }
             .frame(height: suggestionRowHeight)
         }
+        .background(alignment: .bottom) { stubAnchor }
         .padding(.horizontal, barInset)
         .padding(.bottom, barBottomInset)
         .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
@@ -177,18 +182,43 @@ struct RoundView: View {
 
     @ViewBuilder
     private var resultStub: some View {
-        if showsResult, let outcome = viewModel.outcome, let media = viewModel.mediaItemWithBackdrops {
-            ResultStubStage(item: media.item,
-                            mediaType: viewModel.mediaType,
-                            details: viewModel.details,
-                            outcome: outcome,
-                            attemptsUsed: max(viewModel.attemptsMade, 1),
-                            frameCount: viewModel.frameCount,
-                            filters: viewModel.filters,
-                            genreNames: viewModel.genreNames,
-                            topInset: frameHeight,
-                            restingOffset: max(0, (stubGap - ResultStubMetrics.height) / 2))
+        if !viewModel.isLoading, !isStubLeaving, frames.hasPresentedFrame, let media = viewModel.mediaItemWithBackdrops {
+            ResultStubPeek(placement: stubPlacement,
+                           item: media.item,
+                           mediaType: viewModel.mediaType,
+                           details: viewModel.details,
+                           outcome: viewModel.outcome,
+                           attemptsMade: viewModel.attemptsMade,
+                           revealedCount: viewModel.revealedCount,
+                           currentFrame: viewModel.currentFrameIndex,
+                           frameCount: viewModel.frameCount,
+                           filters: viewModel.filters,
+                           genreNames: viewModel.genreNames,
+                           isTucked: isStubTucked,
+                           keyboardLift: keyboardLift,
+                           restOffset: stubRestOffset)
+                .id(media.item.id)
+                .transition(.asymmetric(insertion: .identity,
+                                        removal: .offset(x: WindowMetrics.size.width)))
         }
+    }
+
+    private var stubAnchor: some View {
+        Color.clear
+            .frame(height: 0)
+            .overlay(alignment: .bottom) { resultStub }
+            .geometryGroup()
+    }
+
+    private var isStubTucked: Bool {
+        viewModel.outcome == nil && answerBarHeight > suggestionRowHeight + 1
+    }
+
+    private var stubRestOffset: CGFloat {
+        let restingBarTop = fullHeight - (Self.restingBarInset - homeIndicatorInset) - suggestionRowHeight
+        let gap = restingBarTop - frameHeight
+        let restingStubTop = frameHeight + max(0, (gap - ResultStubMetrics.height) / 2)
+        return restingStubTop + ResultStubMetrics.height - restingBarTop - suggestionRowHeight
     }
 
     private func resignKeyboard() {
