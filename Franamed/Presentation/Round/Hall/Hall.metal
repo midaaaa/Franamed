@@ -238,6 +238,7 @@ float4 march(thread const Hall &h, thread const Row &row, float3 d) {
     float pixel = 1.0 / (h.focal * 2.0);
 
     float3 color = 0;
+    float3 last = 0;
     float alpha = 0;
     int shaded = 0;
     float t = tStart;
@@ -249,12 +250,15 @@ float4 march(thread const Hall &h, thread const Row &row, float3 d) {
         if (dist < size) {
             float cover = saturate(0.5 - dist / size);
             if (cover > 0.02) {
+                if (shaded < 5) {
+                    last = shade(h, row, p, d, t);
+                    shaded++;
+                }
                 float take = (1.0 - alpha) * cover;
-                color += take * shade(h, row, p, d, t);
+                color += take * last;
                 alpha += take;
-                shaded++;
             }
-            if (alpha > 0.985 || shaded >= 5) break;
+            if (alpha > 0.985) break;
             t += max(dist, size * 0.5);
         } else {
             t += dist * 0.8;

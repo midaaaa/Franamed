@@ -40,7 +40,7 @@ struct HallView: View, Equatable {
     var sway: SIMD2<Float> = .zero
     var scale: CGFloat = 1
 
-    static let movingScale: CGFloat = 0.65
+    static let movingScale: CGFloat = 0.75
 
     nonisolated static func == (lhs: HallView, rhs: HallView) -> Bool {
         lhs.sample == rhs.sample && lhs.scene == rhs.scene && lhs.size == rhs.size
