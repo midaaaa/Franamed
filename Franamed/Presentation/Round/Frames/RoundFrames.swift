@@ -17,10 +17,15 @@ final class RoundFrames: ObservableObject {
     @Published private var frameLight: HallFrameSample = .dark
 
     private var target: URL?
+    private var images: [URL: UIImage] = [:]
     private var frameLights: [URL: HallFrameSample] = [:]
 
     private static let spinnerDelay = Duration.milliseconds(180)
     private static let retryCap = Duration.seconds(2)
+
+    var displayedImage: UIImage? {
+        displayedURL.flatMap { images[$0] }
+    }
 
     var hallLight: HallFrameSample {
         displayedURL == nil && isWaiting ? SpinnerGlyph.hallLight : frameLight
@@ -34,7 +39,7 @@ final class RoundFrames: ObservableObject {
         }
         guard url != displayedURL else { return }
 
-        if ImageCache.shared.image(for: url) == nil {
+        if images[url] == nil {
             await download(url)
         } else {
             isWaiting = false
@@ -46,9 +51,15 @@ final class RoundFrames: ObservableObject {
     }
 
     func preload(_ urls: [URL]) async {
+        let round = Set(urls)
+        images = images.filter { round.contains($0.key) }
+        frameLights = frameLights.filter { round.contains($0.key) }
         for url in urls {
             guard !Task.isCancelled else { return }
-            _ = await FrameDownloads.shared.prepare(url)
+            if images[url] == nil, let image = await FrameDownloads.shared.image(for: url) {
+                guard !Task.isCancelled else { return }
+                images[url] = image
+            }
             await prepareLight(url)
         }
     }
@@ -66,7 +77,11 @@ final class RoundFrames: ObservableObject {
         defer { spinner.cancel() }
 
         var attempt = 0
-        while await !FrameDownloads.shared.prepare(url), !Task.isCancelled {
+        while !Task.isCancelled {
+            if let image = await FrameDownloads.shared.image(for: url) {
+                if !Task.isCancelled { images[url] = image }
+                return
+            }
             isWaiting = true
             attempt += 1
             try? await Task.sleep(for: min(.milliseconds(400 * attempt), Self.retryCap))
@@ -74,7 +89,7 @@ final class RoundFrames: ObservableObject {
     }
 
     private func prepareLight(_ url: URL) async {
-        guard frameLights[url] == nil, let image = ImageCache.shared.image(for: url) else { return }
+        guard frameLights[url] == nil, let image = images[url] else { return }
         if let light = await Self.makeLight(image) { frameLights[url] = light }
     }
 

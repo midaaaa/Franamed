@@ -45,7 +45,7 @@ struct RoundView: View {
             } else {
                 VStack(spacing: 0) {
                     FrameView(
-                        imageURL: frames.displayedURL,
+                        image: frames.displayedImage,
                         isWaitingForFrame: frames.isWaiting,
                         isProtected: isFrameProtected,
                         hidesSpinnerFromCapture: showsCaptureBanner,

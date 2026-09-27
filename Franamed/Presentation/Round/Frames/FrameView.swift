@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct FrameView: View {
-    let imageURL: URL?
+    let image: UIImage?
     var isWaitingForFrame: Bool = false
     var isProtected: Bool = false
     var hidesSpinnerFromCapture: Bool = false
@@ -20,8 +20,8 @@ struct FrameView: View {
             .frame(maxWidth: .infinity)
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .overlay {
-                if let imageURL {
-                    CachedAsyncImage(url: imageURL, isProtected: isProtected)
+                if let image {
+                    ProtectedImage(image: image, isProtected: isProtected)
                 } else if isWaitingForFrame {
                     WaitingSpinner(hidesFromCapture: hidesSpinnerFromCapture)
                 }
@@ -41,16 +41,19 @@ struct FrameView: View {
 
 #Preview("Frame") {
     FrameView(
-        imageURL: URL(string: "https://picsum.photos/seed/backdrop1/1280/720"),
+        image: UIGraphicsImageRenderer(size: CGSize(width: 16, height: 9)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 16, height: 9))
+        },
         onTapPrevious: {},
         onTapNext: {}
     )
 }
 
 #Preview("Frame — black, no wait") {
-    FrameView(imageURL: nil, onTapPrevious: {}, onTapNext: {})
+    FrameView(image: nil, onTapPrevious: {}, onTapNext: {})
 }
 
 #Preview("Frame — waiting (spinner)") {
-    FrameView(imageURL: nil, isWaitingForFrame: true, onTapPrevious: {}, onTapNext: {})
+    FrameView(image: nil, isWaitingForFrame: true, onTapPrevious: {}, onTapNext: {})
 }

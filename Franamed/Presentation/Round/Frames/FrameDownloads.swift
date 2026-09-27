@@ -11,28 +11,21 @@ import UIKit
 actor FrameDownloads {
     static let shared = FrameDownloads()
 
-    private var running: [URL: Task<Bool, Never>] = [:]
+    private var running: [URL: Task<UIImage?, Never>] = [:]
 
-    nonisolated static func isPrepared(_ url: URL) -> Bool {
-        ImageCache.shared.image(for: url) != nil
-    }
-
-    func prepare(_ url: URL) async -> Bool {
-        if Self.isPrepared(url) { return true }
+    func image(for url: URL) async -> UIImage? {
         if let task = running[url] { return await task.value }
 
         let task = Task { await Self.download(url) }
         running[url] = task
-        let isPrepared = await task.value
+        let image = await task.value
         running[url] = nil
-        return isPrepared
+        return image
     }
 
     @concurrent
-    private static func download(_ url: URL) async -> Bool {
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = await UIImage(data: data)?.byPreparingForDisplay() else { return false }
-        ImageCache.shared.store(image, for: url)
-        return true
+    private static func download(_ url: URL) async -> UIImage? {
+        guard let (data, _) = try? await URLSession.shared.data(from: url) else { return nil }
+        return await UIImage(data: data)?.byPreparingForDisplay()
     }
 }
