@@ -42,6 +42,7 @@ struct TicketTear<Content: View>: View {
     @State private var canResumeTear = false
     @State private var needsSnapshot = false
     @State private var phase = TearPhase.rest
+    @State private var clearToken = 0
     @State private var completionToken = 0
     @GestureState private var isGrabbing = false
 
@@ -102,7 +103,8 @@ struct TicketTear<Content: View>: View {
                                        if phase == .arming { phase = .tearing }
                                        if phase == .returning { phase = .healing }
                                    },
-                                   onPark: { phase = phase == .detached ? .gone : .rest })
+                                   onPark: { phase = phase == .detached ? .gone : .rest },
+                                   clearToken: clearToken)
                     .opacity(phase.showsShader ? 1 : 0)
             }
             .overlay { grabArea }
@@ -137,6 +139,14 @@ struct TicketTear<Content: View>: View {
             }
             .onChange(of: isContentComplete) { _, complete in
                 if complete, needsSnapshot { snapshotTexture() }
+            }
+            .onChange(of: phase) { _, new in
+                guard !new.showsShader else { return }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(100))
+                    guard !phase.showsShader else { return }
+                    clearToken &+= 1
+                }
             }
             .onChange(of: completionToken) { _, _ in
                 let finished = onComplete

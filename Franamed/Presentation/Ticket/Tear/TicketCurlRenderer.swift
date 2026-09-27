@@ -18,6 +18,7 @@ struct TicketCurlRenderer: UIViewRepresentable {
     var probe: TearFrameRateProbe?
     var onDrawn: (() -> Void)?
     var onPark: (() -> Void)?
+    var clearToken = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
 
@@ -66,6 +67,12 @@ struct TicketCurlRenderer: UIViewRepresentable {
         c.onDrawn = onDrawn
         c.onPark = onPark
 
+        if c.clearToken != clearToken {
+            c.clearToken = clearToken
+            c.pendingClear = true
+            uiView.isPaused = false
+        }
+
         if needsFrame { uiView.isPaused = false }
     }
 
@@ -78,6 +85,8 @@ struct TicketCurlRenderer: UIViewRepresentable {
         var texture: MTLTexture?
         var stubShape: (any Shape & Hashable)?
         var probe: TearFrameRateProbe?
+        var clearToken = 0
+        var pendingClear = false
         var onDrawn: (() -> Void)?
         var onPark: (() -> Void)?
 
@@ -123,6 +132,12 @@ struct TicketCurlRenderer: UIViewRepresentable {
         }
 
         private func render(in view: MTKView) {
+            if pendingClear, !engine.isAnimating {
+                pendingClear = false
+                presentClear(in: view)
+                view.isPaused = true
+                return
+            }
             trackFrameRate()
             cpuStart = CACurrentMediaTime()
 
@@ -186,6 +201,20 @@ struct TicketCurlRenderer: UIViewRepresentable {
                 probe?.record(frameDuration: frameDuration, cpu: done - cpuStart,
                               wait: waited, at: done)
             }
+        }
+
+        private func presentClear(in view: MTKView) {
+            guard let drawable = view.currentDrawable,
+                  let rpd = view.currentRenderPassDescriptor,
+                  let cmd = commandQueue?.makeCommandBuffer() else { return }
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+            rpd.depthAttachment.loadAction = .clear
+            rpd.depthAttachment.clearDepth = 1.0
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return }
+            enc.endEncoding()
+            cmd.present(drawable)
+            cmd.commit()
         }
 
         private func notifyDrawn() {

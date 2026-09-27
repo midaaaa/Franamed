@@ -36,6 +36,7 @@ final class TearFrameRateProbe {
     @ObservationIgnored private var sessionCount = 0
 
     private let warmUpFrames = 5
+    private static let wakeFrames = 3
 
     private let publishInterval: CFTimeInterval = 0.2
 
@@ -52,6 +53,7 @@ final class TearFrameRateProbe {
         if isIdle { beginSession(at: now) }
 
         framesInSession += 1
+        guard framesInSession > Self.wakeFrames else { return }
         windowSum += frameDuration
         windowCount += 1
         window.frame = max(window.frame, frameDuration)
