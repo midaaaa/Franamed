@@ -105,7 +105,7 @@ struct RoundView: View {
             keyboardLift = max(0, keyboardHeight + Self.focusedBarInset - Self.restingBarInset)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
-            withAnimation(ResultStubPeek.tuckAnimation) { keyboardLift = 0 }
+            withAnimation(ResultStubPeek.keyboardSettleAnimation) { keyboardLift = 0 }
         }
         .onChange(of: viewModel.outcome) { _, newOutcome in
             isMorphAnimating = true

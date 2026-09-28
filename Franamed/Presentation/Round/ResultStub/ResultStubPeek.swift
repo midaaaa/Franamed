@@ -39,10 +39,11 @@ struct ResultStubPeek: View {
     private static let peekHeight: CGFloat = 33
     private static let tilt: Double = 32
     private static let perspective: CGFloat = 0.5
-    private static let screenEdgeGap: CGFloat = 24
+    private static let screenEdgeGap: CGFloat = 48
     private static let entryDelay = Duration.milliseconds(30)
     private static let keyboardAnimation = Animation.spring(response: 0.3, dampingFraction: 1)
     static let tuckAnimation = Animation.snappy
+    static let keyboardSettleAnimation = Animation.smooth
     static let exitAnimation = Animation.easeIn(duration: 0.3)
 
     private struct FacesID: Hashable {
