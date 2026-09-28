@@ -42,6 +42,7 @@ import {
 import { readConfig } from "../lib/config.js";
 import { limitByUser, reporterWeight } from "../lib/limits.js";
 import { applyVerdicts, parseVerdicts } from "../lib/verdicts.js";
+import { handleCurationScreens } from "./curationScreens.js";
 
 // Recomputes one image's status from the reports on it, then updates
 // its title's cached counters. Everything that can change an image's standing
@@ -88,6 +89,9 @@ export async function handleCuration(request, env, segments, url) {
     if (!config.curationEnabled && roleRank(user.role) < roleRank("moderator")) {
         throw forbidden("Curation is paused right now");
     }
+
+    const screen = await handleCurationScreens(request, env, segments, url, { user, config, windowMs });
+    if (screen) return screen;
 
     // ---------------------------------------------------------------- leases
     // Dealt from the queue, searched for, or opened to review a batch: one lock.
@@ -203,7 +207,6 @@ export async function handleCuration(request, env, segments, url) {
             uid: user.uid,
             mediaType,
             limit,
-            target: config.targetApprovedFrames,
             windowMs: Math.max(1, config.curationLeaseMinutes) * 60 * 1000
         });
 
@@ -234,7 +237,6 @@ export async function handleCuration(request, env, segments, url) {
                 uid: user.uid,
                 mediaType,
                 limit: 5,
-                target: config.targetApprovedFrames,
                 windowMs
             });
 
@@ -623,6 +625,7 @@ export async function handleCuration(request, env, segments, url) {
             await env.DB.prepare("UPDATE media_images SET difficulty_tier = ? WHERE id = ?")
                 .bind(body.difficultyTier, imageId)
                 .run();
+            if (body.status === undefined) await refreshMediaCounters(env, image.media_key);
         }
 
         if (body.difficultyRank !== undefined) {
@@ -719,31 +722,25 @@ function pickReplacement(candidates, reportedTier) {
 }
 
 // The queue read, shared by browsing it and by being dealt the next title.
-async function queueTitles(env, { uid, mediaType, limit, target, windowMs }) {
+// `work_weight` is zero for everything out of the queue, so this walks
+// idx_media_work from the top and stops at the LIMIT; a title skipped for a
+// lease or an open batch costs one index probe, not a count of its frames.
+async function queueTitles(env, { uid, mediaType, limit, windowMs }) {
     const rows = await env.DB.prepare(
-        `SELECT m.*,
-                m.popularity * (CAST(?1 - m.approved_images AS REAL) / ?1) + 0.01 AS weight,
-                (SELECT COUNT(*) FROM media_images i
-                  WHERE i.media_key = m.key AND i.status = 'pending') AS pending_images,
-                (SELECT COUNT(*) FROM media_images i
-                  WHERE i.media_key = m.key AND i.moderator_status IS NULL) AS unjudged_images
+        `SELECT m.*, m.work_weight AS weight
          FROM media_items m
-         WHERE (?2 IS NULL OR m.media_type = ?2)
-           AND m.status != 'rejected'
-           AND m.admin_finalized = 0
-           AND m.total_images > 0
-           AND m.approved_images < ?1
-           AND m.reviewed_images < m.total_images
+         WHERE m.work_weight > 0
+           AND (?1 IS NULL OR m.media_type = ?1)
            AND NOT EXISTS (
                SELECT 1 FROM title_leases l
-               WHERE l.media_key = m.key AND l.released_at IS NULL AND l.touched_at > ?3 AND l.uid != ?4
+               WHERE l.media_key = m.key AND l.released_at IS NULL AND l.touched_at > ?2 AND l.uid != ?3
            )
            AND NOT EXISTS (
                SELECT 1 FROM curation_batches b WHERE b.media_key = m.key AND b.state = 'pending'
            )
-         ORDER BY weight DESC, m.key
-         LIMIT ?5`
-    ).bind(target, mediaType || null, Date.now() - windowMs, uid, limit).all();
+         ORDER BY m.work_weight DESC, m.key
+         LIMIT ?4`
+    ).bind(mediaType || null, Date.now() - windowMs, uid, limit).all();
 
     return rows.results;
 }
@@ -752,8 +749,8 @@ function serializeQueueRow(row) {
     return {
         ...serializeMediaItem(row),
         weight: row.weight,
-        pendingImages: row.pending_images,
-        unjudgedImages: row.unjudged_images
+        pendingImages: row.pending_images ?? 0,
+        unjudgedImages: row.unjudged_images ?? 0
     };
 }
 

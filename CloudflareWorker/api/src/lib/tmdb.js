@@ -30,6 +30,27 @@ function releaseYear(details, mediaType) {
     return Number.isInteger(year) ? year : null;
 }
 
+// Films and series in one call; people are dropped. TMDB does the matching, so
+// case, "ё" and original titles all work, which a LIKE over D1 cannot.
+export async function searchTitles(env, query, { language = "ru-RU" } = {}) {
+    const body = await tmdbFetch(env, "/search/multi", { query, language, include_adult: "false" });
+    return (body.results || [])
+        .filter((entry) => entry.media_type === "movie" || entry.media_type === "tv")
+        .map((entry) => {
+            const date = entry.release_date || entry.first_air_date || "";
+            const year = Number.parseInt(date.slice(0, 4), 10);
+            return {
+                tmdbId: entry.id,
+                mediaType: entry.media_type,
+                key: mediaKey(entry.media_type, entry.id),
+                title: entry.title || entry.name || "",
+                originalTitle: entry.original_title || entry.original_name || "",
+                year: Number.isInteger(year) ? year : null,
+                posterPath: entry.poster_path || null
+            };
+        });
+}
+
 export async function fetchDiscoverPage(env, mediaType, { page = 1, language = "ru-RU", sortBy = "popularity.desc" } = {}) {
     return tmdbFetch(env, `/discover/${mediaType}`, { page: String(page), language, sort_by: sortBy });
 }

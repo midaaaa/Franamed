@@ -45,14 +45,11 @@ export async function reporterWeight(env, user) {
     const config = await readConfig(env);
     if (config.voteWeightMinRounds <= 0) return user.report_multiplier;
 
-    const played = await env.DB.prepare("SELECT COUNT(*) AS count FROM watched_media WHERE uid = ?")
-        .bind(user.uid)
-        .first();
+    // Only "enough or not" matters, so the count stops at the bar instead of
+    // walking a history that grows with every round.
+    const played = await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM (SELECT 1 FROM watched_media WHERE uid = ? LIMIT ?)"
+    ).bind(user.uid, config.voteWeightMinRounds).first();
 
     return played.count >= config.voteWeightMinRounds ? user.report_multiplier : 0;
-}
-
-export async function roundsPlayed(env, uid) {
-    const row = await env.DB.prepare("SELECT COUNT(*) AS count FROM watched_media WHERE uid = ?").bind(uid).first();
-    return row.count;
 }

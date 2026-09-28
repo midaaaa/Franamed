@@ -196,6 +196,7 @@ export async function handleCatalog(request, env, segments, url) {
             await env.DB.prepare(
                 "UPDATE media_items SET admin_finalized = ?, finalized_at = ?, finalized_by = ? WHERE key = ?"
             ).bind(body.adminFinalized ? 1 : 0, body.adminFinalized ? Date.now() : null, body.adminFinalized ? user.uid : null, key).run();
+            await refreshMediaCounters(env, key);
         }
 
         const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
@@ -269,6 +270,7 @@ export async function handleCatalog(request, env, segments, url) {
         await env.DB.prepare(
             "DELETE FROM daily_overrides WHERE media_key = ? AND date > ?"
         ).bind(key, utcDateString()).run();
+        await refreshMediaCounters(env, key);
 
         const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
         const genres = await loadGenreIds(env, [key]);

@@ -13,11 +13,36 @@ import { dailyNumber, ensureFrozen, isValidDateString, loadDailyPlan, utcDateStr
 
 const SPARE_FRAME_COUNT = 3;
 
+// Titles read per pick, one drawn from them. Walking from a random point favours
+// whichever title follows a wide gap in shuffle_key; drawing among the next
+// eight evens that out to within ~35% while still reading a handful of rows.
+const SHUFFLE_SAMPLE = 8;
+
+async function pickRandomKey(env, where, bindings) {
+    const point = Math.random();
+    const from = `SELECT m.key FROM media_items m INDEXED BY idx_media_shuffle WHERE ${where}`;
+
+    const rows = (await env.DB.prepare(`${from} AND m.shuffle_key >= ? ORDER BY m.shuffle_key LIMIT ?`)
+        .bind(...bindings, point, SHUFFLE_SAMPLE)
+        .all()).results;
+
+    if (rows.length < SHUFFLE_SAMPLE) {
+        const wrapped = await env.DB.prepare(`${from} AND m.shuffle_key < ? ORDER BY m.shuffle_key LIMIT ?`)
+            .bind(...bindings, point, SHUFFLE_SAMPLE - rows.length)
+            .all();
+        rows.push(...wrapped.results);
+    }
+
+    return rows.length ? rows[Math.floor(Math.random() * rows.length)].key : null;
+}
+
 async function loadItemWithFrames(env, key, frameCount) {
     const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
     if (!item) throw notFound(`Unknown media item "${key}"`);
 
-    const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ?").bind(key).all();
+    const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ? AND status = 'approved'")
+        .bind(key)
+        .all();
     const frames = selectRoundFrames(images.results, frameCount);
     const genres = await loadGenreIds(env, [key]);
 
@@ -180,11 +205,9 @@ export async function handleRound(request, env, segments, url) {
 
     const { where, bindings } = buildCatalogQuery(filters, { uid: user.uid, excludeWatched });
 
-    const picked = await env.DB.prepare(`SELECT m.key FROM media_items m WHERE ${where} ORDER BY RANDOM() LIMIT 1`)
-        .bind(...bindings)
-        .first();
+    const pickedKey = await pickRandomKey(env, where, bindings);
 
-    if (!picked) {
+    if (!pickedKey) {
         // Distinguish "your filters match nothing" from "you have played
         // everything that matches", because those need different advice and we
         // can tell them apart exactly here.
@@ -206,5 +229,5 @@ export async function handleRound(request, env, segments, url) {
         );
     }
 
-    return json({ pool: "curated", ...(await loadItemWithFrames(env, picked.key, frameCount)) });
+    return json({ pool: "curated", ...(await loadItemWithFrames(env, pickedKey, frameCount)) });
 }

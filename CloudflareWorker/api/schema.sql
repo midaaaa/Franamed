@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
     attempts_used_today       INTEGER NOT NULL DEFAULT 0,
     last_attempt_reset_date   TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at DESC);
 
 -- One row per way of signing in. Linking an anonymous account to Apple just
 -- adds a second row pointing at the same uid, so progress survives the upgrade.
@@ -76,13 +77,29 @@ CREATE TABLE IF NOT EXISTS media_items (
 
     added_by          TEXT,
     last_synced_at    INTEGER,
-    created_at        INTEGER NOT NULL
+    created_at        INTEGER NOT NULL,
+
+    -- Everything a list screen reads, rewritten by refreshMediaCounters on each
+    -- write to the title so that no list ever counts frames.
+    pending_images    INTEGER NOT NULL DEFAULT 0,                -- status = 'pending'
+    unjudged_images   INTEGER NOT NULL DEFAULT 0,                -- no moderator verdict yet
+    untiered_approved INTEGER NOT NULL DEFAULT 0,                -- approved with no tier
+    preview_path      TEXT,                                      -- the frame a row shows
+    work_weight       REAL    NOT NULL DEFAULT 0,                -- queue order; 0 = not in the queue
+
+    -- A fixed random point in [0, 1) that picking a round walks from, so a
+    -- random title is an index seek instead of ORDER BY RANDOM() over the pool.
+    shuffle_key       REAL    NOT NULL DEFAULT ((random() & 4294967295) / 4294967296.0)
 );
 CREATE INDEX IF NOT EXISTS idx_media_type_status ON media_items(media_type, status);
-CREATE INDEX IF NOT EXISTS idx_media_status      ON media_items(status);
 CREATE INDEX IF NOT EXISTS idx_media_year        ON media_items(release_year);
 CREATE INDEX IF NOT EXISTS idx_media_language    ON media_items(original_language);
-CREATE INDEX IF NOT EXISTS idx_media_popularity  ON media_items(popularity DESC);
+CREATE INDEX IF NOT EXISTS idx_media_work        ON media_items(work_weight DESC, key);
+CREATE INDEX IF NOT EXISTS idx_media_type_work   ON media_items(media_type, work_weight DESC, key);
+CREATE INDEX IF NOT EXISTS idx_media_type_pop    ON media_items(media_type, popularity DESC, key);
+CREATE INDEX IF NOT EXISTS idx_media_type_new    ON media_items(media_type, created_at DESC, key);
+CREATE INDEX IF NOT EXISTS idx_media_type_title  ON media_items(media_type, title COLLATE NOCASE, key);
+CREATE INDEX IF NOT EXISTS idx_media_shuffle     ON media_items(media_type, shuffle_key) WHERE status = 'approved';
 
 -- Genres as a join table rather than a serialised array: lets the database do
 -- the filtering, which is what removed the need to ship the whole catalogue to
@@ -123,10 +140,9 @@ CREATE TABLE IF NOT EXISTS media_images (
     created_at        INTEGER NOT NULL,
     UNIQUE (media_key, file_path)
 );
-CREATE INDEX IF NOT EXISTS idx_images_media  ON media_images(media_key);
-CREATE INDEX IF NOT EXISTS idx_images_status ON media_images(status);
-CREATE INDEX IF NOT EXISTS idx_images_locked ON media_images(moderator_status);
-CREATE INDEX IF NOT EXISTS idx_media_title  ON media_items(title);
+CREATE INDEX IF NOT EXISTS idx_images_media     ON media_images(media_key, status);
+CREATE INDEX IF NOT EXISTS idx_images_contested ON media_images(report_weight DESC)
+    WHERE moderator_status IS NOT NULL AND report_weight > 0;
 
 CREATE TABLE IF NOT EXISTS image_reports (
     image_id   INTEGER NOT NULL REFERENCES media_images(id) ON DELETE CASCADE,
@@ -140,6 +156,7 @@ CREATE TABLE IF NOT EXISTS image_reports (
 );
 CREATE INDEX IF NOT EXISTS idx_reports_created ON image_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_live    ON image_reports(image_id, dismissed_at);
+CREATE INDEX IF NOT EXISTS idx_reports_open    ON image_reports(image_id) WHERE dismissed_at IS NULL;
 
 -- ---------------------------------------------------------------- curation
 

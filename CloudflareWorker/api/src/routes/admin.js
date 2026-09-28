@@ -4,6 +4,7 @@ import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON
 import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
+import { recomputeWorkWeights } from "../lib/media.js";
 
 export async function handleAdmin(request, env, segments, url) {
     // GET /v1/admin/config is readable by any signed-in client: the app needs
@@ -17,7 +18,14 @@ export async function handleAdmin(request, env, segments, url) {
 
     if (segments[0] === "config" && request.method === "PATCH") {
         requireRole(user, "admin");
-        return json(await writeConfig(env, await readJSON(request)));
+        const before = await readConfig(env);
+        const after = await writeConfig(env, await readJSON(request));
+
+        // The queue weight is baked into each title, so a new target moves them all.
+        if (after.targetApprovedFrames !== before.targetApprovedFrames) {
+            await recomputeWorkWeights(env, after.targetApprovedFrames);
+        }
+        return json(after);
     }
 
     // POST /v1/admin/roles — invite-only promotion, admins only
@@ -166,26 +174,34 @@ export async function handleAdmin(request, env, segments, url) {
     if (segments[0] === "stats" && request.method === "GET") {
         requireRole(user, "moderator");
 
+        // From the counters on each title, never from the frames: one row per
+        // title instead of one per frame.
         const items = await env.DB.prepare(
             `SELECT media_type,
                     COUNT(*) AS total,
                     SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
                     SUM(CASE WHEN approved_images >= 6 THEN 1 ELSE 0 END) AS playable,
                     SUM(CASE WHEN admin_finalized = 1 THEN 1 ELSE 0 END) AS finalized,
-                    SUM(CASE WHEN poster_url IS NOT NULL THEN 1 ELSE 0 END) AS withPoster
+                    SUM(CASE WHEN poster_url IS NOT NULL THEN 1 ELSE 0 END) AS withPoster,
+                    SUM(approved_images) AS imagesApproved,
+                    SUM(pending_images) AS imagesPending,
+                    SUM(reviewed_images - approved_images) AS imagesRejected
              FROM media_items GROUP BY media_type`
         ).all();
 
-        const images = await env.DB.prepare(
-            `SELECT status, COUNT(*) AS count FROM media_images GROUP BY status`
-        ).all();
+        const sum = (field) => items.results.reduce((total, row) => total + (row[field] || 0), 0);
+        const images = {
+            approved: sum("imagesApproved"),
+            pending: sum("imagesPending"),
+            rejected: sum("imagesRejected")
+        };
 
         const users = await env.DB.prepare("SELECT COUNT(*) AS count FROM users").first();
         const playlists = await env.DB.prepare("SELECT COUNT(*) AS count FROM playlists").first();
 
         return json({
             items: items.results,
-            images: Object.fromEntries(images.results.map((row) => [row.status, row.count])),
+            images,
             users: users.count,
             playlists: playlists.count
         });
