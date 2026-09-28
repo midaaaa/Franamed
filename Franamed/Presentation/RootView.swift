@@ -17,23 +17,32 @@ struct RootView: View {
         _session = StateObject(wrappedValue: session)
     }
 
+    private static let isBackendEnabled = false
+
     var body: some View {
         Group {
-            switch session.state {
-            case .loading:
-                SessionLoadingView()
+            if Self.isBackendEnabled {
+                switch session.state {
+                case .loading:
+                    SessionLoadingView()
 
-            case .signedOut:
-                SignInView(onPlay: { await session.signInAnonymously() })
+                case .signedOut:
+                    SignInView(onPlay: { await session.signInAnonymously() })
 
-            case let .failed(message):
-                SessionFailureView(message: message, onRetry: { await session.start() })
+                case let .failed(message):
+                    SessionFailureView(message: message, onRetry: { await session.start() })
 
-            case .signedIn:
+                case .signedIn:
+                    tabs
+                }
+            } else {
                 tabs
             }
         }
-        .task { await session.start() }
+        .task {
+            guard Self.isBackendEnabled else { return }
+            await session.start()
+        }
     }
 
     private var tabs: some View {
