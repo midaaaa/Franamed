@@ -82,8 +82,18 @@ const movies = keys.filter((key) => key.startsWith("movie_"));
 // ------------------------------------------------------------------ transport
 
 const tmdbCalls = [];
-globalThis.fetch = async (url) => {
+const graphqlCalls = [];
+globalThis.fetch = async (url, init) => {
     const target = new URL(url);
+    if (target.hostname === "api.cloudflare.com") {
+        graphqlCalls.push(JSON.parse(init.body));
+        return new Response(JSON.stringify({
+            data: { viewer: { accounts: [{
+                workers: [{ sum: { requests: 1200, errors: 3, subrequests: 40 } }, { sum: { requests: 300, errors: 0, subrequests: 0 } }],
+                d1: [{ sum: { readQueries: 900, writeQueries: 50, rowsRead: 250000, rowsWritten: 4000 } }]
+            }] } }
+        }), { status: 200 });
+    }
     tmdbCalls.push(target.pathname + target.search);
     const reply = (body) => new Response(JSON.stringify(body), { status: 200 });
 
@@ -302,6 +312,20 @@ res = await call("mod", "GET", "/v1/curation/home");
 check("the report badge counts frames", res.body.badges.reports === 2, JSON.stringify(res.body.badges));
 res = await call("me", "GET", "/v1/admin/stats");
 check("stats count published titles", res.status === 200 && res.body.items.every((kind) => "published" in kind), JSON.stringify(res.body.items));
+
+console.log("usage");
+res = await call("me", "GET", "/v1/admin/usage");
+check("usage without a token says so", res.status === 503 && res.body.error === "usage_unavailable", JSON.stringify(res.body));
+env.CF_ANALYTICS_TOKEN = "token";
+env.CF_ACCOUNT_ID = "account";
+res = await call("mod", "GET", "/v1/admin/usage");
+check("a moderator cannot see usage", res.status === 403);
+res = await call("me", "GET", "/v1/admin/usage");
+check("usage sums every group", res.status === 200 && res.body.workers.requests === 1500 && res.body.d1.rowsWritten === 4000 && res.body.limits.rowsRead === 5000000, JSON.stringify(res.body));
+check("usage resets at the next UTC midnight", res.body.resetsAt % 86400000 === 0 && res.body.resetsAt > Date.now());
+check("usage asks for this account", graphqlCalls[0]?.variables.account === "account" && graphqlCalls[0].variables.date === new Date().toISOString().slice(0, 10));
+await call("me", "GET", "/v1/admin/usage");
+check("usage is cached for a minute", graphqlCalls.length === 1);
 
 console.log("silencing a reporter");
 const silencedFrame = db.db.prepare("SELECT id FROM media_images WHERE media_key = 'movie_103' LIMIT 1").get().id;

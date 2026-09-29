@@ -5,6 +5,7 @@ import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../
 import { readConfig, writeConfig } from "../lib/config.js";
 import { deleteAccount, recomputeReportedTitles } from "../lib/accounts.js";
 import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
+import { readUsage } from "../lib/usage.js";
 
 export async function handleAdmin(request, env, segments, url) {
     // GET /v1/admin/config is readable by any signed-in client: the app needs
@@ -195,6 +196,12 @@ export async function handleAdmin(request, env, segments, url) {
             // grey out films that have already had their day.
             usedMediaKeys: rows.results.map((row) => row.media_key)
         });
+    }
+
+    // GET /v1/admin/usage — today's spend against the Free plan, account-wide
+    if (segments[0] === "usage" && request.method === "GET") {
+        requireRole(user, "admin");
+        return json(await readUsage(env));
     }
 
     // GET /v1/admin/stats — what the catalogue actually looks like right now
