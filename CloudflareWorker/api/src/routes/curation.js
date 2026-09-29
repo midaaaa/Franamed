@@ -382,6 +382,20 @@ export async function handleCuration(request, env, segments, url) {
             });
         }
 
+        // DELETE /v1/curation/batches/{id} — the author takes it back before review
+        if (segments.length === 2 && request.method === "DELETE") {
+            if (batch.uid !== user.uid) throw forbidden("Only the author can withdraw a batch");
+            if (batch.state !== "pending") throw conflict(`This batch is already ${batch.state}`);
+
+            const holder = await loadLease(env, batch.media_key);
+            if (isLive(holder, { now, windowMs }) && holder.uid !== user.uid) {
+                throw conflict("A moderator is reviewing this batch");
+            }
+
+            await env.DB.prepare("DELETE FROM curation_batches WHERE id = ?").bind(batch.id).run();
+            return noContent();
+        }
+
         // POST /v1/curation/batches/{id}/apply — accept it, with or without edits
         if (segments[2] === "apply" && request.method === "POST") {
             requireRole(user, "moderator");

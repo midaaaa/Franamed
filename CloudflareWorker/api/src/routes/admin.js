@@ -3,6 +3,7 @@
 import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON, requireEnum, requireString } from "../lib/http.js";
 import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
+import { deleteAccount } from "../lib/accounts.js";
 import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
 import { recomputeWorkWeights } from "../lib/media.js";
 
@@ -54,6 +55,19 @@ export async function handleAdmin(request, env, segments, url) {
         if (roleRank(role) < roleRank(target.role)) await revokeAllTokens(env, uid);
 
         return json({ uid, role });
+    }
+
+    // DELETE /v1/admin/users/{uid} — another account; an admin must be demoted first
+    if (segments[0] === "users" && segments.length === 2 && request.method === "DELETE") {
+        requireRole(user, "admin");
+        if (segments[1] === user.uid) throw badRequest("Delete your own account from the profile");
+
+        const target = await env.DB.prepare("SELECT uid, role FROM users WHERE uid = ?").bind(segments[1]).first();
+        if (!target) throw notFound("Unknown user");
+        if (target.role === "admin") throw conflict("Demote an admin before deleting their account");
+
+        await deleteAccount(env, target);
+        return noContent();
     }
 
     if (segments[0] === "users" && request.method === "GET") {

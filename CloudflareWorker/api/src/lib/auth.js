@@ -13,6 +13,7 @@
 
 import { APIError, forbidden, unauthorized } from "./http.js";
 import { randomToken, sha256Hex, signJWT, timingSafeEqual, verifyJWT, base64UrlDecode } from "./crypto.js";
+import { limitByUser } from "./limits.js";
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60;
@@ -308,6 +309,9 @@ export async function authenticate(request, env) {
 
     const payload = await verifyJWT(header.slice(7), requireSecret(env));
     if (!payload || !payload.sub) throw unauthorized("Invalid or expired access token");
+
+    // Before the user row is read, so a client stuck in a loop costs no D1 reads.
+    await limitByUser(env, payload.sub, "REQUEST_LIMITER");
 
     // Role is re-read from the database rather than trusted from the token, so
     // revoking a moderator takes effect immediately instead of after the access

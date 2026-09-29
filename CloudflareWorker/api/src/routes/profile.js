@@ -2,6 +2,7 @@
 
 import { badRequest, json, noContent, parseInteger, readJSON, requireString } from "../lib/http.js";
 import { authenticate, publicUser } from "../lib/auth.js";
+import { deleteAccount } from "../lib/accounts.js";
 import { attemptBudget, consumeAttempt, isValidDateString, recordDailyResult, utcDateString } from "../lib/daily.js";
 
 const WATCHED_SOURCES = ["play", "kinopoisk", "imdb", "letterboxd"];
@@ -13,6 +14,12 @@ export async function handleProfile(request, env, segments, url) {
     // GET /v1/profile
     if (segments.length === 0 && request.method === "GET") {
         return json({ user: publicUser(user), budget: await attemptBudget(env, user) });
+    }
+
+    // DELETE /v1/profile — the account and everything keyed to it
+    if (segments.length === 0 && request.method === "DELETE") {
+        await deleteAccount(env, user);
+        return noContent();
     }
 
     // GET /v1/profile/watched

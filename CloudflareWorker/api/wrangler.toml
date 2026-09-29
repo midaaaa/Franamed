@@ -35,6 +35,15 @@ namespace_id = "1003"
   limit = 10
   period = 60
 
+# Every authenticated request. A player needs a few a minute and a curator
+# paging the catalogue a few dozen; this only stops a client stuck in a loop.
+[[ratelimits]]
+name = "REQUEST_LIMITER"
+namespace_id = "1004"
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
 # Secrets are set with `wrangler secret put NAME`, never committed:
 #   JWT_SECRET      — 32+ random bytes, signs access tokens
 #   TMDB_API_KEY    — used server-side to import titles

@@ -4,7 +4,7 @@
 // played, and how much of what was played was right. Folding those into one
 // fraction produces a figure nobody can interpret.
 
-import { badRequest, json, notFound, readJSON, requireEnum, requireString, optionalString } from "../lib/http.js";
+import { badRequest, json, noContent, notFound, readJSON, requireEnum, requireString, optionalString } from "../lib/http.js";
 import { authenticate, requireRole } from "../lib/auth.js";
 import { MEDIA_TYPES } from "../lib/media.js";
 import { readConfig } from "../lib/config.js";
@@ -140,6 +140,21 @@ export async function handlePlaylists(request, env, segments, url) {
                 wasCorrect: row.was_correct === null || row.was_correct === undefined ? null : row.was_correct === 1
             }))
         });
+    }
+
+    // DELETE /v1/playlists/{id} — a draft by a moderator; a published one takes an
+    // admin, since players lose their progress through it
+    if (segments.length === 1 && request.method === "DELETE") {
+        const user = await authenticate(request, env);
+        requireRole(user, playlist.published === 1 ? "admin" : "moderator");
+
+        // Progress rows carry no foreign key to the playlist, so they go by hand.
+        await env.DB.batch([
+            env.DB.prepare("DELETE FROM playlist_progress WHERE playlist_id = ?").bind(playlistId),
+            env.DB.prepare("DELETE FROM playlist_completions WHERE playlist_id = ?").bind(playlistId),
+            env.DB.prepare("DELETE FROM playlists WHERE id = ?").bind(playlistId)
+        ]);
+        return noContent();
     }
 
     // PATCH /v1/playlists/{id}
