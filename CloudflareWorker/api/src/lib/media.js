@@ -6,13 +6,22 @@ export const MEDIA_TYPES = ["movie", "tv"];
 export const IMAGE_STATUSES = ["pending", "approved", "rejected"];
 export const DIFFICULTY_TIERS = ["hard", "medium", "easy"];
 export const REPORT_REASONS = ["poster", "not_a_frame", "bad_quality", "unclear"];
+export const PUBLISH_MODES = ["auto", "on", "off"];
+
+// The smallest round, so the fewest approved frames a published title can have.
+export const PUBLISH_MIN_FRAMES = 6;
+
+// A workbench left open without a word from its app stops counting as someone
+// working after this long.
+export const PRESENCE_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 export function mediaKey(mediaType, tmdbId) {
     if (!MEDIA_TYPES.includes(mediaType)) throw badRequest(`Unknown media type "${mediaType}"`);
     return `${mediaType}_${tmdbId}`;
 }
 
-export function serializeMediaItem(row, genreIds = []) {
+export function serializeMediaItem(row, genreIds = [], { uid = null, now = Date.now() } = {}) {
+    const present = row.worked_by && row.worked_since > now - PRESENCE_WINDOW_MS;
     return {
         key: row.key,
         tmdbId: row.tmdb_id,
@@ -28,8 +37,11 @@ export function serializeMediaItem(row, genreIds = []) {
         totalImages: row.total_images,
         reviewedImages: row.reviewed_images,
         approvedImages: row.approved_images,
-        adminFinalized: row.admin_finalized === 1,
-        finalizedAt: row.finalized_at,
+        publishMode: row.publish_mode ?? "auto",
+        published: row.published === 1,
+        workedBy: present
+            ? { uid: row.worked_by, name: row.worked_by_name ?? null, since: row.worked_since, isMine: row.worked_by === uid }
+            : null,
         lastSyncedAt: row.last_synced_at,
         rejectedAt: row.rejected_at ?? null,
         rejectedReason: row.rejected_reason ?? null,
@@ -111,6 +123,7 @@ export const CURATION_FILTERS = {
     // one TMDB added since.
     hasNewFrames: "m.unjudged_images > 0 AND m.unjudged_images < m.total_images",
     noPoster: "m.poster_url IS NULL",
+    published: "m.published = 1",
     rejected: "m.status = 'rejected'"
 };
 
@@ -146,15 +159,22 @@ export function buildCatalogQuery(
         includeUnapproved = false,
         curationFilter = null,
         includeRejected = false,
-        target = null
+        target = null,
+        excludeDailyFrom = null
     } = {}
 ) {
     const conditions = ["m.media_type = ?"];
     const bindings = [filters.mediaType];
 
     if (!includeUnapproved) {
-        conditions.push("m.status = 'approved'", "m.approved_images >= ?");
+        conditions.push("m.published = 1", "m.approved_images >= ?");
         bindings.push(filters.minApprovedImages);
+    }
+
+    // A film dealt at random before its day would give the daily puzzle away.
+    if (excludeDailyFrom) {
+        conditions.push("NOT EXISTS (SELECT 1 FROM daily_overrides d WHERE d.media_key = m.key AND d.date >= ?)");
+        bindings.push(excludeDailyFrom);
     }
 
     // Otherwise "rejected" would mean nothing more than "hidden from players".
@@ -230,37 +250,26 @@ export async function loadGenreIds(env, mediaKeys) {
     return byKey;
 }
 
-// Where an hour of curating buys most. Zero means "not in the queue at all", so
-// the queue is a range scan on idx_media_work rather than a filtered sort.
-export function workWeight({ status, adminFinalized, popularity, total, reviewed, approved }, target) {
-    if (status === "rejected" || adminFinalized || total === 0 || reviewed >= total || approved >= target) return 0;
-    return popularity * ((target - approved) / target) + 0.01;
+// Where to look next: titles with frames nobody has judged, the ones already
+// started first, then by popularity. Zero means "not in the queue", so the
+// queue is a range scan on idx_media_work rather than a filtered sort.
+export function workWeight({ status, publishMode, popularity, reviewed, unjudged }) {
+    if (status === "rejected" || publishMode === "off" || unjudged === 0) return 0;
+    return (reviewed > 0 ? 1_000_000 : 0) + popularity + 0.01;
 }
 
-export async function readTarget(env) {
-    const row = await env.DB.prepare("SELECT value FROM app_config WHERE key = 'targetApprovedFrames'").first();
-    const target = Number.parseInt(row?.value ?? "", 10);
-    return Number.isInteger(target) && target > 0 ? target : 12;
-}
-
-// The same rule as `workWeight`, for every title at once: the target only
-// changes from the admin config, and then every weight moves with it.
-export async function recomputeWorkWeights(env, target) {
-    await env.DB.prepare(
-        `UPDATE media_items SET work_weight = CASE
-             WHEN status = 'rejected' OR admin_finalized = 1 OR total_images = 0
-                  OR reviewed_images >= total_images OR approved_images >= ?1 THEN 0
-             ELSE popularity * (CAST(?1 - approved_images AS REAL) / ?1) + 0.01
-         END`
-    ).bind(target).run();
+// Whether players may be dealt the title, from the rule in schema.sql.
+export function isPublished({ status, publishMode, posterURL, approved, unjudged }) {
+    if (publishMode === "off" || status === "rejected" || !posterURL || approved < PUBLISH_MIN_FRAMES) return false;
+    return publishMode === "on" || unjudged === 0;
 }
 
 // Recomputes everything a list screen reads off a title. Derived rather than
 // hand-set so it cannot drift from the frames underneath, and read in one pass
 // over this title's frames — writes are rare, list reads are not.
-export async function refreshMediaCounters(env, key, { target } = {}) {
+export async function refreshMediaCounters(env, key) {
     const item = await env.DB.prepare(
-        "SELECT status, admin_finalized, popularity, work_weight FROM media_items WHERE key = ?"
+        "SELECT status, publish_mode, poster_url, popularity, work_weight, published FROM media_items WHERE key = ?"
     ).bind(key).first();
     if (!item) return;
 
@@ -289,31 +298,37 @@ export async function refreshMediaCounters(env, key, { target } = {}) {
         if (better) preview = frame;
     }
 
-    // A title becomes playable the moment it has an approved image; admin
-    // finalisation is queue housekeeping and deliberately not a gameplay gate.
     // 'rejected' is sticky: undoing it is `/catalog/items/{key}/reset`, never a
-    // side effect of a lock on some frame.
+    // side effect of a verdict on some frame.
     const status = item.status === "rejected" ? "rejected" : counts.approved > 0 ? "approved" : item.status;
+    const publishMode = item.publish_mode ?? "auto";
     const weight = workWeight({
         status,
-        adminFinalized: item.admin_finalized === 1,
+        publishMode,
         popularity: item.popularity,
-        total: counts.total,
         reviewed: counts.reviewed,
-        approved: counts.approved
-    }, target ?? await readTarget(env));
+        unjudged: counts.unjudged
+    });
+    const published = isPublished({
+        status,
+        publishMode,
+        posterURL: item.poster_url,
+        approved: counts.approved,
+        unjudged: counts.unjudged
+    }) ? 1 : 0;
 
-    // Status and weight sit in several indexes, and D1 bills a written row per
-    // index touched, so they are only set when they actually move.
+    // These sit in indexes, and D1 bills a written row per index touched, so
+    // they are only set when they actually move.
     const moved = [];
     const movedValues = [];
-    if (status !== item.status) {
-        moved.push("status = ?");
-        movedValues.push(status);
-    }
-    if (weight !== item.work_weight) {
-        moved.push("work_weight = ?");
-        movedValues.push(weight);
+    for (const [column, value, current] of [
+        ["status", status, item.status],
+        ["work_weight", weight, item.work_weight],
+        ["published", published, item.published]
+    ]) {
+        if (value === current) continue;
+        moved.push(`${column} = ?`);
+        movedValues.push(value);
     }
 
     await env.DB.prepare(

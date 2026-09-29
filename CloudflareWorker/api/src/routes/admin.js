@@ -3,9 +3,8 @@
 import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON, requireEnum, requireString } from "../lib/http.js";
 import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
-import { deleteAccount } from "../lib/accounts.js";
+import { deleteAccount, recomputeReportedTitles } from "../lib/accounts.js";
 import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
-import { recomputeWorkWeights } from "../lib/media.js";
 
 export async function handleAdmin(request, env, segments, url) {
     // GET /v1/admin/config is readable by any signed-in client: the app needs
@@ -19,14 +18,7 @@ export async function handleAdmin(request, env, segments, url) {
 
     if (segments[0] === "config" && request.method === "PATCH") {
         requireRole(user, "admin");
-        const before = await readConfig(env);
-        const after = await writeConfig(env, await readJSON(request));
-
-        // The queue weight is baked into each title, so a new target moves them all.
-        if (after.targetApprovedFrames !== before.targetApprovedFrames) {
-            await recomputeWorkWeights(env, after.targetApprovedFrames);
-        }
-        return json(after);
+        return json(await writeConfig(env, await readJSON(request)));
     }
 
     // POST /v1/admin/roles — invite-only promotion, admins only
@@ -57,6 +49,25 @@ export async function handleAdmin(request, env, segments, url) {
         return json({ uid, role });
     }
 
+    // PATCH /v1/admin/users/{uid} — {reportsCount: false} stops someone's
+    // complaints from hiding frames, the ones already filed included
+    if (segments[0] === "users" && segments.length === 2 && request.method === "PATCH") {
+        requireRole(user, "admin");
+        const body = await readJSON(request);
+        if (typeof body.reportsCount !== "boolean") throw badRequest("reportsCount must be a boolean");
+
+        const target = await env.DB.prepare("SELECT uid FROM users WHERE uid = ?").bind(segments[1]).first();
+        if (!target) throw notFound("Unknown user");
+
+        const multiplier = body.reportsCount ? 1 : 0;
+        await env.DB.batch([
+            env.DB.prepare("UPDATE users SET report_multiplier = ? WHERE uid = ?").bind(multiplier, target.uid),
+            env.DB.prepare("UPDATE image_reports SET weight = ? WHERE uid = ? AND dismissed_at IS NULL").bind(multiplier, target.uid)
+        ]);
+        await recomputeReportedTitles(env, target.uid);
+        return json({ uid: target.uid, reportsCount: body.reportsCount });
+    }
+
     // DELETE /v1/admin/users/{uid} — another account; an admin must be demoted first
     if (segments[0] === "users" && segments.length === 2 && request.method === "DELETE") {
         requireRole(user, "admin");
@@ -73,7 +84,7 @@ export async function handleAdmin(request, env, segments, url) {
     if (segments[0] === "users" && request.method === "GET") {
         requireRole(user, "moderator");
         const rows = await env.DB.prepare(
-            "SELECT uid, role, display_name, is_anonymous, created_at, daily_streak FROM users ORDER BY created_at DESC LIMIT 200"
+            "SELECT uid, role, display_name, is_anonymous, created_at, daily_streak, report_multiplier FROM users ORDER BY created_at DESC LIMIT 200"
         ).all();
 
         return json({
@@ -83,7 +94,8 @@ export async function handleAdmin(request, env, segments, url) {
                 displayName: row.display_name,
                 isAnonymous: row.is_anonymous === 1,
                 createdAt: row.created_at,
-                dailyStreak: row.daily_streak
+                dailyStreak: row.daily_streak,
+                reportsCount: row.report_multiplier > 0
             }))
         });
     }
@@ -105,8 +117,9 @@ export async function handleAdmin(request, env, segments, url) {
         }
 
         const config = await readConfig(env);
-        const item = await env.DB.prepare("SELECT approved_images FROM media_items WHERE key = ?").bind(mediaKey).first();
+        const item = await env.DB.prepare("SELECT approved_images, published FROM media_items WHERE key = ?").bind(mediaKey).first();
         if (!item) throw notFound("Unknown media item");
+        if (item.published !== 1) throw badRequest("Only a title in the game can be a daily puzzle");
 
         // The bar here is the curation target, not the playability threshold:
         // the one puzzle everybody plays should come from a film that was
@@ -195,7 +208,7 @@ export async function handleAdmin(request, env, segments, url) {
                     COUNT(*) AS total,
                     SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS approved,
                     SUM(CASE WHEN approved_images >= 6 THEN 1 ELSE 0 END) AS playable,
-                    SUM(CASE WHEN admin_finalized = 1 THEN 1 ELSE 0 END) AS finalized,
+                    SUM(published) AS published,
                     SUM(CASE WHEN poster_url IS NOT NULL THEN 1 ELSE 0 END) AS withPoster,
                     SUM(approved_images) AS imagesApproved,
                     SUM(pending_images) AS imagesPending,

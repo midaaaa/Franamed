@@ -51,6 +51,51 @@ export async function searchTitles(env, query, { language = "ru-RU" } = {}) {
         });
 }
 
+export const SHOWCASE_LISTS = ["known", "popular", "top", "trending"];
+
+function toHit(entry, mediaType) {
+    const date = entry.release_date || entry.first_air_date || "";
+    const year = Number.parseInt(date.slice(0, 4), 10);
+    return {
+        tmdbId: entry.id,
+        mediaType,
+        key: mediaKey(mediaType, entry.id),
+        title: entry.title || entry.name || "",
+        originalTitle: entry.original_title || entry.original_name || "",
+        year: Number.isInteger(year) ? year : null,
+        posterPath: entry.poster_path || null
+    };
+}
+
+// "Known" sorts by vote count: for a guessing game, how many people have seen
+// a film matters more than how it rated. Trending has no filters on TMDB.
+export async function fetchShowcasePage(env, { list, mediaType, page, decade = null, genre = null, language = "ru-RU" }) {
+    let body;
+    if (list === "trending") {
+        body = await tmdbFetch(env, `/trending/${mediaType}/week`, { page: String(page), language });
+    } else {
+        const params = {
+            page: String(page),
+            language,
+            include_adult: "false",
+            sort_by: { known: "vote_count.desc", popular: "popularity.desc", top: "vote_average.desc" }[list]
+        };
+        if (list === "top") params["vote_count.gte"] = "1000";
+        if (genre) params.with_genres = String(genre);
+        if (decade) {
+            const field = mediaType === "movie" ? "primary_release_date" : "first_air_date";
+            params[`${field}.gte`] = `${decade}-01-01`;
+            params[`${field}.lte`] = `${decade + 9}-12-31`;
+        }
+        body = await tmdbFetch(env, `/discover/${mediaType}`, params);
+    }
+
+    return {
+        hits: (body.results || []).map((entry) => toHit(entry, mediaType)),
+        hasMore: (body.page || page) < Math.min(body.total_pages || 0, 500)
+    };
+}
+
 export async function fetchDiscoverPage(env, mediaType, { page = 1, language = "ru-RU", sortBy = "popularity.desc" } = {}) {
     return tmdbFetch(env, `/discover/${mediaType}`, { page: String(page), language, sort_by: sortBy });
 }
@@ -58,6 +103,16 @@ export async function fetchDiscoverPage(env, mediaType, { page = 1, language = "
 // Fetches one title with its images in a single call and writes it into the
 // catalogue. Images arrive as `pending` — nothing is playable until a curator
 // or the community approves it.
+// The images came back filtered to no language, so these posters carry no
+// title lettering; the best rated of them beats TMDB's default, which usually
+// does. Falls back to the default when a title has no clean one.
+function bestPoster(details) {
+    const clean = [...(details.images?.posters || [])].sort(
+        (a, b) => (b.vote_average || 0) - (a.vote_average || 0) || (b.vote_count || 0) - (a.vote_count || 0)
+    );
+    return clean[0]?.file_path || details.poster_path || null;
+}
+
 export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, language = "ru-RU" } = {}) {
     const details = await tmdbFetch(env, `/${mediaType}/${tmdbId}`, {
         language,
@@ -72,9 +127,10 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
 
     await env.DB.prepare(
         `INSERT INTO media_items (key, tmdb_id, media_type, title, original_title, release_year,
-                                  original_language, popularity, added_by, last_synced_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  original_language, popularity, poster_url, added_by, last_synced_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (key) DO UPDATE SET
+            poster_url = COALESCE(media_items.poster_url, excluded.poster_url),
             title = excluded.title,
             original_title = excluded.original_title,
             release_year = excluded.release_year,
@@ -90,6 +146,7 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
         releaseYear(details, mediaType),
         details.original_language || null,
         details.popularity || 0,
+        bestPoster(details),
         addedBy,
         now,
         now

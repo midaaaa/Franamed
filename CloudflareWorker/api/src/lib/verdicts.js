@@ -1,11 +1,15 @@
-// Writing a whole title's verdicts, shared by direct curation and by applying a
-// batch. Grouped by the change they make: 170 frames cost one statement per
+// Writing a moderator's verdicts on a title, all or just what changed since the
+// last save. Grouped by the change they make: 170 frames cost one statement per
 // (status, tier) pair, against D1's limit of 50 queries per invocation.
 
 import { badRequest } from "./http.js";
+import { readConfig } from "./config.js";
 import { DIFFICULTY_TIERS, refreshMediaCounters } from "./media.js";
 
 export const MAX_BULK_VERDICTS = 300;
+
+// Ids per UPDATE, leaving room for the other bindings under D1's 100.
+const VERDICT_CHUNK = 90;
 
 export function parseVerdicts(raw) {
     const list = Array.isArray(raw) ? raw : [];
@@ -18,10 +22,10 @@ export function parseVerdicts(raw) {
         if (seen.has(imageId)) throw badRequest(`Duplicate verdict for image ${imageId}`);
         seen.add(imageId);
 
-        // Clearing a lock has to consult the votes again, which is a per-frame
-        // job — the single-frame endpoint handles it.
-        if (!["approved", "rejected"].includes(verdict.status)) {
-            throw badRequest('Each verdict status must be "approved" or "rejected"');
+        // "pending" takes a frame back to unjudged — how an undo reaches a
+        // verdict that was already saved.
+        if (!["approved", "rejected", "pending"].includes(verdict.status)) {
+            throw badRequest('Each verdict status must be "approved", "rejected" or "pending"');
         }
 
         const tier = verdict.difficultyTier;
@@ -34,6 +38,21 @@ export function parseVerdicts(raw) {
 }
 
 export async function applyVerdicts(env, { mediaKey, verdicts, rejectRemaining, moderatorUid, now = Date.now() }) {
+    const statements = [];
+
+    // "Everything I did not tick is out". Written first and without naming the
+    // ticked frames: the verdicts below overwrite their own rows in the same
+    // batch, and a NOT IN list would run past D1's 100 bound parameters.
+    if (rejectRemaining) {
+        statements.push(
+            env.DB.prepare(
+                `UPDATE media_images
+                 SET status = 'rejected', moderator_status = 'rejected', moderator_uid = ?, moderator_at = ?
+                 WHERE media_key = ? AND moderator_status IS NULL`
+            ).bind(moderatorUid, now, mediaKey)
+        );
+    }
+
     const groups = new Map();
     for (const { imageId, status, difficultyTier } of verdicts) {
         const groupKey = `${status}|${difficultyTier === undefined ? "keep" : difficultyTier}`;
@@ -41,37 +60,35 @@ export async function applyVerdicts(env, { mediaKey, verdicts, rejectRemaining, 
         groups.get(groupKey).ids.push(imageId);
     }
 
-    const statements = [];
+    // An unjudged frame's status is back to what its live reports say.
+    const autoHide = [...groups.keys()].some((key) => key.startsWith("pending|"))
+        ? (await readConfig(env)).autoHideReportWeight
+        : null;
+
     for (const { status, tier, ids } of groups.values()) {
-        const placeholders = ids.map(() => "?").join(", ");
-        // A locked frame's status is its lock, so both can be written in the
-        // same statement instead of recomputed afterwards.
-        const tierClause = tier === undefined ? "" : ", difficulty_tier = ?";
-        const bindings = tier === undefined
-            ? [status, status, moderatorUid, now, mediaKey, ...ids]
-            : [status, status, moderatorUid, now, tier, mediaKey, ...ids];
+        for (let start = 0; start < ids.length; start += VERDICT_CHUNK) {
+            const chunk = ids.slice(start, start + VERDICT_CHUNK);
+            const placeholders = chunk.map(() => "?").join(", ");
+            const tierClause = tier === undefined ? "" : ", difficulty_tier = ?";
+            const tierBinding = tier === undefined ? [] : [tier];
 
-        statements.push(
-            env.DB.prepare(
-                `UPDATE media_images
-                 SET status = ?, moderator_status = ?, moderator_uid = ?, moderator_at = ?${tierClause}
-                 WHERE media_key = ? AND id IN (${placeholders})`
-            ).bind(...bindings)
-        );
-    }
+            // A locked frame's status is its lock, so both can be written in the
+            // same statement instead of recomputed afterwards.
+            const statement = status === "pending"
+                ? env.DB.prepare(
+                    `UPDATE media_images
+                     SET status = CASE WHEN report_weight >= ? THEN 'rejected' ELSE 'pending' END,
+                         moderator_status = NULL, moderator_uid = NULL, moderator_at = NULL${tierClause}
+                     WHERE media_key = ? AND id IN (${placeholders})`
+                ).bind(autoHide, ...tierBinding, mediaKey, ...chunk)
+                : env.DB.prepare(
+                    `UPDATE media_images
+                     SET status = ?, moderator_status = ?, moderator_uid = ?, moderator_at = ?${tierClause}
+                     WHERE media_key = ? AND id IN (${placeholders})`
+                ).bind(status, status, moderatorUid, now, ...tierBinding, mediaKey, ...chunk);
 
-    // "Everything I did not tick is out".
-    if (rejectRemaining) {
-        const judged = verdicts.map((verdict) => verdict.imageId);
-        const exclusion = judged.length ? `AND id NOT IN (${judged.map(() => "?").join(", ")})` : "";
-
-        statements.push(
-            env.DB.prepare(
-                `UPDATE media_images
-                 SET status = 'rejected', moderator_status = 'rejected', moderator_uid = ?, moderator_at = ?
-                 WHERE media_key = ? AND moderator_status IS NULL ${exclusion}`
-            ).bind(moderatorUid, now, mediaKey, ...judged)
-        );
+            statements.push(statement);
+        }
     }
 
     if (statements.length) await env.DB.batch(statements);

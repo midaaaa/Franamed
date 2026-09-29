@@ -3,6 +3,7 @@ import { authenticate, requireRole, roleRank } from "../lib/auth.js";
 import {
     CURATION_FILTER_NAMES,
     MEDIA_TYPES,
+    PUBLISH_MODES,
     buildCatalogQuery,
     catalogOrderBy,
     loadGenreIds,
@@ -16,7 +17,6 @@ import { readConfig } from "../lib/config.js";
 import { utcDateString } from "../lib/daily.js";
 import { fetchDiscoverPage, fetchPosterOptions, importMediaItem } from "../lib/tmdb.js";
 import { limitByUser } from "../lib/limits.js";
-import { applyVerdicts, parseVerdicts } from "../lib/verdicts.js";
 
 const MAX_BULK_IMPORT = 20;
 
@@ -30,13 +30,13 @@ export async function handleCatalog(request, env, segments, url) {
         const offset = parseInteger(url.searchParams.get("offset"), { fallback: 0, min: 0 });
 
         // For a player, "the catalogue" means what they can actually be dealt.
-        const curates = roleRank(user.role) >= roleRank("curator");
+        const curates = roleRank(user.role) >= roleRank("moderator");
 
         const curationFilter = url.searchParams.get("curate");
         if (curationFilter && !CURATION_FILTER_NAMES.includes(curationFilter)) {
             throw badRequest(`curate must be one of: ${CURATION_FILTER_NAMES.join(", ")}`);
         }
-        if (curationFilter && !curates) throw badRequest("Curation filters need a curator role");
+        if (curationFilter && !curates) throw badRequest("Curation filters need a moderator role");
 
         // Every curator filter asks about unfinished work, so it implies the
         // unfinished titles; requiring both flags would only return empty pages.
@@ -77,7 +77,7 @@ export async function handleCatalog(request, env, segments, url) {
         const filters = parseFilters(url);
         const excludeWatched = url.searchParams.get("excludeWatched") === "true";
 
-        const { where, bindings } = buildCatalogQuery(filters, { uid: user.uid, excludeWatched });
+        const { where, bindings } = buildCatalogQuery(filters, { uid: user.uid, excludeWatched, excludeDailyFrom: utcDateString() });
         const row = await env.DB.prepare(`SELECT COUNT(*) AS count FROM media_items m WHERE ${where}`)
             .bind(...bindings)
             .first();
@@ -180,7 +180,7 @@ export async function handleCatalog(request, env, segments, url) {
         return json({ posters: await fetchPosterOptions(env, item.media_type, item.tmdb_id) });
     }
 
-    // PATCH /v1/catalog/items/{key} — set the poster or finalise the title
+    // PATCH /v1/catalog/items/{key} — set the poster or the publish mode
     if (segments[0] === "items" && segments.length === 2 && request.method === "PATCH") {
         const user = await authenticate(request, env);
         requireRole(user, "moderator");
@@ -191,13 +191,12 @@ export async function handleCatalog(request, env, segments, url) {
         if (typeof body.posterURL === "string" || body.posterURL === null) {
             await env.DB.prepare("UPDATE media_items SET poster_url = ? WHERE key = ?").bind(body.posterURL, key).run();
         }
-
-        if (typeof body.adminFinalized === "boolean") {
-            await env.DB.prepare(
-                "UPDATE media_items SET admin_finalized = ?, finalized_at = ?, finalized_by = ? WHERE key = ?"
-            ).bind(body.adminFinalized ? 1 : 0, body.adminFinalized ? Date.now() : null, body.adminFinalized ? user.uid : null, key).run();
-            await refreshMediaCounters(env, key);
+        if (body.publishMode !== undefined) {
+            const mode = requireEnum(body, "publishMode", PUBLISH_MODES);
+            await env.DB.prepare("UPDATE media_items SET publish_mode = ? WHERE key = ?").bind(mode, key).run();
         }
+        // Both feed the publish rule.
+        await refreshMediaCounters(env, key);
 
         const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
         if (!item) throw notFound(`Unknown media item "${key}"`);
@@ -307,37 +306,6 @@ export async function handleCatalog(request, env, segments, url) {
             item: serializeMediaItem(refreshed, genres.get(key) || []),
             newFrames: after.count - before.count,
             totalFrames: after.count
-        });
-    }
-
-    // POST /v1/catalog/items/{key}/curate — decide a whole title in one call.
-    // A moderator settling 170 backdrops frame by frame would be 170 requests.
-    if (segments[0] === "items" && segments[2] === "curate" && request.method === "POST") {
-        const user = await authenticate(request, env);
-        requireRole(user, "moderator");
-        await limitByUser(env, user.uid, "WRITE_LIMITER");
-
-        const key = segments[1];
-        const item = await env.DB.prepare("SELECT key FROM media_items WHERE key = ?").bind(key).first();
-        if (!item) throw notFound(`Unknown media item "${key}"`);
-
-        const body = await readJSON(request);
-        const verdicts = parseVerdicts(body.verdicts);
-
-        await applyVerdicts(env, {
-            mediaKey: key,
-            verdicts,
-            rejectRemaining: body.rejectRemaining === true,
-            moderatorUid: user.uid
-        });
-
-        const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
-        const genres = await loadGenreIds(env, [key]);
-
-        return json({
-            item: serializeMediaItem(refreshed, genres.get(key) || []),
-            applied: verdicts.length,
-            rejectedRemaining: body.rejectRemaining === true
         });
     }
 

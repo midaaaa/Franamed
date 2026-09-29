@@ -9,18 +9,9 @@ const DEFAULTS = {
     // Rounds an account must have played before its frame reports carry any
     // weight. Set to 0 to let brand new accounts report at full strength.
     voteWeightMinRounds: 5,
-    // Approved frames after which a title stops being offered for curation.
-    // Not a playability gate — six approved frames already make a title
-    // playable. This is only the point where asking humans to look at it again
-    // stops being worth their time.
+    // Approved frames a finished title should have; the client draws it on the
+    // coverage bar, and a daily film needs at least this many.
     targetApprovedFrames: 12,
-    // How long a title stays leased to one curator with no activity on it, and
-    // how often the client should say it is still there.
-    curationLeaseMinutes: 30,
-    curationHeartbeatSeconds: 45,
-    // Stops curation for everyone below moderator; moderators keep draining
-    // what is already in flight.
-    curationEnabled: true,
     // Live reports one account may file on a single title in a day before the
     // round stops offering it a free replacement frame.
     reportReplacementLimit: 2,

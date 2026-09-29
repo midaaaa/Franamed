@@ -65,9 +65,17 @@ CREATE TABLE IF NOT EXISTS media_items (
     reviewed_images   INTEGER NOT NULL DEFAULT 0,
     approved_images   INTEGER NOT NULL DEFAULT 0,
 
-    admin_finalized   INTEGER NOT NULL DEFAULT 0,
-    finalized_at      INTEGER,
-    finalized_by      TEXT,
+    -- Players only ever see published titles. 'auto' publishes once every
+    -- frame is judged, six are approved and a poster is set; 'on' skips the
+    -- first condition, 'off' holds the title back. Derived by refreshMediaCounters.
+    publish_mode      TEXT    NOT NULL DEFAULT 'auto',           -- auto | on | off
+    published         INTEGER NOT NULL DEFAULT 0,
+
+    -- Who has the title open in a workbench. A courtesy, not a lock: it only
+    -- warns others, and fades on its own when nobody clears it.
+    worked_by         TEXT,
+    worked_by_name    TEXT,
+    worked_since      INTEGER,
 
     -- Set when a moderator throws the whole title out. Kept because "we looked
     -- at this one and said no" is the answer to whoever imports it next.
@@ -99,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_media_type_work   ON media_items(media_type, work
 CREATE INDEX IF NOT EXISTS idx_media_type_pop    ON media_items(media_type, popularity DESC, key);
 CREATE INDEX IF NOT EXISTS idx_media_type_new    ON media_items(media_type, created_at DESC, key);
 CREATE INDEX IF NOT EXISTS idx_media_type_title  ON media_items(media_type, title COLLATE NOCASE, key);
-CREATE INDEX IF NOT EXISTS idx_media_shuffle     ON media_items(media_type, shuffle_key) WHERE status = 'approved';
+CREATE INDEX IF NOT EXISTS idx_media_shuffle     ON media_items(media_type, shuffle_key) WHERE published = 1;
 
 -- Genres as a join table rather than a serialised array: lets the database do
 -- the filtering, which is what removed the need to ship the whole catalogue to
@@ -157,60 +165,6 @@ CREATE TABLE IF NOT EXISTS image_reports (
 CREATE INDEX IF NOT EXISTS idx_reports_created ON image_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_reports_live    ON image_reports(image_id, dismissed_at);
 CREATE INDEX IF NOT EXISTS idx_reports_open    ON image_reports(image_id) WHERE dismissed_at IS NULL;
-
--- ---------------------------------------------------------------- curation
-
--- One person at a time on a title. A curator's work is entirely local, so the
--- lease expires on silence unless the client keeps saying someone is there.
-CREATE TABLE IF NOT EXISTS title_leases (
-    media_key   TEXT PRIMARY KEY REFERENCES media_items(key) ON DELETE CASCADE,
-    uid         TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    role        TEXT    NOT NULL,                              -- role held when the lease was taken
-    acquired_at INTEGER NOT NULL,
-    touched_at  INTEGER NOT NULL,                              -- expiry is touched_at + the window
-    released_at INTEGER                                        -- NULL = live
-);
-CREATE INDEX IF NOT EXISTS idx_leases_live ON title_leases(released_at, touched_at);
-CREATE INDEX IF NOT EXISTS idx_leases_uid  ON title_leases(uid);
-
--- Why a title was taken away, kept until its curator is told.
-CREATE TABLE IF NOT EXISTS lease_notices (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    uid          TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    media_key    TEXT    NOT NULL,
-    taken_by     TEXT    NOT NULL,
-    taken_role   TEXT    NOT NULL,
-    reason       TEXT,
-    created_at   INTEGER NOT NULL,
-    delivered_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_lease_notices_uid ON lease_notices(uid, delivered_at);
-
--- A curator's proposal for one title. Never applied on its own: a moderator
--- reviews it in the same workbench, edits it, and applies or rejects it. The id
--- is the client's idempotency key, so a lost response cannot become a second
--- batch on retry.
-CREATE TABLE IF NOT EXISTS curation_batches (
-    id                  TEXT PRIMARY KEY,                      -- client-generated UUID
-    media_key           TEXT    NOT NULL REFERENCES media_items(key) ON DELETE CASCADE,
-    uid                 TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    state               TEXT    NOT NULL DEFAULT 'pending',    -- pending | applied | rejected
-    verdicts            TEXT    NOT NULL,                      -- JSON [{imageId,status,difficultyTier}]
-    reject_remaining    INTEGER NOT NULL DEFAULT 0,
-    note                TEXT,
-    submitted_at        INTEGER NOT NULL,
-
-    reviewed_by         TEXT,
-    reviewed_at         INTEGER,
-    review_outcome      TEXT,                                  -- applied | rejected_neutral | rejected_poor
-    review_note         TEXT,
-    edits_count         INTEGER,
-    overturned_approvals INTEGER
-);
-CREATE INDEX IF NOT EXISTS idx_batches_state ON curation_batches(state, submitted_at DESC);
-CREATE INDEX IF NOT EXISTS idx_batches_uid   ON curation_batches(uid, submitted_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_batches_open_title
-    ON curation_batches(media_key) WHERE state = 'pending';
 
 -- ---------------------------------------------------------------- playlists
 
@@ -305,8 +259,5 @@ INSERT OR IGNORE INTO app_config (key, value) VALUES
     ('catalogCacheTTLSeconds',   '86400'),
     ('voteWeightMinRounds',      '5'),
     ('targetApprovedFrames',     '12'),
-    ('curationLeaseMinutes',     '30'),
-    ('curationHeartbeatSeconds', '45'),
-    ('curationEnabled',          'true'),
     ('reportReplacementLimit',   '2'),
     ('onboardingMediaKey',       '');

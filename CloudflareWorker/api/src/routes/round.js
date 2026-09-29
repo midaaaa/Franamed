@@ -146,7 +146,7 @@ export async function handleRound(request, env, segments, url) {
 
         const from = `FROM media_items m
                       JOIN playlist_items p ON p.media_key = m.key
-                      WHERE p.playlist_id = ?1 AND m.approved_images >= ?2`;
+                      WHERE p.playlist_id = ?1 AND m.published = 1 AND m.approved_images >= ?2`;
 
         let row = null;
 
@@ -203,7 +203,8 @@ export async function handleRound(request, env, segments, url) {
         });
     }
 
-    const { where, bindings } = buildCatalogQuery(filters, { uid: user.uid, excludeWatched });
+    const today = utcDateString();
+    const { where, bindings } = buildCatalogQuery(filters, { uid: user.uid, excludeWatched, excludeDailyFrom: today });
 
     const pickedKey = await pickRandomKey(env, where, bindings);
 
@@ -211,7 +212,7 @@ export async function handleRound(request, env, segments, url) {
         // Distinguish "your filters match nothing" from "you have played
         // everything that matches", because those need different advice and we
         // can tell them apart exactly here.
-        const ignoringWatched = buildCatalogQuery(filters, { excludeWatched: false });
+        const ignoringWatched = buildCatalogQuery(filters, { excludeWatched: false, excludeDailyFrom: today });
         const total = await env.DB.prepare(`SELECT COUNT(*) AS count FROM media_items m WHERE ${ignoringWatched.where}`)
             .bind(...ignoringWatched.bindings)
             .first();
