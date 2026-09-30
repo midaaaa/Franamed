@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS media_items (
     original_language TEXT,
     popularity        REAL    NOT NULL DEFAULT 0,
     poster_url        TEXT,
+    poster_auto       INTEGER NOT NULL DEFAULT 0,
 
     status            TEXT    NOT NULL DEFAULT 'pending',        -- pending | approved | rejected
     total_images      INTEGER NOT NULL DEFAULT 0,

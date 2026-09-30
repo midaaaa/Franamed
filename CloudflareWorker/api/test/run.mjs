@@ -222,6 +222,7 @@ console.log("open imports and marks presence");
 res = await call("mod", "POST", "/v1/curation/titles/movie_4242/open", {});
 check("an unknown title is imported and opened", res.status === 200 && res.body.imported === true && res.body.images.length === 8, JSON.stringify(res.body).slice(0, 300));
 check("the best clean poster is chosen", row("movie_4242").poster_url === "/clean-best.jpg", row("movie_4242").poster_url);
+check("an imported poster is marked automatic", row("movie_4242").poster_auto === 1);
 check("presence is mine", res.body.item.workedBy?.isMine === true && res.body.item.workedBy.name === "Аня");
 res = await call("cur", "GET", "/v1/curation/queue?limit=50");
 check("someone else's open title leaves my queue", !res.body.items.some((item) => item.key === "movie_4242"));
@@ -260,7 +261,8 @@ check("finishing rejects the rest and closes", row("movie_4242").unjudged_images
 check("auto publishes the finished title", row("movie_4242").published === 1 && row("movie_4242").work_weight === 0);
 await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { posterURL: null });
 check("taking the poster away unpublishes", row("movie_4242").published === 0);
-await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { posterURL: "/clean-best.jpg" });
+res = await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { posterURL: "/clean-best.jpg" });
+check("a chosen poster is no longer automatic", row("movie_4242").poster_auto === 0 && res.body.posterAuto === false, JSON.stringify(res.body).slice(0, 200));
 await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { publishMode: "off" });
 check("'off' holds a ready title back", row("movie_4242").published === 0);
 await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { publishMode: "auto" });

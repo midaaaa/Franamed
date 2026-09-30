@@ -189,7 +189,7 @@ export async function handleCatalog(request, env, segments, url) {
         const body = await readJSON(request);
 
         if (typeof body.posterURL === "string" || body.posterURL === null) {
-            await env.DB.prepare("UPDATE media_items SET poster_url = ? WHERE key = ?").bind(body.posterURL, key).run();
+            await env.DB.prepare("UPDATE media_items SET poster_url = ?, poster_auto = 0 WHERE key = ?").bind(body.posterURL, key).run();
         }
         if (body.publishMode !== undefined) {
             const mode = requireEnum(body, "publishMode", PUBLISH_MODES);

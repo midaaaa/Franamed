@@ -124,12 +124,14 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
 
     const key = mediaKey(mediaType, tmdbId);
     const now = Date.now();
+    const poster = bestPoster(details);
 
     await env.DB.prepare(
         `INSERT INTO media_items (key, tmdb_id, media_type, title, original_title, release_year,
-                                  original_language, popularity, poster_url, added_by, last_synced_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  original_language, popularity, poster_url, poster_auto, added_by, last_synced_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (key) DO UPDATE SET
+            poster_auto = CASE WHEN media_items.poster_url IS NULL THEN excluded.poster_auto ELSE media_items.poster_auto END,
             poster_url = COALESCE(media_items.poster_url, excluded.poster_url),
             title = excluded.title,
             original_title = excluded.original_title,
@@ -146,7 +148,8 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
         releaseYear(details, mediaType),
         details.original_language || null,
         details.popularity || 0,
-        bestPoster(details),
+        poster,
+        poster ? 1 : 0,
         addedBy,
         now,
         now

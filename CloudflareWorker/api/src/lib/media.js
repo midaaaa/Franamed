@@ -32,6 +32,7 @@ export function serializeMediaItem(row, genreIds = [], { uid = null, now = Date.
         originalLanguage: row.original_language,
         popularity: row.popularity,
         posterURL: row.poster_url,
+        posterAuto: row.poster_auto === 1,
         status: row.status,
         genreIds,
         totalImages: row.total_images,
