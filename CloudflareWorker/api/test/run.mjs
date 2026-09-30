@@ -244,6 +244,8 @@ res = await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", {
     verdicts: classic.slice(0, 5).map((imageId, i) => ({ imageId, status: "approved", difficultyTier: ["hard", "medium", "easy"][i % 3] }))
 });
 check("a delta save keeps the title open", res.status === 200 && res.body.item.workedBy?.isMine === true, JSON.stringify(res.body).slice(0, 200));
+res = await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", { verdicts: [{ imageId: classic[5], status: "approved" }] });
+check("approving without a tier is refused", res.status === 400 && row("movie_4242").approved_images === 5, JSON.stringify(res.body));
 check("5 approved: not published", row("movie_4242").approved_images === 5 && row("movie_4242").published === 0);
 await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", {
     verdicts: [{ imageId: classic[5], status: "approved", difficultyTier: "hard" }, { imageId: classic[6], status: "rejected" }]

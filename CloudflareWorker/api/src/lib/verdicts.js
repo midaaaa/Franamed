@@ -32,6 +32,9 @@ export function parseVerdicts(raw) {
         if (tier !== undefined && tier !== null && !DIFFICULTY_TIERS.includes(tier)) {
             throw badRequest(`difficultyTier must be null or one of: ${DIFFICULTY_TIERS.join(", ")}`);
         }
+        // A taken frame is always placed by difficulty: without a tier the
+        // round could only use it as filler.
+        if (verdict.status === "approved" && !tier) throw badRequest("An approved frame needs a difficultyTier");
 
         return { imageId, status: verdict.status, difficultyTier: tier };
     });
