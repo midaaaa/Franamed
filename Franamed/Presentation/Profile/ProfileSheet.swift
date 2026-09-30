@@ -19,51 +19,22 @@ struct ProfileSheet: View {
 
     @EnvironmentObject private var session: SessionStore
 
-    @State private var isConfirming = false
+    @State private var isConfirmingReset = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
+                if let user = session.user {
+                    Section("Аккаунт") {
+                        LabeledContent("Аккаунт", value: user.isAnonymous ? "Анонимный" : (user.displayName ?? "Apple ID"))
+                        if session.canModerate {
+                            LabeledContent("Роль", value: user.role.displayName)
+                        }
+                    }
+                }
+
+                Section("Настройки") {
                     Toggle("Вибрация", isOn: $hapticsEnabled)
-                    Toggle("Вырезы по краю билета", isOn: $hasScallops)
-                }
-
-                Section {
-                    if let user = session.user {
-                        LabeledContent("Роль", value: user.role.displayName)
-                        LabeledContent("Аккаунт", value: user.isAnonymous ? "Анонимный" : (user.displayName ?? "Связан с Apple ID"))
-                        LabeledContent("Серия", value: "\(user.dailyStreak)")
-                    }
-
-                    Button("Выйти", role: .destructive) {
-                        Task {
-                            dismiss()
-                            await session.signOut()
-                        }
-                    }
-                } header: {
-                    Text("Аккаунт")
-                }
-
-                Section {
-                    if isConfirming {
-                        Text("Удалить всю историю просмотренных фильмов и сериалов? Это нельзя отменить.")
-                            .foregroundStyle(.secondary)
-                        Button("Подтвердить удаление", role: .destructive) {
-                            try? modelContext.delete(model: WatchedRecord.self)
-                            isConfirming = false
-                        }
-                        Button("Отмена") {
-                            isConfirming = false
-                        }
-                    } else {
-                        Button("Сбросить историю просмотров", role: .destructive) {
-                            isConfirming = true
-                        }
-                    }
-                } header: {
-                    Text("История")
                 }
 
                 #if DEBUG
@@ -74,16 +45,31 @@ struct ProfileSheet: View {
                         get: { stubPlacement == .clippedByForm },
                         set: { stubPlacement = $0 ? .clippedByForm : .behindForm }
                     ))
-                } header: {
-                    Text("Отладка")
+                    Toggle("Вырезы по краю билета", isOn: $hasScallops)
                 }
                 #endif
+
+                Section {
+                    Button("Сбросить историю просмотров", role: .destructive) {
+                        isConfirmingReset = true
+                    }
+                    .confirmationDialog(
+                        "Удалить всю историю просмотренных фильмов и сериалов?",
+                        isPresented: $isConfirmingReset,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Удалить историю", role: .destructive) {
+                            try? modelContext.delete(model: WatchedRecord.self)
+                        }
+                    } message: {
+                        Text("Это нельзя отменить.")
+                    }
+                }
             }
             .navigationTitle("Профиль")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) { dismiss() }
                 }
             }
         }
