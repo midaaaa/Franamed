@@ -33,10 +33,10 @@ struct RootView: View {
                     SessionFailureView(message: message, onRetry: { await session.start() })
 
                 case .signedIn:
-                    tabs
+                    game
                 }
             } else {
-                tabs
+                game
             }
         }
         .task {
@@ -45,19 +45,10 @@ struct RootView: View {
         }
     }
 
-    private var tabs: some View {
-        TabView {
-            Tab("Game", systemImage: "gamecontroller") {
-                TicketView(coordinator: coordinator)
-                    .modelContext(modelContext)
-            }
-
-            Tab("Curation", systemImage: "checkmark.seal") {
-                CurationView(coordinator: coordinator)
-                    .modelContext(modelContext)
-            }
-        }
-        .environmentObject(session)
+    private var game: some View {
+        TicketView(coordinator: coordinator)
+            .modelContext(modelContext)
+            .environmentObject(session)
     }
 }
 
