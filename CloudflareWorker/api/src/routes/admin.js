@@ -198,16 +198,13 @@ export async function handleAdmin(request, env, segments, url) {
         return json({ date: plan.date, mediaKey: plan.media_key, ...layout });
     }
 
-    // DELETE /v1/admin/daily/{date} — only ahead of today: past days carry
-    // results and streaks that would be orphaned.
+    // DELETE /v1/admin/daily/{date} — until someone has played it: a played
+    // day carries results and streaks that would be orphaned.
     if (segments[0] === "daily" && segments.length === 2 && request.method === "DELETE") {
         requireRole(user, "moderator");
 
-        const date = segments[1];
-        if (!isValidDateString(date)) throw badRequest("date must be YYYY-MM-DD");
-        if (date <= utcDateString()) throw badRequest("Only a future day can be removed");
-
-        await env.DB.prepare("DELETE FROM daily_overrides WHERE date = ?").bind(date).run();
+        const plan = await loadEditableDay(env, segments[1]);
+        await env.DB.prepare("DELETE FROM daily_overrides WHERE date = ?").bind(plan.date).run();
         return noContent();
     }
 

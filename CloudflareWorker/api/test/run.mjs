@@ -416,8 +416,12 @@ db.db.prepare("INSERT INTO daily_results (uid, date, media_key, was_correct, att
 db.db.prepare("UPDATE daily_overrides SET date = '2000-03-01' WHERE date = '2999-03-01'").run();
 res = await call("mod", "PUT", "/v1/admin/daily/2000-03-01/frames", { reroll: true });
 check("a played day is locked", res.status === 409, JSON.stringify(res.body));
+check("a played day cannot be removed", (await call("mod", "DELETE", "/v1/admin/daily/2000-03-01")).status === 409);
 db.db.prepare("DELETE FROM daily_overrides WHERE date = '2000-03-01'").run();
 db.db.prepare("DELETE FROM daily_results WHERE date = '2000-03-01'").run();
+db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES (date('now'), ?, 0)").run(playable[0]);
+res = await call("mod", "DELETE", `/v1/admin/daily/${new Date().toISOString().slice(0, 10)}`);
+check("an unplayed today can be removed", res.status === 204, JSON.stringify(res.body));
 
 // ------------------------------------------------------------------ deletion
 
