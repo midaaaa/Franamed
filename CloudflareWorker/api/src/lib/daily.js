@@ -50,12 +50,12 @@ export async function dailyNumber(env, dateString) {
 // Picks the frames once and stores them: chosen at request time they would
 // differ between players, between reopenings, and after any re-curation. The
 // date seeds the generator so a re-freeze lands the same way.
-export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount = DEFAULT_DAILY_FRAME_COUNT }) {
+export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount = DEFAULT_DAILY_FRAME_COUNT, salt = "" }) {
     const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ?").bind(mediaKey).all();
 
     // Both picks share one generator: the spares are part of the layout, and an
     // unseeded pick there would give two players different substitutes.
-    const random = seededRandom(hashString(dateString));
+    const random = seededRandom(hashString(dateString + salt));
 
     const frames = selectRoundFrames(images.results, frameCount, { random });
     if (!frames.length) throw badRequest("That film has no approved frames to build a day from");
@@ -75,6 +75,27 @@ export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount 
     ).run();
 
     return { frameIds: frames.map((frame) => frame.id), spareIds: spares.map((frame) => frame.id) };
+}
+
+// A moderator's own six, in their order. The spares are still picked by the
+// rules so a broken frame keeps a stand-in the moderator did not have to choose.
+export async function setDailyFrames(env, { dateString, mediaKey, frameIds }) {
+    const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ?").bind(mediaKey).all();
+    const approved = new Map(images.results.filter((image) => image.status === "approved").map((image) => [image.id, image]));
+
+    if (new Set(frameIds).size !== frameIds.length) throw badRequest("Each frame may appear once");
+    if (!frameIds.every((id) => approved.has(id))) throw badRequest("Every frame must be an approved frame of that film");
+
+    const random = seededRandom(hashString(dateString));
+    const spares = selectSpareFrames(images.results, new Set(frameIds), 3, { random });
+
+    await env.DB.prepare(
+        `UPDATE daily_overrides
+         SET frame_ids = ?, spare_ids = ?, frame_count = ?, frozen_at = ?
+         WHERE date = ?`
+    ).bind(JSON.stringify(frameIds), JSON.stringify(spares.map((frame) => frame.id)), frameIds.length, Date.now(), dateString).run();
+
+    return { frameIds, spareIds: spares.map((frame) => frame.id) };
 }
 
 // Days scheduled before freezing existed are frozen on first play, otherwise

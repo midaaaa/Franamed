@@ -400,6 +400,25 @@ console.log("daily scheduling");
 res = await call("mod", "PUT", "/v1/admin/daily/2999-02-01", { mediaKey: "movie_101" });
 check("an unpublished title is refused", res.status === 400, JSON.stringify(res.body));
 
+db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES ('2999-03-01', ?, 0)").run(playable[0]);
+res = await call("mod", "GET", "/v1/admin/daily/2999-03-01");
+check("a day shows its approved frames", res.status === 200 && res.body.images.length >= 6 && res.body.editable === true, JSON.stringify(res.body).slice(0, 200));
+const own = res.body.images.slice(0, 6).map((image) => image.id).reverse();
+res = await call("mod", "PUT", "/v1/admin/daily/2999-03-01/frames", { frameIds: own });
+const stored = db.db.prepare("SELECT frame_ids, spare_ids FROM daily_overrides WHERE date = '2999-03-01'").get();
+check("a moderator's own order is stored as is", res.status === 200 && stored.frame_ids === JSON.stringify(own), JSON.stringify(res.body));
+check("spares never repeat the chosen frames", JSON.parse(stored.spare_ids).every((id) => !own.includes(id)));
+res = await call("mod", "PUT", "/v1/admin/daily/2999-03-01/frames", { frameIds: [own[0], own[0], own[1], own[2], own[3], own[4]] });
+check("a repeated frame is refused", res.status === 400);
+res = await call("mod", "PUT", "/v1/admin/daily/2999-03-01/frames", { reroll: true });
+check("a re-roll lays out six frames", res.status === 200 && res.body.frameIds.length === 6, JSON.stringify(res.body));
+db.db.prepare("INSERT INTO daily_results (uid, date, media_key, was_correct, attempts_used, completed_at) VALUES ('plain', '2000-03-01', ?, 1, 1, 0)").run(playable[0]);
+db.db.prepare("UPDATE daily_overrides SET date = '2000-03-01' WHERE date = '2999-03-01'").run();
+res = await call("mod", "PUT", "/v1/admin/daily/2000-03-01/frames", { reroll: true });
+check("a played day is locked", res.status === 409, JSON.stringify(res.body));
+db.db.prepare("DELETE FROM daily_overrides WHERE date = '2000-03-01'").run();
+db.db.prepare("DELETE FROM daily_results WHERE date = '2000-03-01'").run();
+
 // ------------------------------------------------------------------ deletion
 
 console.log("account deletion");

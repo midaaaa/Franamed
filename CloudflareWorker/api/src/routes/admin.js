@@ -4,7 +4,8 @@ import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON
 import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { deleteAccount, recomputeReportedTitles } from "../lib/accounts.js";
-import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, utcDateString } from "../lib/daily.js";
+import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, setDailyFrames, utcDateString } from "../lib/daily.js";
+import { serializeImage } from "../lib/media.js";
 import { readUsage } from "../lib/usage.js";
 
 export async function handleAdmin(request, env, segments, url) {
@@ -153,6 +154,50 @@ export async function handleAdmin(request, env, segments, url) {
         return json({ date, mediaKey, ...layout });
     }
 
+    // GET /v1/admin/daily/{date} — the frozen layout and what it can be rebuilt from
+    if (segments[0] === "daily" && segments.length === 2 && request.method === "GET") {
+        requireRole(user, "moderator");
+        const plan = await loadEditableDay(env, segments[1], { forReading: true });
+
+        const images = await env.DB.prepare(
+            "SELECT * FROM media_images WHERE media_key = ? AND status = 'approved' ORDER BY id"
+        ).bind(plan.media_key).all();
+
+        return json({
+            date: plan.date,
+            mediaKey: plan.media_key,
+            frameIds: JSON.parse(plan.frame_ids || "[]"),
+            spareIds: JSON.parse(plan.spare_ids || "[]"),
+            editable: plan.editable,
+            images: images.results.map(serializeImage)
+        });
+    }
+
+    // PUT /v1/admin/daily/{date}/frames — the moderator's own order, or a re-roll
+    if (segments[0] === "daily" && segments.length === 3 && segments[2] === "frames" && request.method === "PUT") {
+        requireRole(user, "moderator");
+        const plan = await loadEditableDay(env, segments[1]);
+        const body = await readJSON(request);
+
+        if (body.reroll === true) {
+            const salt = String(Date.now());
+            const layout = await freezeDailyLayout(env, {
+                dateString: plan.date,
+                mediaKey: plan.media_key,
+                frameCount: plan.frame_count || DEFAULT_DAILY_FRAME_COUNT,
+                salt
+            });
+            return json({ date: plan.date, mediaKey: plan.media_key, ...layout });
+        }
+
+        const frameIds = Array.isArray(body.frameIds) ? body.frameIds.map((id) => Number.parseInt(id, 10)) : [];
+        if (frameIds.length !== DEFAULT_DAILY_FRAME_COUNT || frameIds.some((id) => !Number.isInteger(id))) {
+            throw badRequest(`frameIds must be ${DEFAULT_DAILY_FRAME_COUNT} integer ids`);
+        }
+        const layout = await setDailyFrames(env, { dateString: plan.date, mediaKey: plan.media_key, frameIds });
+        return json({ date: plan.date, mediaKey: plan.media_key, ...layout });
+    }
+
     // DELETE /v1/admin/daily/{date} — only ahead of today: past days carry
     // results and streaks that would be orphaned.
     if (segments[0] === "daily" && segments.length === 2 && request.method === "DELETE") {
@@ -242,4 +287,21 @@ export async function handleAdmin(request, env, segments, url) {
     }
 
     return null;
+}
+
+// A day can be re-laid out until someone has played it: before that nobody
+// has seen the frames, after it a change would split players between versions.
+async function loadEditableDay(env, date, { forReading = false } = {}) {
+    if (!isValidDateString(date)) throw badRequest("date must be YYYY-MM-DD");
+    const plan = await env.DB.prepare("SELECT * FROM daily_overrides WHERE date = ?").bind(date).first();
+    if (!plan) throw notFound("Nothing is scheduled for that day");
+
+    const today = utcDateString();
+    const played = date <= today
+        ? await env.DB.prepare("SELECT 1 FROM daily_results WHERE date = ? LIMIT 1").bind(date).first()
+        : null;
+    const editable = date >= today && !played;
+
+    if (!editable && !forReading) throw conflict("That day has already been played and cannot be changed");
+    return { ...plan, editable };
 }
