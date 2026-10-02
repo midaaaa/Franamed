@@ -121,7 +121,6 @@ final class HallRenderer: @unchecked Sendable {
     private var pending: (frame: Frame, layer: LayerBox)?
     private var scheduled = false
 
-    private var pipeline: MTLComputePipelineState?
     private var meshPipelines: [MTLRenderPipelineState] = []
     private var occluderPipeline: MTLRenderPipelineState?
     private var depthState: MTLDepthStencilState?
@@ -136,8 +135,6 @@ final class HallRenderer: @unchecked Sendable {
             NSLog("[Hall] shader library unavailable")
             return
         }
-        pipeline = library.makeFunction(name: "cinemaHallKernel")
-            .flatMap { try? device.makeComputePipelineState(function: $0) }
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.rasterSampleCount = HallMeshPass.samples
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
@@ -188,8 +185,8 @@ final class HallRenderer: @unchecked Sendable {
         descriptor.usage = [.renderTarget, .shaderWrite]
         descriptor.storageMode = .shared
         guard width > 0, height > 0, let target = device.makeTexture(descriptor: descriptor),
-              let commandBuffer = commandQueue?.makeCommandBuffer() else { return nil }
-        encode(frame, target: target, commandBuffer: commandBuffer)
+              let commandBuffer = commandQueue?.makeCommandBuffer(),
+              encode(frame, target: target, commandBuffer: commandBuffer) else { return nil }
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
 
@@ -208,37 +205,23 @@ final class HallRenderer: @unchecked Sendable {
     }
 
     private func draw(_ frame: Frame, layer: CAMetalLayer) {
-        guard let drawable = layer.nextDrawable(), let commandBuffer = commandQueue?.makeCommandBuffer() else { return }
-        encode(frame, target: drawable.texture, commandBuffer: commandBuffer)
+        guard frame.meshes != nil, let drawable = layer.nextDrawable(),
+              let commandBuffer = commandQueue?.makeCommandBuffer(),
+              encode(frame, target: drawable.texture, commandBuffer: commandBuffer) else { return }
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
 
-    private func encode(_ frame: Frame, target: MTLTexture, commandBuffer: MTLCommandBuffer) {
+    private func encode(_ frame: Frame, target: MTLTexture, commandBuffer: MTLCommandBuffer) -> Bool {
         if gridSample != frame.sample {
             grid = device.makeBuffer(bytes: frame.sample.blurredInterleaved,
                                      length: frame.sample.blurredInterleaved.count * MemoryLayout<Float>.stride,
                                      options: .storageModeShared)
             gridSample = frame.sample
         }
+        guard let meshes = frame.meshes else { return false }
         var args = frame.args
-        let meshEncoded = frame.meshes.map {
-            encodeMesh($0, frame: frame, args: &args, target: target, commandBuffer: commandBuffer)
-        }
-        if meshEncoded != true, let pipeline, let encoder = commandBuffer.makeComputeCommandEncoder() {
-            encodeKernel(encoder, pipeline: pipeline, args: &args, target: target)
-        }
-    }
-
-    private func encodeKernel(_ encoder: MTLComputeCommandEncoder, pipeline: MTLComputePipelineState,
-                              args: inout HallShaderArgs, target: MTLTexture) {
-        encoder.setComputePipelineState(pipeline)
-        encoder.setTexture(target, index: 0)
-        encoder.setBytes(&args, length: MemoryLayout<HallShaderArgs>.stride, index: 0)
-        encoder.setBuffer(grid, offset: 0, index: 1)
-        encoder.dispatchThreads(MTLSize(width: target.width, height: target.height, depth: 1),
-                                threadsPerThreadgroup: MTLSize(width: 8, height: 8, depth: 1))
-        encoder.endEncoding()
+        return encodeMesh(meshes, frame: frame, args: &args, target: target, commandBuffer: commandBuffer)
     }
 
     private func encodeMesh(_ meshes: HallMeshSet, frame: Frame, args: inout HallShaderArgs,

@@ -57,36 +57,6 @@ struct LiveHallView: View {
     }
 }
 
-struct HallView: View, Equatable {
-    let sample: HallFrameSample
-    let scene: HallScene
-    let size: CGSize
-    let frameTop: CGFloat
-    let frameBottom: CGFloat
-
-    nonisolated static func == (lhs: HallView, rhs: HallView) -> Bool {
-        lhs.sample == rhs.sample && lhs.scene == rhs.scene && lhs.size == rhs.size
-            && lhs.frameTop == rhs.frameTop && lhs.frameBottom == rhs.frameBottom
-    }
-
-    var body: some View {
-        Rectangle()
-            .fill(.black)
-            .frame(width: size.width, height: size.height)
-            .colorEffect(shader)
-    }
-
-    private var shader: Shader {
-        let args = HallShaderArgs(scene: scene, sample: sample, size: size, frameTop: frameTop,
-                                  frameBottom: frameBottom, sway: .zero, scale: 1)
-        return ShaderLibrary.cinemaHall(
-            .vector(args.camera), .vector(args.eyeRows), .vector(args.rowShape), .vector(args.seat),
-            .vector(args.arm), .vector(args.screen), .vector(args.mean), .vector(args.options),
-            .floatArray(sample.blurredInterleaved)
-        )
-    }
-}
-
 struct HallShaderArgs {
     var camera: SIMD4<Float>
     var eyeRows: SIMD4<Float>
@@ -96,8 +66,6 @@ struct HallShaderArgs {
     var screen: SIMD4<Float>
     var mean: SIMD4<Float>
     var options: SIMD4<Float>
-
-    static let rayFlags: Float = 7
 
     init(scene: HallScene, sample: HallFrameSample, size: CGSize, frameTop: CGFloat, frameBottom: CGFloat,
          sway: SIMD2<Float>, scale: CGFloat) {
@@ -115,12 +83,6 @@ struct HallShaderArgs {
         arm = SIMD4(scene.armrestHeight, scene.armrestWidth, scene.armrestLength, scene.armrestSetback)
         screen = SIMD4(HallScene.screenWidth, HallScene.screenHeight, HallScene.screenBottom, 0)
         mean = SIMD4(sample.mean, 0)
-        options = SIMD4(Self.rayFlags, Float(frameTop) * s, Float(frameBottom) * s, 0)
-    }
-}
-
-private extension Shader.Argument {
-    static func vector(_ value: SIMD4<Float>) -> Shader.Argument {
-        .float4(value.x, value.y, value.z, value.w)
+        options = SIMD4(0, Float(frameTop) * s, Float(frameBottom) * s, 0)
     }
 }

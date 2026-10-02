@@ -6,7 +6,6 @@
 //
 
 #include <metal_stdlib>
-#include <SwiftUI/SwiftUI_Metal.h>
 using namespace metal;
 
 namespace hall {
@@ -15,10 +14,6 @@ constant int gridColumns = 24;
 constant int gridRows = 14;
 constant float3 luma = float3(0.2126, 0.7152, 0.0722);
 constant float underSeat = 0.0;
-
-constant int skipFrameFlag = 1;
-constant int rowBoundsFlag = 2;
-constant int ownBoundsFlag = 4;
 
 struct HallArgs {
     float4 camera;
@@ -37,9 +32,7 @@ struct Hall {
     float centerX;
     float3 eye;
     int rows;
-    float pitch;
     float rise;
-    float arc;
     float recline;
     float seatPitch;
     float backWidth;
@@ -52,9 +45,6 @@ struct Hall {
     float screenHeight;
     float screenBottom;
     float3 mean;
-    int flags;
-    float frameTop;
-    float frameBottom;
     device const float *grid;
 };
 
@@ -65,9 +55,7 @@ Hall makeHall(HallArgs args, device const float *grid) {
     h.centerX = args.camera.z;
     h.eye = args.eyeRows.xyz;
     h.rows = int(args.eyeRows.w);
-    h.pitch = args.rowShape.x;
     h.rise = args.rowShape.y;
-    h.arc = args.rowShape.z;
     h.recline = args.rowShape.w;
     h.seatPitch = args.seat.x;
     h.backWidth = args.seat.y;
@@ -80,9 +68,6 @@ Hall makeHall(HallArgs args, device const float *grid) {
     h.screenHeight = args.screen.y;
     h.screenBottom = args.screen.z;
     h.mean = args.mean.xyz;
-    h.flags = int(args.options.x);
-    h.frameTop = args.options.y;
-    h.frameBottom = args.options.z;
     h.grid = grid;
     return h;
 }
@@ -173,7 +158,6 @@ float roundBox3(float3 p, float3 b, float r) {
 struct Row {
     float distance;
     float floorY;
-    float offset;
     float radius;
 };
 
@@ -203,7 +187,6 @@ constant float capHalfHeight = 0.035;
 constant float bodyHalfWidth = 0.075;
 constant float plinthHeight = 0.07;
 constant float holderInward = 0.0;
-constant int rowArmKind = 10;
 
 enum OwnKind { ownNone, ownCap, ownBody, ownRing, ownPlastic };
 
@@ -329,64 +312,6 @@ ArmFrame rowArm(thread const Hall &h, float ax, float ly, float zf) {
     return f;
 }
 
-float field(thread const Hall &h, thread const Row &row, float3 p, thread int &kind, thread float &crease) {
-    float ly = p.y - row.floorY;
-    float face = rowFace(row, p.x);
-    float zl = p.z - face + (h.seatTop - ly) * h.recline;
-    float zf = p.z - face;
-
-    float sx = p.x - row.offset;
-    float lx = sx - round(sx / h.seatPitch) * h.seatPitch;
-    float lxNext = lx - sign(lx) * h.seatPitch;
-    float creaseA, creaseB;
-    float seatA = seat(h, lx, ly, zl, creaseA);
-    float seatB = seat(h, lxNext, ly, zl, creaseB);
-    float seats = min(seatA, seatB);
-
-    crease = seatA < seatB ? creaseA : creaseB;
-
-    float gx = sx - h.seatPitch * 0.5;
-    float ax = gx - round(gx / h.seatPitch) * h.seatPitch;
-    float axNext = ax - sign(ax) * h.seatPitch;
-    int partA, partB;
-    float armA = armShape(h, rowArm(h, ax, ly, zf), partA);
-    float armB = armShape(h, rowArm(h, axNext, ly, zf), partB);
-    float arms = min(armA, armB);
-
-    kind = arms < seats ? rowArmKind + (armA < armB ? partA : partB) : 0;
-    return min(seats, arms);
-}
-
-float3 fieldNormal(thread const Hall &h, thread const Row &row, float3 p) {
-    const float e = 0.0015;
-    int kind; float crease;
-    float3 k1 = float3(1, -1, -1), k2 = float3(-1, -1, 1), k3 = float3(-1, 1, -1), k4 = float3(1, 1, 1);
-    float3 n = k1 * field(h, row, p + k1 * e, kind, crease) + k2 * field(h, row, p + k2 * e, kind, crease)
-             + k3 * field(h, row, p + k3 * e, kind, crease) + k4 * field(h, row, p + k4 * e, kind, crease);
-    return normalize(n);
-}
-
-float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n, float3 d, float t, float crease);
-
-float3 shade(thread const Hall &h, thread const Row &row, float3 p, float3 d, float t) {
-    int kind; float crease;
-    field(h, row, p, kind, crease);
-    float3 n = fieldNormal(h, row, p);
-    float ly = p.y - row.floorY;
-
-    if (kind >= rowArmKind) {
-        float zf = p.z - rowFace(row, p.x);
-        float gx = p.x - row.offset - h.seatPitch * 0.5;
-        float ax = gx - round(gx / h.seatPitch) * h.seatPitch;
-        ArmFrame fa = rowArm(h, ax, ly, zf);
-        ArmFrame fb = rowArm(h, ax - sign(ax) * h.seatPitch, ly, zf);
-        int part;
-        bool nearA = armShape(h, fa, part) < armShape(h, fb, part);
-        return shadeArm(h, p, n, d, kind - rowArmKind, nearA ? fa : fb);
-    }
-    return shadeSeat(h, row, p, n, d, t, crease);
-}
-
 float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n, float3 d, float t, float crease) {
     float ly = p.y - row.floorY;
     float albedo = 0.8;
@@ -412,50 +337,6 @@ float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n
 
     float lower = pow(saturate((ly - 0.3) / (h.seatTop - 0.3)), 1.6);
     return mix(h.mean * underSeat, light(h, p, n, d, albedo, gloss, lower), smoothstep(0.25, 0.7, ly));
-}
-
-float4 march(thread const Hall &h, thread const Row &row, float3 d, thread float &hitT) {
-    hitT = 0;
-    float reach = h.pitch - 0.05;
-    float tStart = max((row.distance + 0.2 - h.eye.z) / d.z, 0.01);
-    float tEnd = (row.distance - reach - h.eye.z) / d.z;
-    if ((h.flags & rowBoundsFlag) != 0) {
-        float top = row.floorY + h.seatTop + 0.04;
-        if (min(h.eye.y + tStart * d.y, h.eye.y + tEnd * d.y) > top) return 0;
-        if (d.y < 0) tStart = max(tStart, (top - h.eye.y) / d.y);
-    }
-    float pixel = 1.0 / (h.focal * 2.0);
-
-    float3 color = 0;
-    float3 last = 0;
-    float alpha = 0;
-    int shaded = 0;
-    float t = tStart;
-    for (int i = 0; i < 64 && t < tEnd; i++) {
-        float3 p = h.eye + t * d;
-        int kind; float crease;
-        float dist = field(h, row, p, kind, crease);
-        float size = t * pixel;
-        if (dist < size) {
-            float cover = saturate(0.5 - dist / size);
-            if (cover > 0.02) {
-                if (shaded < 5) {
-                    last = shade(h, row, p, d, t);
-                    shaded++;
-                }
-                if (hitT == 0) hitT = t;
-                float take = (1.0 - alpha) * cover;
-                color += take * last;
-                alpha += take;
-            }
-            if (alpha > 0.985) break;
-            t += max(dist, size * 0.5);
-        } else {
-            t += dist * 0.8;
-        }
-    }
-    if (alpha <= 0) return 0;
-    return float4(color / alpha, alpha > 0.97 ? 1.0 : alpha);
 }
 
 // MARK: Own seat
@@ -501,150 +382,14 @@ float ownField(thread const Hall &h, float3 p, thread int &kind) {
     return armShape(h, ownArm(h, ownPoint(h, p)), kind);
 }
 
-float3 ownNormal(thread const Hall &h, float3 p) {
-    const float e = 0.001;
-    int kind;
-    float3 k1 = float3(1, -1, -1), k2 = float3(-1, -1, 1), k3 = float3(-1, 1, -1), k4 = float3(1, 1, 1);
-    return normalize(k1 * ownField(h, p + k1 * e, kind) + k2 * ownField(h, p + k2 * e, kind)
-                   + k3 * ownField(h, p + k3 * e, kind) + k4 * ownField(h, p + k4 * e, kind));
-}
-
-float3 ownShadeWith(thread const Hall &h, float3 p, float3 d, float3 n, int kind);
-
-float3 ownShade(thread const Hall &h, float3 p, float3 d) {
-    int kind;
-    ownField(h, p, kind);
-    return ownShadeWith(h, p, d, ownNormal(h, p), kind);
-}
-
 float3 ownShadeWith(thread const Hall &h, float3 p, float3 d, float3 n, int kind) {
     return shadeArm(h, p, n, d, kind, ownArm(h, ownPoint(h, p)));
 }
 
-float2 boxRange(float3 origin, float3 inverse, float3 low, float3 high) {
-    float3 a = (low - origin) * inverse;
-    float3 b = (high - origin) * inverse;
-    float3 enter = min(a, b);
-    float3 leave = max(a, b);
-    return float2(max(max(enter.x, enter.y), enter.z), min(min(leave.x, leave.y), leave.z));
+float3 finish(float3 color) {
+    return pow(max(perceive(color), 0.0), 1.0 / 2.2);
 }
 
-float2 ownRange(thread const Hall &h, float3 d) {
-    float3 origin = ownLocal(h, h.eye);
-    float3 inverse = 1.0 / d;
-    float2 range = float2(1e9, -1e9);
-    for (int side = -1; side <= 1; side += 2) {
-        float x = float(side) * h.seatPitch * 0.5;
-        float2 r = boxRange(origin, inverse, float3(x - 0.25, -0.05, -1.05), float3(x + 0.25, h.armHeight + 0.05, 0.2));
-        if (r.x <= r.y) range = float2(min(range.x, r.x), max(range.y, r.y));
-    }
-    return range;
-}
-
-float4 marchOwn(thread const Hall &h, float3 d, thread float &hitT) {
-    hitT = 0;
-    float pixel = 1.0 / (h.focal * 2.0);
-    float t = 0.05;
-    float tEnd = 2.0;
-    if ((h.flags & ownBoundsFlag) != 0) {
-        float2 range = ownRange(h, d);
-        if (range.x > range.y) return 0;
-        t = max(t, range.x);
-        tEnd = min(tEnd, range.y);
-    }
-
-    float3 color = 0;
-    float3 last = 0;
-    float alpha = 0;
-    int shaded = 0;
-    for (int i = 0; i < 48 && t < tEnd; i++) {
-        float3 p = h.eye + t * d;
-        int kind;
-        float dist = ownField(h, p, kind);
-        float size = t * pixel;
-        if (dist < size) {
-            float cover = saturate(0.5 - dist / size);
-            if (cover > 0.02) {
-                if (shaded < 4) {
-                    last = ownShade(h, p, d);
-                    shaded++;
-                }
-                if (hitT == 0) hitT = t;
-                float take = (1.0 - alpha) * cover;
-                color += take * last;
-                alpha += take;
-            }
-            if (alpha > 0.985) break;
-            t += max(dist, size * 0.5);
-        } else {
-            t += dist * 0.9;
-        }
-    }
-    if (alpha <= 0) return 0;
-    return float4(color / alpha, alpha > 0.97 ? 1.0 : alpha);
-}
-
-float3 rayAt(thread const Hall &h, float2 position) {
-    return normalize(float3((position.x - h.centerX) / h.focal, -(position.y - h.principalY) / h.focal, -1));
-}
-
-bool underFrame(thread const Hall &h, float2 position) {
-    return (h.flags & skipFrameFlag) != 0 && position.y > h.frameTop && position.y < h.frameBottom;
-}
-
-float4 renderRows(thread const Hall &h, float3 d) {
-    float3 accumulated = 0;
-    float alpha = 0;
-    for (int k = 0; k < h.rows && alpha < 0.998; k++) {
-        Row row;
-        row.distance = h.eye.z - h.pitch * float(k + 1);
-        row.radius = row.distance + h.arc;
-        row.floorY = h.rise * float(h.rows - k - 1);
-        row.offset = (k % 2 == 0) ? h.seatPitch * 0.5 : 0.0;
-        float hitT;
-        float4 s = march(h, row, d, hitT);
-        accumulated += (1.0 - alpha) * s.a * s.rgb;
-        alpha += (1.0 - alpha) * s.a;
-    }
-    return float4(accumulated, alpha);
-}
-
-float3 finish(thread const Hall &h, float3 near, float nearAlpha, float4 rows) {
-    float3 accumulated = nearAlpha * near + (1.0 - nearAlpha) * rows.rgb;
-    float alpha = nearAlpha + (1.0 - nearAlpha) * rows.a;
-    accumulated += (1.0 - alpha) * h.mean * underSeat;
-    float3 shown = perceive(accumulated);
-    return pow(max(shown, 0.0), 1.0 / 2.2);
-}
-
-float3 render(thread const Hall &h, float2 position) {
-    if (underFrame(h, position)) return 0;
-    float3 d = rayAt(h, position);
-    float hitT;
-    float4 near = marchOwn(h, d, hitT);
-    float4 rows = near.a > 0.998 ? float4(0) : renderRows(h, d);
-    return finish(h, near.rgb, near.a, rows);
-}
-}
-
-[[ stitchable ]] half4 cinemaHall(float2 position, half4 color,
-                                  float4 camera, float4 eyeRows, float4 rowShape, float4 seat,
-                                  float4 arm, float4 screen, float4 mean, float4 options,
-                                  device const float *grid, int gridCount) {
-    using namespace hall;
-    HallArgs args = { camera, eyeRows, rowShape, seat, arm, screen, mean, options };
-    Hall h = makeHall(args, grid);
-    return half4(half3(render(h, position)), 1.0h);
-}
-
-[[ kernel ]] void cinemaHallKernel(texture2d<float, access::write> target [[ texture(0) ]],
-                                   constant hall::HallArgs &args [[ buffer(0) ]],
-                                   device const float *grid [[ buffer(1) ]],
-                                   uint2 gid [[ thread_position_in_grid ]]) {
-    using namespace hall;
-    if (gid.x >= target.get_width() || gid.y >= target.get_height()) return;
-    Hall h = makeHall(args, grid);
-    target.write(float4(render(h, float2(gid) + 0.5), 1.0), gid);
 }
 
 // MARK: Mesh
@@ -717,7 +462,6 @@ float3 cornerOffset(uint i) {
 
 Row meshRow(float4 placement) {
     Row row;
-    row.offset = 0;
     row.floorY = placement.y;
     row.distance = placement.z;
     row.radius = placement.w;
@@ -931,7 +675,7 @@ constant int meshGroup [[ function_constant(0) ]];
             color = shadeArm(h, p, n, d, part, frame);
         }
     }
-    return float4(finish(h, color, 1.0, float4(0)), 1.0);
+    return float4(finish(color), 1.0);
 }
 
 [[ vertex ]] float4 hallMeshOccluder(uint vid [[ vertex_id ]],
