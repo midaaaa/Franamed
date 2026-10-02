@@ -59,13 +59,13 @@ struct LiveHallView: View {
 
 struct HallShaderArgs {
     var camera: SIMD4<Float>
-    var eyeRows: SIMD4<Float>
-    var rowShape: SIMD4<Float>
+    var eye: SIMD4<Float>
+    var rows: SIMD4<Float>
     var seat: SIMD4<Float>
     var arm: SIMD4<Float>
     var screen: SIMD4<Float>
     var mean: SIMD4<Float>
-    var options: SIMD4<Float>
+    var frame: SIMD4<Float>
 
     init(scene: HallScene, sample: HallFrameSample, size: CGSize, frameTop: CGFloat, frameBottom: CGFloat,
          sway: SIMD2<Float>, scale: CGFloat) {
@@ -77,12 +77,12 @@ struct HallShaderArgs {
         let s = Float(scale)
 
         self.camera = SIMD4(focal * s, principalY * s, centerX * s, 0)
-        eyeRows = SIMD4(eye.x, eye.y, eye.z, Float(scene.rowsInFront))
-        rowShape = SIMD4(scene.rowPitch, scene.rowRise, HallScene.rowArc, scene.recline)
+        self.eye = SIMD4(eye, 0)
+        rows = SIMD4(Float(scene.rowsInFront), scene.rowRise, scene.recline, 0)
         seat = SIMD4(scene.seatPitch, scene.backWidth, scene.seatTop, 0)
-        arm = SIMD4(scene.armrestHeight, scene.armrestWidth, scene.armrestLength, scene.armrestSetback)
+        arm = SIMD4(scene.armrestHeight, scene.armrestLength, scene.armrestSetback, 0)
         screen = SIMD4(HallScene.screenWidth, HallScene.screenHeight, HallScene.screenBottom, 0)
         mean = SIMD4(sample.mean, 0)
-        options = SIMD4(0, Float(frameTop) * s, Float(frameBottom) * s, 0)
+        frame = SIMD4(Float(frameTop) * s, Float(frameBottom) * s, 0, 0)
     }
 }

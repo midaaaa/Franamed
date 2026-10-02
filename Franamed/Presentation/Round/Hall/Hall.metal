@@ -13,17 +13,16 @@ namespace hall {
 constant int gridColumns = 24;
 constant int gridRows = 14;
 constant float3 luma = float3(0.2126, 0.7152, 0.0722);
-constant float underSeat = 0.0;
 
 struct HallArgs {
     float4 camera;
-    float4 eyeRows;
-    float4 rowShape;
+    float4 eye;
+    float4 rows;
     float4 seat;
     float4 arm;
     float4 screen;
     float4 mean;
-    float4 options;
+    float4 frame;
 };
 
 struct Hall {
@@ -38,7 +37,6 @@ struct Hall {
     float backWidth;
     float seatTop;
     float armHeight;
-    float armWidth;
     float armLength;
     float armSetback;
     float screenWidth;
@@ -53,17 +51,16 @@ Hall makeHall(HallArgs args, device const float *grid) {
     h.focal = args.camera.x;
     h.principalY = args.camera.y;
     h.centerX = args.camera.z;
-    h.eye = args.eyeRows.xyz;
-    h.rows = int(args.eyeRows.w);
-    h.rise = args.rowShape.y;
-    h.recline = args.rowShape.w;
+    h.eye = args.eye.xyz;
+    h.rows = int(args.rows.x);
+    h.rise = args.rows.y;
+    h.recline = args.rows.z;
     h.seatPitch = args.seat.x;
     h.backWidth = args.seat.y;
     h.seatTop = args.seat.z;
     h.armHeight = args.arm.x;
-    h.armWidth = args.arm.y;
-    h.armLength = args.arm.z;
-    h.armSetback = args.arm.w;
+    h.armLength = args.arm.y;
+    h.armSetback = args.arm.z;
     h.screenWidth = args.screen.x;
     h.screenHeight = args.screen.y;
     h.screenBottom = args.screen.z;
@@ -179,16 +176,14 @@ float seat(thread const Hall &h, float lx, float ly, float zl, thread float &cre
 }
 
 constant float cupInset = 0.11;
-constant float secondCupInset = 0.24;
 constant float cupRadius = 0.045;
 constant float cupDepth = 0.09;
 constant float capHalfWidth = 0.095;
 constant float capHalfHeight = 0.035;
 constant float bodyHalfWidth = 0.075;
 constant float plinthHeight = 0.07;
-constant float holderInward = 0.0;
 
-enum OwnKind { ownNone, ownCap, ownBody, ownRing, ownPlastic };
+enum ArmPart { partCap, partBody, partRing, partPlastic };
 
 float cappedCylinder(float3 q, float radius, float bottom, float top) {
     float2 d = float2(length(q.xz) - radius, abs(q.y - (bottom + top) * 0.5) - (top - bottom) * 0.5);
@@ -209,78 +204,66 @@ struct ArmFrame {
     float3 a;
     float halfLength;
     float inner;
-    float holderInward;
-    float holders;
     bool plinth;
     bool ring;
 };
 
-float3 armHolder(thread const ArmFrame &f, float inset) {
-    return float3(f.inner - f.holderInward, f.a.y, f.a.z - (inset - f.halfLength));
+float3 armHolder(thread const ArmFrame &f) {
+    return float3(f.inner, f.a.y, f.a.z - (cupInset - f.halfLength));
 }
 
-float armHoles(thread const Hall &h, thread const ArmFrame &f) {
-    float holes = cappedCylinder(armHolder(f, cupInset), cupRadius, h.armHeight - cupDepth, h.armHeight + 0.1);
-    if (f.holders > 1.5) {
-        holes = min(holes, cappedCylinder(armHolder(f, secondCupInset), cupRadius,
-                                          h.armHeight - cupDepth, h.armHeight + 0.1));
-    }
-    return holes;
+float armHole(thread const Hall &h, thread const ArmFrame &f) {
+    return cappedCylinder(armHolder(f), cupRadius, h.armHeight - cupDepth, h.armHeight + 0.1);
 }
 
 float armRing(thread const Hall &h, thread const ArmFrame &f) {
-    float ring = torusY(armHolder(f, cupInset) - float3(0, h.armHeight, 0), cupRadius + 0.003, 0.0045);
-    if (f.holders > 1.5) {
-        ring = min(ring, torusY(armHolder(f, secondCupInset) - float3(0, h.armHeight, 0), cupRadius + 0.003, 0.0045));
-    }
-    return ring;
+    return torusY(armHolder(f) - float3(0, h.armHeight, 0), cupRadius + 0.003, 0.0045);
 }
 
 float armShape(thread const Hall &h, thread const ArmFrame &f, thread int &part) {
-    part = ownCap;
+    part = partCap;
     float outline = roundBox3(f.a - float3(0, h.armHeight * 0.5, 0),
                               float3(capHalfWidth, h.armHeight * 0.5, f.halfLength), 0.04);
     if (outline > 0.03) return outline;
-    float holes = armHoles(h, f);
+    float hole = armHole(h, f);
 
     float best = 10.0;
     float cap = roundBox3(f.a - float3(0, h.armHeight - capHalfHeight, 0),
                           float3(capHalfWidth, capHalfHeight, f.halfLength), 0.03);
-    keep(max(cap, -holes), ownCap, best, part);
+    keep(max(cap, -hole), partCap, best, part);
 
     float bodyTop = h.armHeight - capHalfHeight * 2.0 + 0.01;
     float body = roundBox3(f.a - float3(0, (plinthHeight + bodyTop) * 0.5, 0.01),
                            float3(bodyHalfWidth, (bodyTop - plinthHeight) * 0.5, f.halfLength - 0.01), 0.025);
-    keep(max(body, -holes), ownBody, best, part);
+    keep(max(body, -hole), partBody, best, part);
 
     if (f.plinth) {
         float plinth = roundBox3(f.a - float3(0, plinthHeight * 0.5, 0.03),
                                  float3(bodyHalfWidth - 0.008, plinthHeight * 0.5, f.halfLength - 0.03), 0.01);
-        keep(plinth, ownPlastic, best, part);
+        keep(plinth, partPlastic, best, part);
     }
 
-    if (f.ring) keep(armRing(h, f), ownRing, best, part);
+    if (f.ring) keep(armRing(h, f), partRing, best, part);
     return best;
 }
 
 float3 shadeArm(thread const Hall &h, float3 p, float3 n, float3 d, int part, thread const ArmFrame &f) {
     float lower = pow(saturate(f.a.y / h.armHeight), 1.5);
     float fade = smoothstep(0.1, 0.45, f.a.y);
-    float3 dark = h.mean * underSeat;
 
     switch (part) {
-    case ownRing:
+    case partRing:
         return light(h, p, n, d, 0.3, 2.0, 1.0);
-    case ownPlastic:
-        return mix(dark, light(h, p, n, d, 0.06, 0.6, lower), fade);
-    case ownBody: {
+    case partPlastic:
+        return light(h, p, n, d, 0.06, 0.6, lower) * fade;
+    case partBody: {
         float albedo = 0.2;
         if (n.z < -0.6) {
             float u = fract(f.inner / 0.03);
             float groove = exp(-pow(min(u, 1.0 - u) * 0.03 / 0.003, 2.0));
             albedo *= 1.0 - 0.6 * groove;
         }
-        return mix(dark, light(h, p, n, d, albedo, 0.3, lower), fade);
+        return light(h, p, n, d, albedo, 0.3, lower) * fade;
     }
     default: {
         float albedo = 0.35 * (0.3 + 0.7 * saturate(n.y));
@@ -292,10 +275,8 @@ float3 shadeArm(thread const Hall &h, float3 p, float3 n, float3 d, int part, th
             albedo *= 1.0 - 0.5 * stitch;
             gloss *= 1.0 - 0.6 * stitch;
         }
-        float cup = length(armHolder(f, cupInset).xz) - cupRadius;
-        if (f.holders > 1.5) cup = min(cup, length(armHolder(f, secondCupInset).xz) - cupRadius);
-        if (cup < 0) { albedo *= 0.15; gloss = 0; }
-        return mix(dark, light(h, p, n, d, albedo, gloss, lower), fade);
+        if (length(armHolder(f).xz) < cupRadius) { albedo *= 0.15; gloss = 0; }
+        return light(h, p, n, d, albedo, gloss, lower) * fade;
     }
     }
 }
@@ -305,8 +286,6 @@ ArmFrame rowArm(thread const Hall &h, float ax, float ly, float zf) {
     f.a = float3(ax, ly, zf + h.armSetback + h.armLength * 0.5);
     f.halfLength = h.armLength * 0.5;
     f.inner = ax;
-    f.holderInward = 0;
-    f.holders = 1;
     f.plinth = false;
     f.ring = true;
     return f;
@@ -336,7 +315,7 @@ float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n
     gloss *= 1.0 - 0.8 * crease;
 
     float lower = pow(saturate((ly - 0.3) / (h.seatTop - 0.3)), 1.6);
-    return mix(h.mean * underSeat, light(h, p, n, d, albedo, gloss, lower), smoothstep(0.25, 0.7, ly));
+    return light(h, p, n, d, albedo, gloss, lower) * smoothstep(0.25, 0.7, ly);
 }
 
 // MARK: Own seat
@@ -347,9 +326,7 @@ constant float ownArmLength = 0.9;
 struct OwnPoint {
     float3 q;
     float3 a;
-    float side;
     float inner;
-    float tip;
 };
 
 float3 ownLocal(thread const Hall &h, float3 p) {
@@ -359,10 +336,9 @@ float3 ownLocal(thread const Hall &h, float3 p) {
 OwnPoint ownPoint(thread const Hall &h, float3 p) {
     OwnPoint o;
     o.q = ownLocal(h, p);
-    o.side = o.q.x < 0 ? -1.0 : 1.0;
-    o.a = float3(o.q.x - o.side * h.seatPitch * 0.5, o.q.y, o.q.z + ownArmReach - ownArmLength * 0.5);
-    o.inner = -o.side * o.a.x;
-    o.tip = -ownArmLength * 0.5;
+    float side = o.q.x < 0 ? -1.0 : 1.0;
+    o.a = float3(o.q.x - side * h.seatPitch * 0.5, o.q.y, o.q.z + ownArmReach - ownArmLength * 0.5);
+    o.inner = -side * o.a.x;
     return o;
 }
 
@@ -371,30 +347,16 @@ ArmFrame ownArm(thread const Hall &h, thread const OwnPoint &o) {
     f.a = o.a;
     f.halfLength = ownArmLength * 0.5;
     f.inner = o.inner;
-    f.holderInward = holderInward;
-    f.holders = 1;
     f.plinth = true;
     f.ring = true;
     return f;
-}
-
-float ownField(thread const Hall &h, float3 p, thread int &kind) {
-    return armShape(h, ownArm(h, ownPoint(h, p)), kind);
-}
-
-float3 ownShadeWith(thread const Hall &h, float3 p, float3 d, float3 n, int kind) {
-    return shadeArm(h, p, n, d, kind, ownArm(h, ownPoint(h, p)));
 }
 
 float3 finish(float3 color) {
     return pow(max(perceive(color), 0.0), 1.0 / 2.2);
 }
 
-}
-
 // MARK: Mesh
-
-namespace hall {
 
 enum MeshShape { meshSeat, meshRowArm, meshRowRing, meshOwnArm, meshOwnRing };
 
@@ -658,22 +620,16 @@ constant int meshGroup [[ function_constant(0) ]];
     float3 n = normalize(in.normal);
     float facing = dot(n, -d);
     if (facing < meshMinFacing) n = normalize(n - (meshMinFacing - facing) * d);
-    if (meshGroup == 2) {
-        int kind;
-        ownField(h, p, kind);
-        color = ownShadeWith(h, p, d, n, kind);
-    } else {
+    if (meshGroup == 0) {
         Row row = meshRow(draw.row);
-        if (meshGroup == 0) {
-            float crease;
-            seatAt(h, row, in.center, p, crease);
-            color = shadeSeat(h, row, p, n, d, t, crease);
-        } else {
-            int part;
-            ArmFrame frame = rowArmAt(h, row, in.center, p);
-            armShape(h, frame, part);
-            color = shadeArm(h, p, n, d, part, frame);
-        }
+        float crease;
+        seatAt(h, row, in.center, p, crease);
+        color = shadeSeat(h, row, p, n, d, t, crease);
+    } else {
+        ArmFrame frame = meshGroup == 2 ? ownArm(h, ownPoint(h, p)) : rowArmAt(h, meshRow(draw.row), in.center, p);
+        int part;
+        armShape(h, frame, part);
+        color = shadeArm(h, p, n, d, part, frame);
     }
     return float4(finish(color), 1.0);
 }
@@ -681,7 +637,7 @@ constant int meshGroup [[ function_constant(0) ]];
 [[ vertex ]] float4 hallMeshOccluder(uint vid [[ vertex_id ]],
                                      constant hall::HallArgs &args [[ buffer(1) ]],
                                      constant float4 &viewport [[ buffer(3) ]]) {
-    float y = (vid & 2) ? args.options.z : args.options.y;
+    float y = (vid & 2) ? args.frame.y : args.frame.x;
     return float4((vid & 1) ? 1.0 : -1.0, 1.0 - 2.0 * y / viewport.y, 0.0, 1.0);
 }
 

@@ -24,7 +24,6 @@ struct HallScene: Hashable, Sendable {
     let backWidth: Float = 0.72
     let seatTop: Float = 1.02
     let armrestHeight: Float = 0.62
-    let armrestWidth: Float = 0.17
     let armrestLength: Float = 0.6
     let armrestSetback: Float = 0.06
 

@@ -17,7 +17,7 @@ enum HallMeshShape: Float {
         switch self {
         case .seat: 0
         case .rowArm, .rowRing: 1
-        default: 2
+        case .ownArm, .ownRing: 2
         }
     }
 }
@@ -193,8 +193,9 @@ final class HallMeshStore {
     private var building: HallScene?
     private var waiters: [() -> Void] = []
 
-    func meshes(for scene: HallScene, device: MTLDevice, ready: @escaping () -> Void) -> HallMeshSet? {
+    func meshes(for scene: HallScene, ready: @escaping () -> Void) -> HallMeshSet? {
         if self.scene == scene, let meshes { return meshes }
+        guard let device = HallRenderer.shared?.device else { return nil }
         waiters.append(ready)
         guard building != scene else { return nil }
         building = scene
@@ -207,9 +208,10 @@ final class HallMeshStore {
         return nil
     }
 
-    func meshes(for scene: HallScene, device: MTLDevice) async -> HallMeshSet? {
-        await withCheckedContinuation { continuation in
-            let ready = meshes(for: scene, device: device) { [weak self] in
+    func meshes(for scene: HallScene) async -> HallMeshSet? {
+        guard HallRenderer.shared != nil else { return nil }
+        return await withCheckedContinuation { continuation in
+            let ready = meshes(for: scene) { [weak self] in
                 continuation.resume(returning: self?.scene == scene ? self?.meshes : nil)
             }
             if let ready { continuation.resume(returning: ready) }
