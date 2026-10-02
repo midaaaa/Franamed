@@ -207,6 +207,15 @@ final class HallMeshStore {
         return nil
     }
 
+    func meshes(for scene: HallScene, device: MTLDevice) async -> HallMeshSet? {
+        await withCheckedContinuation { continuation in
+            let ready = meshes(for: scene, device: device) { [weak self] in
+                continuation.resume(returning: self?.scene == scene ? self?.meshes : nil)
+            }
+            if let ready { continuation.resume(returning: ready) }
+        }
+    }
+
     private func finish(scene: HallScene, set: HallMeshSet?, seconds: Double) {
         guard building == scene else { return }
         building = nil

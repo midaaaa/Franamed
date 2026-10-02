@@ -50,22 +50,25 @@ struct RoundBackground: View {
                 Color.black
             }
         }
-        .task(id: key) { renderBackdrop(key) }
+        .task(id: key) { await renderBackdrop(key) }
     }
 
-    private func renderBackdrop(_ key: BackdropKey) {
-        guard backdrop?.key != key else { return }
-        let renderer = ImageRenderer(content: backdropContent(size: key.size, origin: key.origin))
+    private func renderBackdrop(_ key: BackdropKey) async {
+        guard backdrop?.key != key,
+              let hall = await HallSnapshot.image(sample: key.light ?? CaptureWarningBanner.hallLight,
+                                                  scene: HallScene(), size: key.size, frameTop: -key.origin,
+                                                  frameBottom: frameHeight - key.origin, scale: displayScale)
+        else { return }
+        let renderer = ImageRenderer(content: backdropContent(hall: hall, size: key.size, origin: key.origin))
         renderer.scale = displayScale
         if let image = renderer.uiImage { backdrop = (key, image) }
     }
 
-    private func backdropContent(size: CGSize, origin: CGFloat) -> some View {
+    private func backdropContent(hall: UIImage, size: CGSize, origin: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            HallView(sample: showsCaptureBanner ? CaptureWarningBanner.hallLight : light,
-                     scene: HallScene(), size: size,
-                     frameTop: -origin, frameBottom: frameHeight - origin)
-                .equatable()
+            Image(uiImage: hall)
+                .resizable()
+                .frame(width: size.width, height: size.height)
             if showsCaptureBanner {
                 CaptureWarningBanner()
                     .frame(width: size.width, height: frameHeight)

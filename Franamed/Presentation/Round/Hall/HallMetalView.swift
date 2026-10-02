@@ -182,6 +182,31 @@ final class HallRenderer: @unchecked Sendable {
         }
     }
 
+    func snapshot(_ frame: Frame, width: Int, height: Int) -> CGImage? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width,
+                                                                  height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderWrite]
+        descriptor.storageMode = .shared
+        guard width > 0, height > 0, let target = device.makeTexture(descriptor: descriptor),
+              let commandBuffer = commandQueue?.makeCommandBuffer() else { return nil }
+        encode(frame, target: target, commandBuffer: commandBuffer)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        let bytesPerRow = width * 4
+        var pixels = Data(count: bytesPerRow * height)
+        pixels.withUnsafeMutableBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            target.getBytes(base, bytesPerRow: bytesPerRow, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        }
+        guard let provider = CGDataProvider(data: pixels as CFData),
+              let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow,
+                       space: space, bitmapInfo: info, provider: provider, decode: nil, shouldInterpolate: true,
+                       intent: .defaultIntent)
+    }
+
     private func draw(_ frame: Frame, layer: CAMetalLayer) {
         guard let drawable = layer.nextDrawable(), let commandBuffer = commandQueue?.makeCommandBuffer() else { return }
         encode(frame, target: drawable.texture, commandBuffer: commandBuffer)
@@ -314,5 +339,23 @@ enum HallMeshPass {
     static func visibleHalfWidth(viewSlope: Float, depth: Float, radius: Float) -> Float {
         let flat = viewSlope * depth
         return viewSlope * (depth + flat * flat / (2 * radius))
+    }
+}
+
+@MainActor
+enum HallSnapshot {
+    private static let renderer = MTLCreateSystemDefaultDevice().map { HallRenderer(device: $0) }
+
+    static func image(sample: HallFrameSample, scene: HallScene, size: CGSize, frameTop: CGFloat,
+                      frameBottom: CGFloat, scale: CGFloat) async -> UIImage? {
+        guard let renderer,
+              let meshes = await HallMeshStore.shared.meshes(for: scene, device: renderer.device) else { return nil }
+        let frame = HallRenderer.Frame(
+            sample: sample, scene: scene,
+            args: HallShaderArgs(scene: scene, sample: sample, size: size, frameTop: frameTop,
+                                 frameBottom: frameBottom, sway: .zero, scale: scale),
+            meshes: meshes)
+        let width = Int((size.width * scale).rounded()), height = Int((size.height * scale).rounded())
+        return renderer.snapshot(frame, width: width, height: height).map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
     }
 }
