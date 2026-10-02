@@ -5,26 +5,23 @@
 //  Created by Дмитрий Филимонов on 24.09.2026.
 //
 
-import Combine
 import CoreMotion
 import simd
 
 @MainActor
-final class HallMotion: ObservableObject {
-    @Published private(set) var sway: SIMD2<Float> = .zero
-    @Published private(set) var isMoving = false
+final class HallMotion {
+    var threshold: Float = 0.0004
+    var onSway: ((SIMD2<Float>) -> Void)?
+    private(set) var sway: SIMD2<Float> = .zero
 
     private let manager = CMMotionManager()
     private var rest: SIMD2<Double>?
     private var smoothed: SIMD2<Double> = .zero
-    private var stillSamples = 0
 
     private static let range = 0.3
     private static let restDrift = 0.006
     private static let smoothing = 0.2
     private static let reach = SIMD2<Float>(0.05, 0.03)
-    private static let threshold: Float = 0.0004
-    private static let settleSamples = 18
 
     func start() {
         guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
@@ -40,8 +37,12 @@ final class HallMotion: ObservableObject {
         manager.stopDeviceMotionUpdates()
         rest = nil
         smoothed = .zero
-        sway = .zero
-        isMoving = false
+        deliver(.zero)
+    }
+
+    private func deliver(_ next: SIMD2<Float>) {
+        sway = next
+        onSway?(next)
     }
 
     private func consume(_ pose: SIMD2<Double>) {
@@ -51,13 +52,6 @@ final class HallMotion: ObservableObject {
         smoothed += (target - smoothed) * Self.smoothing
 
         let next = SIMD2<Float>(Float(smoothed.x), Float(-smoothed.y)) * Self.reach
-        if simd_length(next - sway) > Self.threshold {
-            sway = next
-            stillSamples = 0
-            if !isMoving { isMoving = true }
-        } else {
-            stillSamples += 1
-            if stillSamples == Self.settleSamples, isMoving { isMoving = false }
-        }
+        if simd_length(next - sway) > threshold { deliver(next) }
     }
 }
