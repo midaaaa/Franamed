@@ -8,13 +8,18 @@
 import CoreMotion
 import simd
 
-@MainActor
-final class HallMotion {
-    var threshold: Float = 0.0004
-    var onSway: ((SIMD2<Float>) -> Void)?
-    private(set) var sway: SIMD2<Float> = .zero
-
+final class HallMotion: @unchecked Sendable {
     private let manager = CMMotionManager()
+    private let queue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .userInteractive
+        return queue
+    }()
+    private let lock = NSLock()
+    private var _threshold: Float = 0.0004
+    private var _sway: SIMD2<Float> = .zero
+    private var _onSway: ((SIMD2<Float>) -> Void)?
     private var rest: simd_quatd?
     private var smoothed: SIMD2<Double> = .zero
 
@@ -23,25 +28,42 @@ final class HallMotion {
     private static let smoothing = 0.2
     private static let reach = SIMD2<Float>(0.05, 0.03)
 
+    var threshold: Float {
+        get { lock.withLock { _threshold } }
+        set { lock.withLock { _threshold = newValue } }
+    }
+
+    var sway: SIMD2<Float> { lock.withLock { _sway } }
+
+    var onSway: ((SIMD2<Float>) -> Void)? {
+        get { lock.withLock { _onSway } }
+        set { lock.withLock { _onSway = newValue } }
+    }
+
     func start() {
         guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
         manager.deviceMotionUpdateInterval = 1.0 / 60
-        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+        manager.startDeviceMotionUpdates(to: queue) { [weak self] motion, _ in
             guard let q = motion?.attitude.quaternion else { return }
-            let attitude = simd_quatd(ix: q.x, iy: q.y, iz: q.z, r: q.w)
-            MainActor.assumeIsolated { self?.consume(attitude) }
+            self?.consume(simd_quatd(ix: q.x, iy: q.y, iz: q.z, r: q.w))
         }
     }
 
     func stop() {
         manager.stopDeviceMotionUpdates()
-        rest = nil
-        smoothed = .zero
-        deliver(.zero)
+        queue.addOperation { [weak self] in
+            guard let self else { return }
+            rest = nil
+            smoothed = .zero
+            deliver(.zero)
+        }
     }
 
     private func deliver(_ next: SIMD2<Float>) {
-        sway = next
+        let onSway = lock.withLock {
+            _sway = next
+            return _onSway
+        }
         onSway?(next)
     }
 

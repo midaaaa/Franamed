@@ -50,11 +50,20 @@ final class HallLayerView: UIView {
         didSet {
             guard motion !== oldValue else { return }
             oldValue?.onSway = nil
-            motion?.onSway = { [weak self] _ in self?.render() }
+            motion?.onSway = { [weak self] sway in self?.draw(sway: sway) }
         }
     }
 
+    private struct Prepared: @unchecked Sendable {
+        let key: Key
+        let meshes: HallMeshSet
+        let pixelScale: CGFloat
+        let layer: HallRenderer.LayerBox
+    }
+
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
+    private let lock = NSLock()
+    private var prepared: Prepared?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -77,13 +86,24 @@ final class HallLayerView: UIView {
     }
 
     private func render() {
-        guard let key, let renderer = HallRenderer.shared, metalLayer.drawableSize.height > 0,
+        guard let key, HallRenderer.shared != nil, metalLayer.drawableSize.height > 0,
               let meshes = HallMeshStore.shared.meshes(for: key.scene, ready: { [weak self] in self?.render() })
         else { return }
-        let pixelScale = metalLayer.drawableSize.height / max(bounds.height, 1)
+        let prepared = Prepared(key: key, meshes: meshes,
+                                pixelScale: metalLayer.drawableSize.height / max(bounds.height, 1),
+                                layer: HallRenderer.LayerBox(layer: metalLayer))
+        lock.withLock { self.prepared = prepared }
+        draw(sway: motion?.sway ?? .zero)
+    }
+
+    private nonisolated func draw(sway: SIMD2<Float>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let renderer = HallRenderer.shared, let prepared else { return }
+        let key = prepared.key
         let args = HallShaderArgs(scene: key.scene, sample: key.sample, size: key.size, frameTop: key.frameTop,
-                                  frameBottom: key.frameBottom, sway: motion?.sway ?? .zero, scale: pixelScale)
-        renderer.submit(HallRenderer.Frame(sample: key.sample, scene: key.scene, args: args, meshes: meshes),
-                        to: HallRenderer.LayerBox(layer: metalLayer))
+                                  frameBottom: key.frameBottom, sway: sway, scale: prepared.pixelScale)
+        renderer.submit(HallRenderer.Frame(sample: key.sample, scene: key.scene, args: args, meshes: prepared.meshes),
+                        to: prepared.layer)
     }
 }
