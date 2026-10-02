@@ -15,7 +15,7 @@ final class HallMotion {
     private(set) var sway: SIMD2<Float> = .zero
 
     private let manager = CMMotionManager()
-    private var rest: SIMD2<Double>?
+    private var rest: simd_quatd?
     private var smoothed: SIMD2<Double> = .zero
 
     private static let range = 0.3
@@ -27,9 +27,9 @@ final class HallMotion {
         guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
         manager.deviceMotionUpdateInterval = 1.0 / 60
         manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
-            guard let attitude = motion?.attitude else { return }
-            let pose = SIMD2(attitude.roll, attitude.pitch)
-            MainActor.assumeIsolated { self?.consume(pose) }
+            guard let q = motion?.attitude.quaternion else { return }
+            let attitude = simd_quatd(ix: q.x, iy: q.y, iz: q.z, r: q.w)
+            MainActor.assumeIsolated { self?.consume(attitude) }
         }
     }
 
@@ -45,13 +45,19 @@ final class HallMotion {
         onSway?(next)
     }
 
-    private func consume(_ pose: SIMD2<Double>) {
-        let rest = self.rest.map { $0 + (pose - $0) * Self.restDrift } ?? pose
+    private func consume(_ attitude: simd_quatd) {
+        let rest = self.rest.map { simd_slerp($0, attitude, Self.restDrift) } ?? attitude
         self.rest = rest
-        let target = simd_clamp((pose - rest) / Self.range, SIMD2(repeating: -1), SIMD2(repeating: 1))
+        let turn = Self.rotationVector(rest.inverse * attitude)
+        let target = simd_clamp(SIMD2(turn.y, -turn.x) / Self.range, SIMD2(repeating: -1), SIMD2(repeating: 1))
         smoothed += (target - smoothed) * Self.smoothing
 
-        let next = SIMD2<Float>(Float(smoothed.x), Float(-smoothed.y)) * Self.reach
+        let next = SIMD2<Float>(smoothed) * Self.reach
         if simd_length(next - sway) > threshold { deliver(next) }
+    }
+
+    private static func rotationVector(_ q: simd_quatd) -> SIMD3<Double> {
+        let q = q.real < 0 ? -q.normalized : q.normalized
+        return 2 * q.imag
     }
 }
