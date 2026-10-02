@@ -14,6 +14,9 @@ struct RoundBackground: View {
     let showsCaptureBanner: Bool
     let coordinateSpace: String
 
+    @Environment(\.displayScale) private var displayScale
+    @State private var backdrop: (key: BackdropKey, image: UIImage)?
+
     var body: some View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .named(coordinateSpace)).minY
@@ -36,6 +39,28 @@ struct RoundBackground: View {
     }
 
     private func captureLayer(size: CGSize, origin: CGFloat) -> some View {
+        let key = BackdropKey(size: size, origin: origin, frameHeight: frameHeight,
+                              light: showsCaptureBanner ? nil : light)
+        return Group {
+            if let backdrop, backdrop.key == key {
+                Image(uiImage: backdrop.image)
+                    .resizable()
+                    .frame(width: size.width, height: size.height)
+            } else {
+                Color.black
+            }
+        }
+        .task(id: key) { renderBackdrop(key) }
+    }
+
+    private func renderBackdrop(_ key: BackdropKey) {
+        guard backdrop?.key != key else { return }
+        let renderer = ImageRenderer(content: backdropContent(size: key.size, origin: key.origin))
+        renderer.scale = displayScale
+        if let image = renderer.uiImage { backdrop = (key, image) }
+    }
+
+    private func backdropContent(size: CGSize, origin: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             HallView(sample: showsCaptureBanner ? CaptureWarningBanner.hallLight : light,
                      scene: HallScene(), size: size,
@@ -48,4 +73,11 @@ struct RoundBackground: View {
             }
         }
     }
+}
+
+private struct BackdropKey: Equatable {
+    let size: CGSize
+    let origin: CGFloat
+    let frameHeight: CGFloat
+    let light: HallFrameSample?
 }
