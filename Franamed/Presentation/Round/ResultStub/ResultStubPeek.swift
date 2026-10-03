@@ -26,6 +26,7 @@ struct ResultStubPeek: View {
     let isTucked: Bool
     let keyboardLift: CGFloat
     let restOffset: CGFloat
+    let formWidth: CGFloat
 
     @State private var playedAt = Date.now
     @State private var reveal: CGFloat = 0
@@ -96,7 +97,7 @@ struct ResultStubPeek: View {
                           perspective: Self.perspective)
         .allowsHitTesting(outcome != nil && hasLanded)
         .offset(y: offset)
-        .modifier(FormClip(isActive: placement == .clippedByForm))
+        .modifier(FormClip(isActive: placement == .clippedByForm, formWidth: formWidth))
         .animation(Self.tuckAnimation, value: isHidden)
         .sheet(item: $webSearch) { link in
             SafariSheet(url: link.url).ignoresSafeArea()
@@ -149,14 +150,21 @@ struct ResultStubPeek: View {
 
 private struct FormClip: ViewModifier {
     let isActive: Bool
+    let formWidth: CGFloat
 
     func body(content: Content) -> some View {
         if isActive {
             content.mask(alignment: .bottom) {
-                Rectangle()
-                    .frame(height: 4000)
-                    .padding(.bottom, suggestionRowHeight)
-                    .padding(.horizontal, -200)
+                ZStack(alignment: .bottom) {
+                    Rectangle()
+                        .frame(height: 4000)
+                        .padding(.horizontal, -200)
+                        .padding(.bottom, suggestionRowHeight / 2)
+                    RoundedRectangle(cornerRadius: suggestionRowHeight / 2, style: .continuous)
+                        .frame(width: formWidth, height: suggestionRowHeight)
+                        .blendMode(.destinationOut)
+                }
+                .compositingGroup()
             }
         } else {
             content

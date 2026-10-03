@@ -196,7 +196,8 @@ struct RoundView: View {
                            genreNames: viewModel.genreNames,
                            isTucked: isStubTucked,
                            keyboardLift: keyboardLift,
-                           restOffset: stubRestOffset)
+                           restOffset: stubRestOffset,
+                           formWidth: WindowMetrics.size.width - barInset * 2)
                 .id(media.item.id)
                 .transition(.asymmetric(insertion: .identity,
                                         removal: .offset(x: WindowMetrics.size.width)))
