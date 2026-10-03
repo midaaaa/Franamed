@@ -22,6 +22,7 @@ struct RoundView: View {
     @State private var keyboardLift: CGFloat = 0
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
     @State private var isStubLeaving = false
+    @State private var roundNumber = 0
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
     private static let backgroundSpace = "roundBackground"
@@ -139,6 +140,7 @@ struct RoundView: View {
         answerBarHeight = 44
         pendingAnimatedHeightCatchUp = false
         withAnimation(ResultStubPeek.exitAnimation) { isStubLeaving = true }
+        roundNumber += 1
         Task {
             await viewModel.loadRound()
             isStubLeaving = false
@@ -200,7 +202,7 @@ struct RoundView: View {
                            keyboardLift: keyboardLift,
                            restOffset: stubRestOffset,
                            formWidth: WindowMetrics.size.width - barInset * 2)
-                .id(media.item.id)
+                .id(StubIdentity(itemID: media.item.id, round: roundNumber))
                 .transition(.asymmetric(insertion: .identity,
                                         removal: .offset(x: WindowMetrics.size.width)))
         }
@@ -275,6 +277,11 @@ private struct RoundViewPreviewHost: View {
     var body: some View {
         RoundView(mediaFacade: PreviewMediaFacade(), modelContext: modelContext)
     }
+}
+
+private struct StubIdentity: Hashable {
+    let itemID: Int
+    let round: Int
 }
 
 #Preview {
