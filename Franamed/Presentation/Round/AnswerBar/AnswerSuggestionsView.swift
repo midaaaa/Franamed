@@ -109,7 +109,7 @@ struct AnswerSuggestionsView: View {
                 Color.clear
                     .onAppear {
                         guard revealedHeight != 0 else { return }
-                        withAnimation(.snappy) { revealedHeight = 0 }
+                        withAnimation(.smooth) { revealedHeight = 0 }
                     }
             } else {
                 scrollView

@@ -58,7 +58,7 @@ struct AnswerInputBar: View {
         .frame(maxWidth: .infinity)
         .onChange(of: hasOutcome) { _, newValue in
             guard newValue, revealedHeight != 0 else { return }
-            withAnimation(.snappy) { revealedHeight = 0 }
+            withAnimation(.smooth) { revealedHeight = 0 }
         }
     }
 }
