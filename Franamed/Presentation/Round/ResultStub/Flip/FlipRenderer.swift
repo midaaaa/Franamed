@@ -12,6 +12,8 @@ import simd
 struct FlipUniforms {
     var projection: simd_float4x4
     var lightDir: SIMD4<Float>
+    var hallTint: SIMD4<Float>
+    var hallShape: SIMD4<Float>
 
     var width: Float
     var height: Float
@@ -57,6 +59,20 @@ enum FlipMesh {
     }
 }
 
+struct FlipLighting: Equatable {
+    var tint: SIMD3<Float>
+    var amount: Float
+    var exposure: Float
+    var sheenScale: Float = 1
+
+    static let neutral = FlipLighting(tint: .one, amount: 0, exposure: 1)
+}
+
+extension EnvironmentValues {
+    @Entry var flipTilt: Double = 0
+    @Entry var flipLighting = FlipLighting.neutral
+}
+
 struct FlipRenderer: UIViewRepresentable {
     static let sampleCount = 4
 
@@ -65,6 +81,8 @@ struct FlipRenderer: UIViewRepresentable {
     let backTexture: MTLTexture?
     let stubSize: CGSize
     let edgeStyle: TicketEdgeStyle
+    let lighting: FlipLighting
+    let tilt: Double
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
 
@@ -82,7 +100,14 @@ struct FlipRenderer: UIViewRepresentable {
         view.enableSetNeedsDisplay = false
         view.isPaused = false
         view.delegate = context.coordinator
+        let hideOthers = engine.onCanvasHidden
+        engine.onCanvasHidden = { [weak view] isHidden in
+            hideOthers?(isHidden)
+            view?.isHidden = isHidden
+        }
         engine.onWake = { [weak view] in view?.isPaused = false }
+        engine.litSnapshot = { [weak coordinator = context.coordinator] in coordinator?.snapshot() }
+        context.coordinator.view = view
         if let device = view.device {
             context.coordinator.configure(device: device,
                                           colorFormat: view.colorPixelFormat,
@@ -100,7 +125,10 @@ struct FlipRenderer: UIViewRepresentable {
         coordinator.backTexture = backTexture
         coordinator.stubSize = stubSize
         coordinator.setOutline(size: stubSize, edgeStyle: edgeStyle)
-        if needsFrame || coordinator.outlineChanged { uiView.isPaused = false }
+        let lightChanged = coordinator.lighting != lighting || coordinator.tilt != tilt
+        coordinator.lighting = lighting
+        coordinator.tilt = tilt
+        if needsFrame || coordinator.outlineChanged || lightChanged { uiView.isPaused = false }
     }
 
     @MainActor
@@ -109,6 +137,9 @@ struct FlipRenderer: UIViewRepresentable {
         var frontTexture: MTLTexture?
         var backTexture: MTLTexture?
         var stubSize: CGSize = .zero
+        var lighting = FlipLighting.neutral
+        var tilt: Double = 0
+        weak var view: MTKView?
         private(set) var outlineChanged = false
 
         init(engine: FlipEngine) {
@@ -196,12 +227,68 @@ struct FlipRenderer: UIViewRepresentable {
             view.isPaused = parking
             if parking { engine.park() }
 
-            guard let pipeline, let frontTexture,
-                  let drawable = view.currentDrawable,
+            guard let drawable = view.currentDrawable,
                   let descriptor = view.currentRenderPassDescriptor,
                   let commandBuffer = commandQueue.makeCommandBuffer(),
-                  let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor)
+                  encode(into: commandBuffer, descriptor: descriptor, size: view.bounds.size)
             else { return }
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
+        }
+
+        func snapshot() -> UIImage? {
+            guard let view, let device, view.drawableSize.width > 0 else { return nil }
+            let width = Int(view.drawableSize.width)
+            let height = Int(view.drawableSize.height)
+            func texture(_ format: MTLPixelFormat, samples: Int, storage: MTLStorageMode) -> MTLTexture? {
+                let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: width,
+                                                                          height: height, mipmapped: false)
+                descriptor.textureType = samples > 1 ? .type2DMultisample : .type2D
+                descriptor.sampleCount = samples
+                descriptor.usage = .renderTarget
+                descriptor.storageMode = storage
+                return device.makeTexture(descriptor: descriptor)
+            }
+            guard let color = texture(view.colorPixelFormat, samples: FlipRenderer.sampleCount, storage: .private),
+                  let resolve = texture(view.colorPixelFormat, samples: 1, storage: .shared),
+                  let depth = texture(view.depthStencilPixelFormat, samples: FlipRenderer.sampleCount, storage: .private),
+                  let commandBuffer = commandQueue.makeCommandBuffer()
+            else { return nil }
+
+            let descriptor = MTLRenderPassDescriptor()
+            descriptor.colorAttachments[0].texture = color
+            descriptor.colorAttachments[0].resolveTexture = resolve
+            descriptor.colorAttachments[0].loadAction = .clear
+            descriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+            descriptor.colorAttachments[0].storeAction = .multisampleResolve
+            descriptor.depthAttachment.texture = depth
+            descriptor.depthAttachment.loadAction = .clear
+            descriptor.depthAttachment.clearDepth = 1
+            descriptor.depthAttachment.storeAction = .dontCare
+            guard encode(into: commandBuffer, descriptor: descriptor, size: view.bounds.size) else { return nil }
+            commandBuffer.commit()
+            commandBuffer.waitUntilCompleted()
+
+            var bytes = [UInt8](repeating: 0, count: width * height * 4)
+            resolve.getBytes(&bytes, bytesPerRow: width * 4,
+                             from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+            let info = CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.premultipliedFirst.rawValue
+            guard let context = CGContext(data: &bytes, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: info),
+                  let image = context.makeImage()
+            else { return nil }
+            let scale = view.drawableSize.width / max(view.bounds.width, 1)
+            let inset = FlipLook.canvasPadding * scale
+            let crop = CGRect(x: inset, y: inset, width: stubSize.width * scale, height: stubSize.height * scale)
+            return image.cropping(to: crop.integral).map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
+        }
+
+        private func encode(into commandBuffer: MTLCommandBuffer, descriptor: MTLRenderPassDescriptor,
+                            size: CGSize) -> Bool {
+            guard let pipeline, let frontTexture,
+                  let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor)
+            else { return false }
 
             encoder.setDepthStencilState(depthState)
             encoder.setFragmentTexture(frontTexture, index: 0)
@@ -209,7 +296,6 @@ struct FlipRenderer: UIViewRepresentable {
             encoder.setFragmentSamplerState(sampler, index: 0)
             encoder.setCullMode(.none)
 
-            let size = view.bounds.size
             encoder.setRenderPipelineState(pipeline)
             for (face, offset) in [(Float(1), Float(1)), (Float(2), Float(-1))] {
                 var uniforms = self.uniforms(viewSize: size, face: face, faceOffset: offset)
@@ -237,8 +323,7 @@ struct FlipRenderer: UIViewRepresentable {
                 }
             }
             encoder.endEncoding()
-            commandBuffer.present(drawable)
-            commandBuffer.commit()
+            return true
         }
 
         private func uniforms(viewSize: CGSize, face: Float, faceOffset: Float,
@@ -246,6 +331,8 @@ struct FlipRenderer: UIViewRepresentable {
             FlipUniforms(
                 projection: Self.ortho(width: Float(viewSize.width), height: Float(viewSize.height)),
                 lightDir: SIMD4(-0.42, -0.62, 0.86, 0),
+                hallTint: SIMD4(lighting.tint, lighting.amount),
+                hallShape: SIMD4(Float(tilt * .pi / 180), lighting.exposure, 0, lighting.sheenScale),
                 width: Float(stubSize.width),
                 height: Float(stubSize.height),
                 angle: Float(engine.angle),

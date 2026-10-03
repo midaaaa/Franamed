@@ -11,6 +11,8 @@ using namespace metal;
 struct FlipUniforms {
     float4x4 projection;
     float4   lightDir;
+    float4   hallTint;
+    float4   hallShape;
 
     float width;
     float height;
@@ -32,6 +34,10 @@ struct FlipUniforms {
     float edgeCount;
     float gloss;
 };
+
+constant float3 toScreen = float3(0.0, -0.866, -0.5);
+constant float screenReach = 0.9;
+constant float screenWrap = 2.0;
 
 struct FlipVertex {
     float4 position [[position]];
@@ -131,7 +137,10 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
         base = half3(tex.rgb / max(tex.a, 0.002h));
     }
 
-    float3 N = normalize(in.normal);
+    float tiltCos = cos(u.hallShape.x);
+    float tiltSin = sin(u.hallShape.x);
+    float3 n = normalize(in.normal);
+    float3 N = float3(n.x, n.y * tiltCos - n.z * tiltSin, n.y * tiltSin + n.z * tiltCos);
     float3 L = normalize(u.lightDir.xyz);
     float3 H = normalize(L + float3(0.0, 0.0, 1.0));
 
@@ -141,5 +150,12 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
     float specFlat = pow(clamp(H.z, 0.0, 1.0), u.gloss) * u.sheen;
     float spec = max(pow(clamp(dot(N, H), 0.0, 1.0), u.gloss) * u.sheen - specFlat, 0.0);
 
-    return half4(base * half(lambert) + half3(half(spec)), alpha);
+    float3 tint = u.hallTint.rgb;
+    float amount = u.hallTint.w;
+    float3 bounce = mix(float3(1.0), tint, amount) * u.hallShape.y;
+    float direct = clamp((dot(N, toScreen) + screenWrap) / (1.0 + screenWrap), 0.0, 1.0) * screenReach * amount;
+    float3 light = (bounce * lambert + tint * direct) / (1.0 + screenReach * amount);
+    float3 sheenColor = mix(float3(1.0), tint, amount);
+
+    return half4(base * half3(light) + half3(sheenColor * spec * u.hallShape.w), alpha);
 }

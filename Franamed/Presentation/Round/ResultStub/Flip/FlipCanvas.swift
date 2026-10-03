@@ -34,13 +34,18 @@ struct FlipCanvas: View {
     let size: CGSize
     let edgeStyle: TicketEdgeStyle
 
+    @Environment(\.flipTilt) private var tilt
+    @Environment(\.flipLighting) private var lighting
+
     var body: some View {
         FlipRenderer(
             engine: engine,
             frontTexture: faces.frontTexture,
             backTexture: faces.backTexture,
             stubSize: size,
-            edgeStyle: edgeStyle
+            edgeStyle: edgeStyle,
+            lighting: lighting,
+            tilt: tilt
         )
         .frame(width: size.width + FlipLook.canvasPadding * 2,
                height: size.height + FlipLook.canvasPadding * 2)

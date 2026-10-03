@@ -38,7 +38,7 @@ struct ResultStubFront: View {
             Spacer(minLength: 8)
             Text(content.session)
                 .font(TicketStyle.serial)
-                .foregroundStyle(.black.opacity(0.38))
+                .foregroundStyle(.black.opacity(0.5))
                 .lineLimit(1)
         }
         .layoutPriority(1)

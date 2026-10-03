@@ -20,6 +20,7 @@ struct ResultStubPeek: View {
     let attemptsMade: Int
     let revealedCount: Int
     let currentFrame: Int
+    let hallLight: SIMD3<Float>
     let frameCount: Int
     let filters: MediaFilters
     let genreNames: [String]
@@ -40,6 +41,7 @@ struct ResultStubPeek: View {
     private static let peekHeight: CGFloat = 33
     private static let tilt: Double = 32
     private static let perspective: CGFloat = 0.5
+    private static let flightSheen: Float = 0.4
     private static let screenEdgeGap: CGFloat = 48
     private static let entryDelay = Duration.milliseconds(30)
     private static let keyboardAnimation = Animation.spring(response: 0.3, dampingFraction: 1)
@@ -92,6 +94,8 @@ struct ResultStubPeek: View {
             ResultStubSetupBack(mediaType: mediaType, filters: filters,
                                 frameCount: frameCount, genreNames: genreNames)
         }
+        .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,
+                                       sheenScale: hasLanded ? 1 : Self.flightSheen))
         .modifier(ResultStubShake(animatableData: shake))
         .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), anchor: .top,
                           perspective: Self.perspective)

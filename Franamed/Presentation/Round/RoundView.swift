@@ -191,6 +191,7 @@ struct RoundView: View {
                            attemptsMade: viewModel.attemptsMade,
                            revealedCount: viewModel.revealedCount,
                            currentFrame: viewModel.currentFrameIndex,
+                           hallLight: (showsCaptureBanner ? CaptureWarningBanner.hallLight : frames.hallLight).mean,
                            frameCount: viewModel.frameCount,
                            filters: viewModel.filters,
                            genreNames: viewModel.genreNames,

@@ -33,6 +33,8 @@ final class FlipEngine: ObservableObject {
     static let edgeTapZone: CGFloat = 44
 
     var onWake: (() -> Void)?
+    var litSnapshot: (() -> UIImage?)?
+    var onCanvasHidden: ((Bool) -> Void)?
 
     var isApproachingRest: Bool {
         !isDragging && abs(angle - target) < 20 * .pi / 180

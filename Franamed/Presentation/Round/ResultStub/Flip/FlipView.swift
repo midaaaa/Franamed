@@ -17,7 +17,6 @@ struct FlipView<Front: View, Back: View>: View {
 
     @StateObject private var engine = FlipEngine()
     @StateObject private var faces = FlipFaces()
-    @State private var isMenuActive = false
 
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,15 +27,13 @@ struct FlipView<Front: View, Back: View>: View {
 
         ZStack {
             FlipCanvas(engine: engine, faces: faces, size: size, edgeStyle: edgeStyle)
-                .opacity(isMenuActive ? 0 : 1)
             FlipInteractionView(
                 engine: engine,
                 size: size,
                 frontImage: faces.frontImage,
                 backImage: faces.backImage,
                 edgeStyle: edgeStyle,
-                menuItems: menuItems,
-                onMenuActiveChange: { isMenuActive = $0 }
+                menuItems: menuItems
             )
         }
         .frame(width: size.width, height: size.height)
@@ -63,7 +60,6 @@ private struct FlipInteractionView: UIViewRepresentable {
     let backImage: UIImage?
     let edgeStyle: TicketEdgeStyle
     let menuItems: [FlipMenuItem]
-    let onMenuActiveChange: (Bool) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -95,7 +91,6 @@ private struct FlipInteractionView: UIViewRepresentable {
         coordinator.backImage = backImage
         coordinator.edgeStyle = edgeStyle
         coordinator.menuItems = menuItems
-        coordinator.onMenuActiveChange = onMenuActiveChange
     }
 
     @MainActor
@@ -106,12 +101,14 @@ private struct FlipInteractionView: UIViewRepresentable {
         var backImage: UIImage?
         var edgeStyle: TicketEdgeStyle = .scalloped
         var menuItems: [FlipMenuItem] = []
-        var onMenuActiveChange: (Bool) -> Void = { _ in }
 
         private static let highlightTimeout: TimeInterval = 1.0
+        private static let lightFade: TimeInterval = 0.3
 
         private var isMenuActive = false
         private var didDisplayMenu = false
+        private weak var litView: UIView?
+        private var previewView: UIView?
         private var generation = 0
 
         // MARK: Rotation
@@ -170,20 +167,35 @@ private struct FlipInteractionView: UIViewRepresentable {
                                     configuration: UIContextMenuConfiguration,
                                     highlightPreviewForItemWithIdentifier identifier: any NSCopying) -> UITargetedPreview? {
             if engine?.isAnimating == true { engine?.settleImmediately() }
+            let lit = engine?.litSnapshot?()
             beginMenu()
-            return preview(in: interaction.view)
+            previewView = makePreviewView(lit: lit)
+            return targetedPreview(in: interaction.view)
         }
 
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     configuration: UIContextMenuConfiguration,
                                     dismissalPreviewForItemWithIdentifier identifier: any NSCopying) -> UITargetedPreview? {
-            preview(in: interaction.view)
+            previewView = previewView ?? makePreviewView(lit: engine?.litSnapshot?())
+            let preview = targetedPreview(in: interaction.view)
+            if let litView {
+                UIView.animate(withDuration: Self.lightFade, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState]) {
+                    litView.alpha = 1
+                }
+            }
+            return preview
         }
 
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     willDisplayMenuFor configuration: UIContextMenuConfiguration,
                                     animator: (any UIContextMenuInteractionAnimating)?) {
             didDisplayMenu = true
+            guard let litView else { return }
+            if let animator {
+                animator.addAnimations { litView.alpha = 0 }
+            } else {
+                litView.alpha = 0
+            }
         }
 
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
@@ -201,8 +213,11 @@ private struct FlipInteractionView: UIViewRepresentable {
             generation += 1
             isMenuActive = true
             didDisplayMenu = false
-            onMenuActiveChange(true)
             let current = generation
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.generation == current, self.isMenuActive else { return }
+                self.engine?.onCanvasHidden?(true)
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.highlightTimeout) { [weak self] in
                 guard let self, self.generation == current, self.isMenuActive, !self.didDisplayMenu else { return }
                 self.endMenu()
@@ -210,21 +225,32 @@ private struct FlipInteractionView: UIViewRepresentable {
         }
 
         private func endMenu() {
+            previewView = nil
             isMenuActive = false
             didDisplayMenu = false
-            onMenuActiveChange(false)
+            engine?.onCanvasHidden?(false)
         }
 
         private var currentImage: UIImage? {
             (engine?.isFrontVisible ?? true) ? frontImage : backImage
         }
 
-        private func preview(in container: UIView?) -> UITargetedPreview? {
-            guard let container, let image = currentImage else { return nil }
-            let isFront = engine?.isFrontVisible ?? true
+        private func makePreviewView(lit: UIImage?) -> UIView? {
+            guard let image = currentImage else { return nil }
+            let previewView = UIView(frame: CGRect(origin: .zero, size: size))
+            previewView.addSubview(UIImageView(image: image))
+            litView = lit.map { lit in
+                let view = UIImageView(image: lit)
+                previewView.addSubview(view)
+                return view
+            }
+            for view in previewView.subviews { view.frame = previewView.bounds }
+            return previewView
+        }
 
-            let imageView = UIImageView(image: image)
-            imageView.frame = CGRect(origin: .zero, size: size)
+        private func targetedPreview(in container: UIView?) -> UITargetedPreview? {
+            guard let container, let previewView else { return nil }
+            let isFront = engine?.isFrontVisible ?? true
 
             let parameters = UIPreviewParameters()
             parameters.backgroundColor = .clear
@@ -234,7 +260,7 @@ private struct FlipInteractionView: UIViewRepresentable {
 
             let target = UIPreviewTarget(container: container,
                                          center: CGPoint(x: container.bounds.midX, y: container.bounds.midY))
-            return UITargetedPreview(view: imageView, parameters: parameters, target: target)
+            return UITargetedPreview(view: previewView, parameters: parameters, target: target)
         }
     }
 }
