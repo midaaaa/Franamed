@@ -38,13 +38,19 @@ struct ResultStubTiltLight: ViewModifier, Animatable {
     var animatableData: Double
     let maxTilt: Double
     let hallMean: SIMD3<Float>
+    let recordingMean: SIMD3<Float>?
     let sheenScale: Float
 
     func body(content: Content) -> some View {
-        var lighting = ResultStubLight.lighting(hallMean: hallMean, reveal: Float(1 - animatableData / maxTilt))
-        lighting.sheenScale = sheenScale
-        return content
+        content
             .environment(\.flipTilt, animatableData)
-            .environment(\.flipLighting, lighting)
+            .environment(\.flipLighting, lighting(hallMean))
+            .environment(\.flipRecordingLighting, recordingMean.map(lighting))
+    }
+
+    private func lighting(_ mean: SIMD3<Float>) -> FlipLighting {
+        var lighting = ResultStubLight.lighting(hallMean: mean, reveal: Float(1 - animatableData / maxTilt))
+        lighting.sheenScale = sheenScale
+        return lighting
     }
 }

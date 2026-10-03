@@ -19,6 +19,8 @@ struct FlipView<Front: View, Back: View>: View {
     @StateObject private var faces = FlipFaces()
 
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.flipLighting) private var lighting
+    @Environment(\.flipRecordingLighting) private var recordingLighting
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
@@ -26,7 +28,14 @@ struct FlipView<Front: View, Back: View>: View {
         let edgeStyle = TicketEdgeStyle(hasScallops: hasScallops)
 
         ZStack {
-            FlipCanvas(engine: engine, faces: faces, size: size, edgeStyle: edgeStyle)
+            Group {
+                if let recordingLighting {
+                    FlipCanvas(engine: engine, faces: faces, size: size, edgeStyle: edgeStyle,
+                               lighting: recordingLighting, isProtected: false, providesSnapshot: false)
+                }
+                FlipCanvas(engine: engine, faces: faces, size: size, edgeStyle: edgeStyle,
+                           lighting: lighting, isProtected: recordingLighting != nil)
+            }
             FlipInteractionView(
                 engine: engine,
                 size: size,

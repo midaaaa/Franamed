@@ -33,9 +33,11 @@ struct FlipCanvas: View {
     @ObservedObject var faces: FlipFaces
     let size: CGSize
     let edgeStyle: TicketEdgeStyle
+    let lighting: FlipLighting
+    let isProtected: Bool
+    var providesSnapshot = true
 
     @Environment(\.flipTilt) private var tilt
-    @Environment(\.flipLighting) private var lighting
 
     var body: some View {
         FlipRenderer(
@@ -45,7 +47,9 @@ struct FlipCanvas: View {
             stubSize: size,
             edgeStyle: edgeStyle,
             lighting: lighting,
-            tilt: tilt
+            tilt: tilt,
+            isProtected: isProtected,
+            providesSnapshot: providesSnapshot
         )
         .frame(width: size.width + FlipLook.canvasPadding * 2,
                height: size.height + FlipLook.canvasPadding * 2)

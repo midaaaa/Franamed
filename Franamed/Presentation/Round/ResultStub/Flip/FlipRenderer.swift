@@ -71,6 +71,7 @@ struct FlipLighting: Equatable {
 extension EnvironmentValues {
     @Entry var flipTilt: Double = 0
     @Entry var flipLighting = FlipLighting.neutral
+    @Entry var flipRecordingLighting: FlipLighting?
 }
 
 struct FlipRenderer: UIViewRepresentable {
@@ -83,10 +84,12 @@ struct FlipRenderer: UIViewRepresentable {
     let edgeStyle: TicketEdgeStyle
     let lighting: FlipLighting
     let tilt: Double
+    let isProtected: Bool
+    let providesSnapshot: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
 
-    func makeUIView(context: Context) -> MTKView {
+    func makeUIView(context: Context) -> ProtectedBox {
         let view = MTKView()
         view.device = MTLCreateSystemDefaultDevice()
         view.isOpaque = false
@@ -105,18 +108,25 @@ struct FlipRenderer: UIViewRepresentable {
             hideOthers?(isHidden)
             view?.isHidden = isHidden
         }
-        engine.onWake = { [weak view] in view?.isPaused = false }
-        engine.litSnapshot = { [weak coordinator = context.coordinator] in coordinator?.snapshot() }
+        let wakeOthers = engine.onWake
+        engine.onWake = { [weak view] in
+            wakeOthers?()
+            view?.isPaused = false
+        }
         context.coordinator.view = view
         if let device = view.device {
             context.coordinator.configure(device: device,
                                           colorFormat: view.colorPixelFormat,
                                           depthFormat: view.depthStencilPixelFormat)
         }
-        return view
+        return ProtectedBox(child: view)
     }
 
-    func updateUIView(_ uiView: MTKView, context: Context) {
+    func updateUIView(_ box: ProtectedBox, context: Context) {
+        box.isProtected = isProtected
+        if providesSnapshot {
+            engine.litSnapshot = { [weak coordinator = context.coordinator] in coordinator?.snapshot() }
+        }
         let coordinator = context.coordinator
         let needsFrame = coordinator.frontTexture !== frontTexture
             || coordinator.backTexture !== backTexture
@@ -128,7 +138,7 @@ struct FlipRenderer: UIViewRepresentable {
         let lightChanged = coordinator.lighting != lighting || coordinator.tilt != tilt
         coordinator.lighting = lighting
         coordinator.tilt = tilt
-        if needsFrame || coordinator.outlineChanged || lightChanged { uiView.isPaused = false }
+        if needsFrame || coordinator.outlineChanged || lightChanged { coordinator.view?.isPaused = false }
     }
 
     @MainActor

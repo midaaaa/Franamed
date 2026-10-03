@@ -21,6 +21,7 @@ struct ResultStubPeek: View {
     let revealedCount: Int
     let currentFrame: Int
     let hallLight: SIMD3<Float>
+    let recordingLight: SIMD3<Float>?
     let frameCount: Int
     let filters: MediaFilters
     let genreNames: [String]
@@ -95,6 +96,7 @@ struct ResultStubPeek: View {
                                 frameCount: frameCount, genreNames: genreNames)
         }
         .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,
+                                       recordingMean: recordingLight,
                                        sheenScale: hasLanded ? 1 : Self.flightSheen))
         .modifier(ResultStubShake(animatableData: shake))
         .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), anchor: .top,
