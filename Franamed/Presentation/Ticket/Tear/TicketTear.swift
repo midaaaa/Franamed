@@ -26,7 +26,6 @@ struct TicketTear<Content: View>: View {
     private let onComplete: (() -> Void)?
     private let resetToken: Int
     private let contentID: AnyHashable
-    private let probe: TearFrameRateProbe?
     private let isGrabEnabled: Bool
     private let isContentComplete: Bool
     private let rasterizesContent: Bool
@@ -61,7 +60,6 @@ struct TicketTear<Content: View>: View {
          onComplete: (() -> Void)? = nil,
          onReturnChange: ((Bool) -> Void)? = nil,
          onStubAwayChange: ((Bool) -> Void)? = nil,
-         probe: TearFrameRateProbe? = nil,
          @ViewBuilder content: () -> Content) {
         self.config = config
         self.stubShape = stubShape
@@ -75,7 +73,6 @@ struct TicketTear<Content: View>: View {
         self.returnToken = returnToken
         self.onReturnChange = onReturnChange
         self.onStubAwayChange = onStubAwayChange
-        self.probe = probe
     }
 
     private var engine: TicketTearEngine { box.engine }
@@ -98,7 +95,7 @@ struct TicketTear<Content: View>: View {
             .overlay {
                 TicketCurlRenderer(engine: engine, config: config, ticketSize: size,
                                    texture: texture, canvasPadding: config.canvasPadding,
-                                   stubShape: stubShape, probe: probe,
+                                   stubShape: stubShape,
                                    onDrawn: {
                                        if phase == .arming { phase = .tearing }
                                        if phase == .returning { phase = .healing }

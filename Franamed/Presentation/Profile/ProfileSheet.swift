@@ -13,7 +13,6 @@ struct ProfileSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
-    @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
@@ -39,7 +38,6 @@ struct ProfileSheet: View {
 
                 #if DEBUG
                 Section {
-                    Toggle("Отладочный оверлей", isOn: $showsDebugOverlay)
                     Toggle("Прятать кадр от съёмки", isOn: $isScreenProtected)
                     Toggle("Обрезать корешок формой", isOn: Binding(
                         get: { stubPlacement == .clippedByForm },

@@ -8,7 +8,6 @@
 import Foundation
 
 enum DebugSettings {
-    static let overlayKey = "debugShowsOverlay"
     static let screenProtectionKey = "debugScreenProtectionEnabled"
     static let resultStubPlacementKey = "debugResultStubPlacement"
 }

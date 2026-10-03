@@ -20,7 +20,6 @@ struct TicketFaceView: View, Equatable {
             && lhs.returnToken == rhs.returnToken
             && lhs.posterZoom == rhs.posterZoom
             && lhs.filtersZoom == rhs.filtersZoom
-            && lhs.probe === rhs.probe
     }
 
     let card: TicketCard
@@ -39,7 +38,6 @@ struct TicketFaceView: View, Equatable {
     let onStart: () -> Void
     var onReturnChange: ((Bool) -> Void)?
     var onStubAwayChange: ((Bool) -> Void)?
-    var probe: TearFrameRateProbe?
 
     @Environment(\.displayScale) private var displayScale
 
@@ -79,7 +77,7 @@ struct TicketFaceView: View, Equatable {
                    isContentComplete: !hidesStub,
                    rasterizesContent: isRasterized, returnToken: returnToken,
                    onComplete: onStart, onReturnChange: onReturnChange,
-                   onStubAwayChange: onStubAwayChange, probe: probe) {
+                   onStubAwayChange: onStubAwayChange) {
             ticket
         }
         .task(id: posterURL) { await loadPoster() }

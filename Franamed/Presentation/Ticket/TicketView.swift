@@ -38,8 +38,6 @@ struct TicketView: View {
     @GestureState private var isDraggingCard = false
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
-    @AppStorage(DebugSettings.overlayKey) private var showsDebugOverlay = true
-    @State private var tearFrameRate = TearFrameRateProbe()
 
     @Namespace private var posterZoom
     @Namespace private var filtersZoom
@@ -58,7 +56,6 @@ struct TicketView: View {
     var body: some View {
         NavigationStack(path: $coordinator.gamePath) {
             cardLayer
-                .overlay(alignment: .top) { frameRateReadout }
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -151,8 +148,7 @@ struct TicketView: View {
             onOpenFilters: { present { filtersSheetMediaType = mediaType } },
             onStart: { present { startRound(mediaType: mediaType) } },
             onReturnChange: { setReturning($0) },
-            onStubAwayChange: { setStubAway($0) },
-            probe: tearFrameRate
+            onStubAwayChange: { setStubAway($0) }
         )
         .equatable()
         .allowsHitTesting(isInteractive)
@@ -308,17 +304,6 @@ struct TicketView: View {
     private func present(_ action: @escaping () -> Void) {
         isRasterized = false
         Task { @MainActor in action() }
-    }
-
-    // MARK: Debug
-
-    @ViewBuilder
-    private var frameRateReadout: some View {
-        #if DEBUG
-        if showsDebugOverlay {
-            TicketDebugOverlay(probe: tearFrameRate)
-        }
-        #endif
     }
 }
 
