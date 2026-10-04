@@ -239,12 +239,8 @@ struct RoundView: View {
         isFrameProtected && frames.hasPresentedFrame
     }
 
-    private var isFrameReady: Bool {
-        frames.displayedURL != nil && frames.displayedURL == currentFrameURL
-    }
-
     private var isSubmitBlocked: Bool {
-        isInputBlocked || (viewModel.outcome == nil && !isFrameReady)
+        isInputBlocked || (viewModel.outcome == nil && !frames.hasPresentedFrame)
     }
 
     private func submitIfReady() {
