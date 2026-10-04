@@ -18,14 +18,14 @@ enum TicketSwipe {
     static func makeThrow(for value: DragGesture.Value) -> Throw? {
         let translation = value.translation
         let predicted = value.predictedEndTranslation
+        let flingVector = CGSize(width: predicted.width - translation.width,
+                                 height: predicted.height - translation.height)
         let dragged = hypot(translation.width, translation.height)
-        let fling = hypot(predicted.width - translation.width, predicted.height - translation.height)
+        let isFlung = hypot(flingVector.width, flingVector.height) >= TicketMotion.flingThreshold
 
-        guard dragged >= TicketMotion.commitDistance || fling >= TicketMotion.flingThreshold else {
-            return nil
-        }
+        guard dragged >= TicketMotion.commitDistance || isFlung else { return nil }
 
-        let vector = dragged > 1 ? translation : predicted
+        let vector = isFlung || dragged <= 1 ? flingVector : translation
         let magnitude = max(hypot(vector.width, vector.height), 1)
         let direction = CGSize(width: vector.width / magnitude, height: vector.height / magnitude)
         let changesMode = abs(vector.width) >= abs(vector.height)
@@ -53,6 +53,11 @@ enum TicketSwipe {
 
         guard shortest != .greatestFiniteMagnitude else { return TicketMotion.fallbackFlightDistance }
         return shortest + TicketMotion.flightMargin
+    }
+
+    static func flightTilt(from tilt: Double, direction: CGSize) -> Double {
+        let opposesFlight = abs(direction.width) > 0.01 && tilt * direction.width < 0
+        return (opposesFlight ? -tilt : tilt) * TicketMotion.flightTiltGain
     }
 
     static func tiltDegrees(for translation: CGSize) -> Double {

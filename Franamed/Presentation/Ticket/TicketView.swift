@@ -236,7 +236,7 @@ struct TicketView: View {
         withAnimation(TicketMotion.flyOut) {
             cardOffset = CGSize(width: thrown.direction.width * flight,
                                 height: thrown.direction.height * flight)
-            cardTilt *= TicketMotion.flightTiltGain
+            cardTilt = TicketSwipe.flightTilt(from: cardTilt, direction: thrown.direction)
         } completion: {
             settle(changesMode: thrown.changesMode, step: thrown.step)
         }
