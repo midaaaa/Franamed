@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct TicketView: View {
+    @StateObject private var viewModel: TicketViewModel
     @ObservedObject var coordinator: AppCoordinator
     @Environment(\.modelContext) private var modelContext
 
@@ -16,8 +17,6 @@ struct TicketView: View {
 
     private var pixelGrid: PixelGrid { PixelGrid(displayScale: displayScale) }
 
-    @State private var setupByMode: [MediaType: RoundSetup] = [:]
-    @State private var genreNamesByType: [MediaType: [Int: String]] = [:]
     @State private var filtersSheetMediaType: MediaType?
     @State private var isShowingProfile = false
     @State private var stubReturnToken = 0
@@ -25,8 +24,6 @@ struct TicketView: View {
     @State private var isStubAway = false
     @State private var isHealingStub = false
 
-    @State private var mediaType: MediaType = .movie
-    @State private var mode: TicketGameMode = .random
     @State private var cardOffset: CGSize = .zero
     @State private var containerFrame: CGRect = .zero
     @State private var cardSize: CGSize = .zero
@@ -42,15 +39,9 @@ struct TicketView: View {
     @Namespace private var posterZoom
     @Namespace private var filtersZoom
 
-    @MainActor private static let mediaFacade = AppFactory.makeMediaFacade()
-
-    private static let posterPaths: [MediaType: String] = [
-        .movie: "bcaBRNNuxC2N4DsffAilIueQOVc.jpg",
-        .tv: "7TOPrmrJ8qO5cKJa7r6WSnjim54.jpg",
-    ]
-
-    private var card: TicketCard {
-        TicketCard(mediaType: mediaType, posterPath: Self.posterPaths[mediaType], mode: mode)
+    init(coordinator: AppCoordinator, mediaFacade: MediaFacadeProtocol) {
+        self.coordinator = coordinator
+        _viewModel = StateObject(wrappedValue: TicketViewModel(mediaFacade: mediaFacade))
     }
 
     var body: some View {
@@ -73,11 +64,11 @@ struct TicketView: View {
                 .fullScreenCover(item: $coordinator.presentedRound) { mediaType in
                     NavigationStack {
                         RoundView(
-                            mediaFacade: Self.mediaFacade,
+                            mediaFacade: viewModel.mediaFacade,
                             modelContext: modelContext,
                             mediaType: mediaType,
-                            filters: setup(for: mediaType).filters,
-                            frameCount: setup(for: mediaType).frameCount
+                            filters: viewModel.setup(for: mediaType).filters,
+                            frameCount: viewModel.setup(for: mediaType).frameCount
                         )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
@@ -96,11 +87,11 @@ struct TicketView: View {
                 }
                 .sheet(item: $filtersSheetMediaType) { mediaType in
                     RoundFiltersView(
-                        mediaFacade: Self.mediaFacade,
+                        mediaFacade: viewModel.mediaFacade,
                         mediaType: mediaType,
-                        setup: setup(for: mediaType)
+                        setup: viewModel.setup(for: mediaType)
                     ) { newSetup in
-                        setupByMode[mediaType] = newSetup
+                        viewModel.saveSetup(newSetup, for: mediaType)
                     }
                     .navigationTransition(.zoom(sourceID: mediaType, in: filtersZoom))
                 }
@@ -126,16 +117,16 @@ struct TicketView: View {
                     }
                 }
         }
-        .task { await loadGenreNames() }
+        .task { await viewModel.loadGenreNames() }
     }
 
     private func cardView(width: CGFloat, posterHeight: CGFloat) -> some View {
         let isInteractive = !isTransitioning && !isCardLocked && !isStubAway
 
         return TicketFaceView(
-            card: card,
-            setup: setup(for: mediaType),
-            genreNames: genreNames(for: mediaType),
+            card: viewModel.card,
+            setup: viewModel.setup(for: viewModel.mediaType),
+            genreNames: viewModel.genreNames(for: viewModel.mediaType),
             width: width,
             posterHeight: posterHeight,
             isStubGrabEnabled: !isDraggingCard,
@@ -145,8 +136,8 @@ struct TicketView: View {
             returnToken: stubReturnToken,
             posterZoom: posterZoom,
             filtersZoom: filtersZoom,
-            onOpenFilters: { present { filtersSheetMediaType = mediaType } },
-            onStart: { present { startRound(mediaType: mediaType) } },
+            onOpenFilters: { present { filtersSheetMediaType = viewModel.mediaType } },
+            onStart: { present { startRound(mediaType: viewModel.mediaType) } },
             onReturnChange: { setReturning($0) },
             onStubAwayChange: { setStubAway($0) }
         )
@@ -200,27 +191,7 @@ struct TicketView: View {
         guard cardScale != 1 else { return }
         withAnimation(TicketMotion.returnRestore) { cardScale = 1 }
     }
-
-    private func setup(for mediaType: MediaType) -> RoundSetup {
-        setupByMode[mediaType] ?? RoundSetup()
-    }
-
-    private func genreNames(for mediaType: MediaType) -> [String] {
-        guard let ids = setup(for: mediaType).filters.genres, !ids.isEmpty,
-              let lookup = genreNamesByType[mediaType] else { return [] }
-        return ids.compactMap { lookup[$0] }
-    }
-
-    private func loadGenreNames() async {
-        for mediaType in MediaType.allCases where genreNamesByType[mediaType] == nil {
-            let genres = (try? await Self.mediaFacade.fetchGenres(mediaType: mediaType)) ?? []
-            genreNamesByType[mediaType] = Dictionary(
-                genres.map { ($0.id, $0.name) },
-                uniquingKeysWith: { first, _ in first }
-            )
-        }
-    }
-
+    
     // MARK: Swipe
 
     private func swipeGesture(posterHeight: CGFloat) -> some Gesture {
@@ -285,9 +256,9 @@ struct TicketView: View {
             cardTilt = -cardTilt
 
             if changesMode {
-                mode = mode.advanced(by: step)
+                viewModel.select(mode: viewModel.mode.advanced(by: step))
             } else {
-                mediaType = mediaType.advanced(by: step)
+                viewModel.select(mediaType: viewModel.mediaType.advanced(by: step))
             }
         }
 
@@ -308,6 +279,6 @@ struct TicketView: View {
 }
 
 #Preview {
-    TicketView(coordinator: AppCoordinator())
+    TicketView(coordinator: AppCoordinator(), mediaFacade: PreviewMediaFacade())
         .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

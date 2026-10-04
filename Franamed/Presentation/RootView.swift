@@ -9,12 +9,13 @@ import SwiftUI
 import SwiftData
 
 struct RootView: View {
-    @Environment(\.modelContext) private var modelContext
     @StateObject private var coordinator = AppCoordinator()
     @StateObject private var session: SessionStore
+    let mediaFacade: MediaFacadeProtocol
 
-    init(session: SessionStore = SessionStore()) {
+    init(session: SessionStore = SessionStore(), mediaFacade: MediaFacadeProtocol) {
         _session = StateObject(wrappedValue: session)
+        self.mediaFacade = mediaFacade
     }
 
     private static let isBackendEnabled = false
@@ -46,13 +47,12 @@ struct RootView: View {
     }
 
     private var game: some View {
-        TicketView(coordinator: coordinator)
-            .modelContext(modelContext)
+        TicketView(coordinator: coordinator, mediaFacade: mediaFacade)
             .environmentObject(session)
     }
 }
 
 #Preview {
-    RootView(session: SessionStore(auth: PreviewAuthService()))
+    RootView(session: SessionStore(auth: PreviewAuthService()), mediaFacade: PreviewMediaFacade())
         .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

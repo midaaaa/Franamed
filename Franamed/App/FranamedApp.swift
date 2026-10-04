@@ -10,6 +10,8 @@ import SwiftData
 
 @main
 struct FranamedApp: App {
+    let mediaFacade = AppFactory.makeMediaFacade()
+
     let container: ModelContainer = {
         let schema = Schema([RoundRecord.self, WatchedRecord.self])
         let configuration = ModelConfiguration(schema: schema)
@@ -23,7 +25,7 @@ struct FranamedApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(mediaFacade: mediaFacade)
                 .modelContainer(container)
         }
     }
