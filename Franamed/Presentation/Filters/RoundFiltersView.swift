@@ -9,47 +9,14 @@ import SwiftUI
 
 struct RoundFiltersView: View {
     private static let earliestYear = 1888
-    private static let currentYear = Calendar.current.component(.year, from: .now)
-    private static let defaultYearFrom = 1990
-    private static let defaultMinRating = 5.0
-    private static let defaultMinVoteCount = 100.0
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: RoundFiltersViewModel
     let onApply: (RoundSetup) -> Void
 
-    private let initialSetup: RoundSetup
-
-    @State private var limitYears: Bool
-    @State private var yearFrom: Int
-    @State private var yearTo: Int
-
-    @State private var limitRating: Bool
-    @State private var limitVoteCount: Bool
-
     init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, setup: RoundSetup, onApply: @escaping (RoundSetup) -> Void) {
-        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, mediaType: mediaType, filters: setup.filters, frameCount: setup.frameCount))
+        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, mediaType: mediaType, initialSetup: setup))
         self.onApply = onApply
-        self.initialSetup = setup
-
-        let filters = setup.filters
-        _limitYears = State(initialValue: filters.yearRange != nil)
-        _yearFrom = State(initialValue: filters.yearRange?.lowerBound ?? Self.defaultYearFrom)
-        _yearTo = State(initialValue: filters.yearRange?.upperBound ?? Self.currentYear)
-        _limitRating = State(initialValue: filters.minRating != nil)
-        _limitVoteCount = State(initialValue: filters.minVoteCount != nil)
-    }
-
-    private var previewFilters: MediaFilters {
-        var result = viewModel.filters
-        result.yearRange = limitYears ? min(yearFrom, yearTo)...max(yearFrom, yearTo) : nil
-        result.minRating = limitRating ? viewModel.filters.minRating : nil
-        result.minVoteCount = limitVoteCount ? viewModel.filters.minVoteCount : nil
-        return result
-    }
-
-    private var hasChanges: Bool {
-        previewFilters != initialSetup.filters || viewModel.frameCount != initialSetup.frameCount
     }
 
     private var frameCountBinding: Binding<Double> {
@@ -87,19 +54,19 @@ struct RoundFiltersView: View {
                     footer: "\(viewModel.mediaType.displayName) с рейтингом не ниже указанного.",
                     range: 0...10,
                     step: 0.5,
-                    defaultValue: Self.defaultMinRating,
+                    defaultValue: RoundFiltersViewModel.defaultMinRating,
                     formattedValue: { $0.formatted(.number.precision(.fractionLength(1))) },
-                    isEnabled: $limitRating,
+                    isEnabled: $viewModel.limitRating,
                     value: $viewModel.filters.minRating
                 )
 
                 YearRangeFilterSection(
                     earliestYear: Self.earliestYear,
-                    currentYear: Self.currentYear,
+                    currentYear: RoundFiltersViewModel.currentYear,
                     footerText: yearSectionFooterText,
-                    isEnabled: $limitYears,
-                    yearFrom: $yearFrom,
-                    yearTo: $yearTo
+                    isEnabled: $viewModel.limitYears,
+                    yearFrom: $viewModel.yearFrom,
+                    yearTo: $viewModel.yearTo
                 )
 
                 OptionalThresholdFilterSection(
@@ -107,9 +74,9 @@ struct RoundFiltersView: View {
                     footer: "Отсекает случайные оценки — рейтинг от пары голосов ненадёжен.",
                     range: 0...5000,
                     step: 100,
-                    defaultValue: Self.defaultMinVoteCount,
+                    defaultValue: RoundFiltersViewModel.defaultMinVoteCount,
                     formattedValue: { Int($0).formatted() },
-                    isEnabled: $limitVoteCount,
+                    isEnabled: $viewModel.limitVoteCount,
                     value: minVoteCountBinding
                 )
 
@@ -117,28 +84,18 @@ struct RoundFiltersView: View {
             }
             .navigationTitle("Фильтры")
             .navigationBarTitleDisplayMode(.inline)
-            .interactiveDismissDisabled(hasChanges)
-            .onChange(of: limitRating) { _, newValue in
-                if newValue && viewModel.filters.minRating == nil {
-                    viewModel.filters.minRating = Self.defaultMinRating
-                }
-            }
-            .onChange(of: limitVoteCount) { _, newValue in
-                if newValue && viewModel.filters.minVoteCount == nil {
-                    viewModel.filters.minVoteCount = Int(Self.defaultMinVoteCount)
-                }
-            }
+            .interactiveDismissDisabled(viewModel.hasChanges)
             .toolbar { toolbarContent }
             .safeAreaInset(edge: .bottom) { applyButton }
             .task { await viewModel.loadGenres() }
-            .task(id: previewFilters) { await viewModel.refreshPreview(filters: previewFilters) }
+            .task(id: viewModel.previewFilters) { await viewModel.refreshPreview(filters: viewModel.previewFilters) }
         }
     }
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            if hasChanges {
+            if viewModel.hasChanges {
                 Menu {
                     Button("Выйти без сохранения", role: .destructive) {
                         dismiss()
@@ -156,16 +113,14 @@ struct RoundFiltersView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button("Сброс") {
-                resetAll()
+                viewModel.reset()
             }
         }
     }
 
     private var applyButton: some View {
         Button {
-            applyYearRange()
-            applyRatingAndVoteCount()
-            onApply(RoundSetup(filters: viewModel.filters, frameCount: viewModel.frameCount))
+            onApply(viewModel.setup)
             dismiss()
         } label: {
             ZStack {
@@ -183,34 +138,6 @@ struct RoundFiltersView: View {
         .disabled(viewModel.isApplyDisabled)
         .padding(.horizontal, 32)
         .padding(.top, 8)
-    }
-
-    private func resetAll() {
-        let defaults = RoundSetup()
-        viewModel.filters = defaults.filters
-        viewModel.frameCount = defaults.frameCount
-        limitYears = false
-        yearFrom = Self.defaultYearFrom
-        yearTo = Self.currentYear
-        limitRating = false
-        limitVoteCount = false
-    }
-
-    private func applyYearRange() {
-        guard limitYears else {
-            viewModel.filters.yearRange = nil
-            return
-        }
-        viewModel.filters.yearRange = min(yearFrom, yearTo)...max(yearFrom, yearTo)
-    }
-
-    private func applyRatingAndVoteCount() {
-        if !limitRating {
-            viewModel.filters.minRating = nil
-        }
-        if !limitVoteCount {
-            viewModel.filters.minVoteCount = nil
-        }
     }
 }
 

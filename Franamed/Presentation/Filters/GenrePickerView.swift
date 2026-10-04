@@ -53,6 +53,6 @@ struct GenrePickerView: View {
 
 #Preview {
     NavigationStack {
-        GenrePickerView(viewModel: RoundFiltersViewModel(mediaFacade: PreviewMediaFacade(), mediaType: .movie, filters: MediaFilters(), frameCount: 6))
+        GenrePickerView(viewModel: RoundFiltersViewModel(mediaFacade: PreviewMediaFacade(), mediaType: .movie, initialSetup: RoundSetup()))
     }
 }

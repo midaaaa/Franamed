@@ -18,13 +18,57 @@ final class RoundFiltersViewModel: ObservableObject {
     @Published private(set) var previewResultsCount: Int?
     @Published private(set) var isCheckingPreview = false
 
+    @Published var limitYears: Bool
+    @Published var yearFrom: Int
+    @Published var yearTo: Int
+
+    @Published var limitRating: Bool {
+        didSet {
+            if limitRating && filters.minRating == nil {
+                filters.minRating = Self.defaultMinRating
+            }
+        }
+    }
+
+    @Published var limitVoteCount: Bool {
+        didSet {
+            if limitVoteCount && filters.minVoteCount == nil {
+                filters.minVoteCount = Int(Self.defaultMinVoteCount)
+            }
+        }
+    }
+
+    private let initialSetup: RoundSetup
+    static let currentYear = Calendar.current.component(.year, from: .now)
+    static let defaultYearFrom = 1990
+    static let defaultMinRating = 5.0
+    static let defaultMinVoteCount = 100.0
+
     private let mediaFacade: MediaFacadeProtocol
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, filters: MediaFilters, frameCount: Int) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, initialSetup: RoundSetup) {
         self.mediaFacade = mediaFacade
         self.mediaType = mediaType
-        self.filters = filters
-        self.frameCount = frameCount
+        self.initialSetup = initialSetup
+        self.filters = initialSetup.filters
+        self.frameCount = initialSetup.frameCount
+        self.limitYears = initialSetup.filters.yearRange != nil
+        self.yearFrom = initialSetup.filters.yearRange?.lowerBound ?? Self.defaultYearFrom
+        self.yearTo = initialSetup.filters.yearRange?.upperBound ?? Self.currentYear
+        self.limitRating = initialSetup.filters.minRating != nil
+        self.limitVoteCount = initialSetup.filters.minVoteCount != nil
+    }
+
+    var previewFilters: MediaFilters {
+        var result = filters
+        result.yearRange = limitYears ? min(yearFrom, yearTo)...max(yearFrom, yearTo) : nil
+        result.minRating = limitRating ? filters.minRating : nil
+        result.minVoteCount = limitVoteCount ? filters.minVoteCount : nil
+        return result
+    }
+
+    var hasChanges: Bool {
+        setup != initialSetup
     }
 
     var isApplyDisabled: Bool {
@@ -33,6 +77,10 @@ final class RoundFiltersViewModel: ObservableObject {
 
     var applyButtonTitle: String {
         MoviesCountFormatter.applyButtonTitle(for: previewResultsCount, mediaType: mediaType)
+    }
+
+    var setup: RoundSetup {
+        RoundSetup(filters: previewFilters, frameCount: frameCount)
     }
 
     func loadGenres() async {
@@ -74,5 +122,16 @@ final class RoundFiltersViewModel: ObservableObject {
             current.append(id)
         }
         filters.genres = current.isEmpty ? nil : current
+    }
+
+    func reset() {
+        let defaults = RoundSetup()
+        filters = defaults.filters
+        frameCount = defaults.frameCount
+        limitYears = false
+        yearFrom = Self.defaultYearFrom
+        yearTo = Self.currentYear
+        limitRating = false
+        limitVoteCount = false
     }
 }
