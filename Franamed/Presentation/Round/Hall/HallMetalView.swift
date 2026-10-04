@@ -63,7 +63,7 @@ final class HallLayerView: UIView {
 
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
     private let lock = NSLock()
-    private var prepared: Prepared?
+    nonisolated(unsafe) private var prepared: Prepared?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
