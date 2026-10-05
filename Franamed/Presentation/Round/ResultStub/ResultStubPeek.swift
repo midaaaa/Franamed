@@ -15,6 +15,7 @@ struct ResultStubPeek: View {
     let placement: ResultStubPlacement
     let item: MediaItem
     let mediaType: MediaType
+    let mode: TicketGameMode
     let details: MediaDetails?
     let outcome: RoundOutcome?
     let attemptsMade: Int
@@ -96,8 +97,9 @@ struct ResultStubPeek: View {
                  menuItems: content.menuItems { webSearch = WebSearchLink(query: $0) }) {
             ResultStubFront(content: content, hidesDetails: hidesDetails)
         } back: {
-            ResultStubSetupBack(mediaType: mediaType, filters: filters,
-                                frameCount: frameCount, genreNames: genreNames)
+            ResultStubSetupBack(card: TicketCard(mediaType: mediaType, posterPath: nil, mode: mode),
+                                setup: RoundSetup(filters: filters, frameCount: frameCount),
+                                genreNames: genreNames)
         }
         .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,
                                        recordingMean: recordingLight,

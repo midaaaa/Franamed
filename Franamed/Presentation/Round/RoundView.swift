@@ -26,6 +26,8 @@ struct RoundView: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
+    private let mode: TicketGameMode
+
     private static let backgroundSpace = "roundBackground"
 
     private static let focusedBarInset: CGFloat = 6
@@ -39,7 +41,8 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
 
-    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
+    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
+        self.mode = mode
         _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, modelContext: modelContext, mediaType: mediaType, filters: filters, frameCount: frameCount))
     }
 
@@ -189,6 +192,7 @@ struct RoundView: View {
             ResultStubPeek(placement: stubPlacement,
                            item: media.item,
                            mediaType: viewModel.mediaType,
+                           mode: mode,
                            details: viewModel.details,
                            outcome: viewModel.outcome,
                            attemptsMade: viewModel.attemptsMade,

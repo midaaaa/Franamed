@@ -67,6 +67,7 @@ struct TicketView: View {
                             mediaFacade: viewModel.mediaFacade,
                             modelContext: modelContext,
                             mediaType: mediaType,
+                            mode: viewModel.mode,
                             filters: viewModel.setup(for: mediaType).filters,
                             frameCount: viewModel.setup(for: mediaType).frameCount
                         )

@@ -90,19 +90,14 @@ struct ResultStubFront: View {
 }
 
 struct ResultStubSetupBack: View {
-    let mediaType: MediaType
-    let filters: MediaFilters
-    let frameCount: Int
+    let card: TicketCard
+    let setup: RoundSetup
     let genreNames: [String]
 
     var body: some View {
         ResultStubPaper {
-            TicketStubBody(
-                card: TicketCard(mediaType: mediaType, posterPath: nil, mode: .random),
-                setup: RoundSetup(filters: filters, frameCount: frameCount),
-                genreNames: genreNames
-            )
-            .allowsHitTesting(false)
+            TicketStubBody(card: card, setup: setup, genreNames: genreNames)
+                .allowsHitTesting(false)
         }
         .foregroundStyle(.black)
     }
@@ -179,7 +174,8 @@ private struct ResultStubGallery: View {
                     }
                 }
                 card("оборот — сетап") {
-                    ResultStubSetupBack(mediaType: .movie, filters: MediaFilters(), frameCount: 6,
+                    ResultStubSetupBack(card: TicketCard(mediaType: .movie, posterPath: nil, mode: .random),
+                                        setup: RoundSetup(filters: MediaFilters(), frameCount: 6),
                                         genreNames: ["драма", "история"])
                 }
             }
