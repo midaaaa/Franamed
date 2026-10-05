@@ -8,12 +8,9 @@
 import SwiftUI
 
 enum ResultStubMetrics {
-    static let height: CGFloat = 210
-    static let tornInset: CGFloat = 6
-
     @MainActor
-    static var scallopInset: CGFloat {
-        TicketPerforationShape.scallopDepth(width: width)
+    static func height(edgeStyle: TicketEdgeStyle) -> CGFloat {
+        TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
     }
 
     @MainActor
@@ -29,19 +26,14 @@ struct ResultStubPaper<Content: View>: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let edgeStyle = TicketEdgeStyle(hasScallops: hasScallops)
+
+        VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
             content
         }
-        .padding(.top, TicketStyle.stubPadding + ResultStubMetrics.tornInset)
-        .padding(.bottom, TicketStyle.stubPadding
-                 + (hasScallops ? ResultStubMetrics.scallopInset : 0))
-        .padding(.horizontal, TicketStyle.stubPadding)
-        .frame(width: ResultStubMetrics.width,
-               height: ResultStubMetrics.height,
-               alignment: .topLeading)
+        .modifier(TicketStubFrame(width: ResultStubMetrics.width, edgeStyle: edgeStyle))
         .background(TicketStyle.paper)
-        .clipShape(ResultStubShape(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops),
-                                   mirrored: mirrored))
+        .clipShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored))
         .environment(\.colorScheme, .light)
     }
 }

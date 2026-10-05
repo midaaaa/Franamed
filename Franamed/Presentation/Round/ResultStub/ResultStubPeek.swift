@@ -30,6 +30,7 @@ struct ResultStubPeek: View {
     let restOffset: CGFloat
     let formWidth: CGFloat
 
+    @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @State private var playedAt = Date.now
     @State private var reveal: CGFloat = 0
     @State private var shake: CGFloat = 0
@@ -56,7 +57,10 @@ struct ResultStubPeek: View {
         let hidesDetails: Bool
     }
 
-    private var size: CGSize { CGSize(width: ResultStubMetrics.width, height: ResultStubMetrics.height) }
+    private var size: CGSize {
+        CGSize(width: ResultStubMetrics.width,
+               height: ResultStubMetrics.height(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops)))
+    }
 
     private var hidesDetails: Bool { outcome == nil }
 

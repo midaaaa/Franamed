@@ -18,7 +18,6 @@ struct TicketStubView: View {
     var body: some View {
         TicketStubBody(card: card, setup: setup, genreNames: genreNames,
                        onOpenFilters: onOpenFilters, onStart: onStart)
-            .padding(TicketStyle.stubPadding)
             .allowsHitTesting(isInteractive)
     }
 }
@@ -35,6 +34,7 @@ struct TicketStubBody: View {
             title
             filtersButton
             startButton
+                .frame(maxHeight: .infinity, alignment: .bottom)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -62,6 +62,7 @@ struct TicketStubBody: View {
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .fixedSize(horizontal: false, vertical: true)
             .contentShape(Rectangle())
         }
     }
@@ -143,6 +144,6 @@ private struct TicketMetaRow: View {
         onOpenFilters: {},
         onStart: {}
     )
-    .frame(width: 300)
+    .modifier(TicketStubFrame(width: 300, edgeStyle: .scalloped))
     .background(Color.white)
 }

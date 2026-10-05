@@ -39,21 +39,11 @@ struct TicketFaceView: View, Equatable {
     var onReturnChange: ((Bool) -> Void)?
     var onStubAwayChange: ((Bool) -> Void)?
 
-    @Environment(\.displayScale) private var displayScale
-
-    private var pixelGrid: PixelGrid { PixelGrid(displayScale: displayScale) }
-    @State private var measuredStubHeight: CGFloat = 0
     @State private var posterImage: UIImage?
-
-    private var stubHeight: CGFloat {
-        guard measuredStubHeight > 0 else { return 0 }
-        let trim = edgeStyle == .straight ? TicketPerforationShape.scallopDepth(width: width) : 0
-        return pixelGrid.evenAligned(max(measuredStubHeight - trim, 1), rule: .up)
-    }
 
     private var tearConfig: TicketTearConfig {
         var config = TicketTearConfig.ticket(width: width)
-        config.stubExtent = stubHeight > 0 ? stubHeight : 140
+        config.stubExtent = TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
         return config
     }
 
@@ -98,9 +88,7 @@ struct TicketFaceView: View, Equatable {
                 onOpenFilters: onOpenFilters,
                 onStart: onStart
             )
-            .frame(width: width)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredStubHeight = $0 }
-            .frame(height: stubHeight > 0 ? stubHeight : nil, alignment: .top)
+            .modifier(TicketStubFrame(width: width, edgeStyle: edgeStyle))
             .background(paper)
             .modifier(StubVisibility(isHidden: hidesStub))
             .matchedTransitionSource(id: card.mediaType, in: filtersZoom)

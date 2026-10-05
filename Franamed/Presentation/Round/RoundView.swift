@@ -23,6 +23,7 @@ struct RoundView: View {
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
     @State private var isStubLeaving = false
     @State private var roundNumber = 0
+    @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
     private static let backgroundSpace = "roundBackground"
@@ -222,8 +223,9 @@ struct RoundView: View {
     private var stubRestOffset: CGFloat {
         let restingBarTop = fullHeight - (Self.restingBarInset - homeIndicatorInset) - suggestionRowHeight
         let gap = restingBarTop - frameHeight
-        let restingStubTop = frameHeight + max(0, (gap - ResultStubMetrics.height) / 2)
-        return restingStubTop + ResultStubMetrics.height - restingBarTop - suggestionRowHeight
+        let stubHeight = ResultStubMetrics.height(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops))
+        let restingStubTop = frameHeight + max(0, (gap - stubHeight) / 2)
+        return restingStubTop + stubHeight - restingBarTop - suggestionRowHeight
     }
 
     private func resignKeyboard() {
