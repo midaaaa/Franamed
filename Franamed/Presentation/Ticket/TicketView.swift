@@ -104,10 +104,12 @@ struct TicketView: View {
         GeometryReader { geo in
             let width = pixelGrid.evenAligned(max(0, geo.size.width - TicketStyle.screenInset * 2))
             let posterHeight = pixelGrid.evenAligned(width * TicketStyle.posterAspectRatio)
+            let container = geo.frame(in: .global)
+            let centerY = Self.cardCenterY(in: container, cardHeight: cardSize.height) - container.minY
 
             cardView(width: width, posterHeight: posterHeight)
                 .frame(width: width)
-                .position(x: pixelGrid.snapped(geo.size.width / 2), y: pixelGrid.snapped(geo.size.height / 2))
+                .position(x: pixelGrid.snapped(geo.size.width / 2), y: pixelGrid.snapped(centerY))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
                 .onChange(of: isDraggingCard) { _, isDragging in
                     if isDragging {
@@ -242,9 +244,20 @@ struct TicketView: View {
         }
     }
 
+    private static let navigationBarHeight: CGFloat = 44
+
+    private static func cardCenterY(in container: CGRect, cardHeight: CGFloat) -> CGFloat {
+        let insets = WindowMetrics.safeAreaInsets
+        let top = insets.top + navigationBarHeight
+        let bottom = WindowMetrics.size.height - insets.bottom
+        let half = cardHeight / 2
+        guard bottom - top > cardHeight else { return container.midY }
+        return min(max((insets.top + bottom) / 2, top + half), bottom - half)
+    }
+
     private var restingCardFrame: CGRect {
         CGRect(x: containerFrame.midX - cardSize.width / 2,
-               y: containerFrame.midY - cardSize.height / 2,
+               y: Self.cardCenterY(in: containerFrame, cardHeight: cardSize.height) - cardSize.height / 2,
                width: cardSize.width, height: cardSize.height)
     }
 
