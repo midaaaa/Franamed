@@ -11,7 +11,7 @@ const SECRET = "test-secret-test-secret-test-secret-00";
 
 const { default: worker } = await import(`${API}src/index.js`);
 const { signJWT, sha256Hex } = await import(`${API}src/lib/crypto.js`);
-const { rotateRefreshToken, SPENT_TOKEN_RETENTION_MS } = await import(`${API}src/lib/auth.js`);
+const { REFRESH_RETRY_GRACE_MS } = await import(`${API}src/lib/auth.js`);
 const { refreshMediaCounters, buildCatalogQuery } = await import(`${API}src/lib/media.js`);
 const { reporterWeight } = await import(`${API}src/lib/limits.js`);
 const { selectRoundFrames, seededRandom } = await import(`${API}src/lib/frames.js`);
@@ -727,39 +727,71 @@ console.log("playlists count what can be played");
     db.db.prepare("UPDATE media_items SET published = 1 WHERE key = 'movie_102'").run();
 }
 
-console.log("nightly token cleanup");
+// ------------------------------------------------------------------ refresh sessions
+
+console.log("refresh sessions");
 {
-    const insert = db.db.prepare("INSERT INTO refresh_tokens (token_hash, uid, issued_at, expires_at, revoked_at) VALUES (?, 'mod', 0, ?, ?)");
-    insert.run("n-old-spent", Date.now() + 1e9, Date.now() - SPENT_TOKEN_RETENTION_MS - 1000);
-    insert.run("n-expired", Date.now() - 1000, null);
-    insert.run("n-recent", Date.now() + 1e9, Date.now() - 1000);
-    insert.run("n-live", Date.now() + 1e9, null);
+    const post = async (path, body) => {
+        const response = await worker.fetch(new Request(`https://api.test${path}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+        }), env, {});
+        return { status: response.status, body: await response.json().catch(() => null) };
+    };
+    const refresh = (token) => post("/v1/auth/refresh", { refreshToken: token });
+    const sessionsOf = (uid) => db.db.prepare("SELECT * FROM refresh_sessions WHERE uid = ?").all(uid);
+
+    const signIn = await post("/v1/auth/anonymous", { deviceSecret: "s".repeat(43) });
+    const uid = signIn.body.user.uid;
+    check("sign-in opens a session", signIn.status === 200 && /^[0-9a-f-]{36}\.0\.[A-Za-z0-9_-]{43}$/.test(signIn.body.refreshToken)
+        && sessionsOf(uid).length === 1, signIn.body.refreshToken);
+    check("the table holds nothing to sign in with", !JSON.stringify(sessionsOf(uid)).includes(signIn.body.refreshToken.split(".")[2]));
+
+    let token = signIn.body.refreshToken;
+    const history = [token];
+    for (let i = 0; i < 20; i += 1) {
+        const next = await refresh(token);
+        if (next.status !== 200) break;
+        token = next.body.refreshToken;
+        history.push(token);
+    }
+    check("twenty rotations, still one row", history.length === 21 && sessionsOf(uid).length === 1 && sessionsOf(uid)[0].generation === 20);
+
+    const retried = await refresh(history[19]);
+    check("the previous token, retried at once, gets the same successor", retried.status === 200 && retried.body.refreshToken === token);
+    const racing = await Promise.all([refresh(token), refresh(token)]);
+    check("two racing refreshes both succeed with one successor", racing.every((r) => r.status === 200)
+        && racing[0].body.refreshToken === racing[1].body.refreshToken, JSON.stringify(racing.map((r) => r.status)));
+    token = racing[0].body.refreshToken;
+
+    const [id, generation] = token.split(".");
+    res = await refresh(`${id}.${generation}.${"A".repeat(43)}`);
+    check("a forged token naming the session is unknown and harmless", res.status === 401 && sessionsOf(uid)[0].revoked_at === null);
+
+    db.db.prepare("UPDATE refresh_sessions SET rotated_at = ? WHERE uid = ?").run(Date.now() - REFRESH_RETRY_GRACE_MS - 1000, uid);
+    const second = await post("/v1/auth/anonymous", { deviceSecret: "s".repeat(43) });
+    res = await refresh(history[19]);
+    check("an old token after the grace is a replay", res.status === 401 && res.body.message.includes("already used"));
+    check("and every session of the account goes", sessionsOf(uid).every((row) => row.revoked_at !== null) && sessionsOf(uid).length === 2);
+    res = await refresh(token);
+    check("the current token is revoked with them", res.status === 401 && res.body.message.includes("revoked"));
+    res = await refresh(second.body.refreshToken);
+    check("so is the other device's", res.status === 401);
+
+    res = await refresh("1z3nd66Vxk2TYd56Tiv6StDKpQm3ldufT-4YjPv175Q");
+    check("a token in the old format is unknown, and the app signs in again", res.status === 401 && res.body.message.includes("Unknown"));
+
+    const third = await post("/v1/auth/anonymous", { deviceSecret: "s".repeat(43) });
+    const access = third.body.accessToken;
+    await worker.fetch(new Request("https://api.test/v1/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${access}` } }), env, {});
+    check("logout revokes the sessions", (await refresh(third.body.refreshToken)).status === 401);
+
+    db.db.prepare("UPDATE refresh_sessions SET expires_at = 1 WHERE uid = ? AND revoked_at IS NULL").run(uid);
+    db.db.prepare("UPDATE refresh_sessions SET revoked_at = 1 WHERE uid = ? AND revoked_at IS NOT NULL").run(uid);
+    const live = await post("/v1/auth/anonymous", { deviceSecret: "s".repeat(43) });
     await worker.scheduled({ cron: NIGHTLY_CRON, scheduledTime: Date.now() }, env, {});
-    const left = db.db.prepare("SELECT token_hash FROM refresh_tokens WHERE token_hash LIKE 'n-%' ORDER BY token_hash").all().map((r) => r.token_hash);
-    check("dead tokens go, live and recently spent stay", JSON.stringify(left) === JSON.stringify(["n-live", "n-recent"]), JSON.stringify(left));
-    db.db.prepare("DELETE FROM refresh_tokens WHERE token_hash LIKE 'n-%'").run();
-}
-
-// ------------------------------------------------------------------ refresh tokens
-
-console.log("refresh tokens");
-{
-    const now = Date.now();
-    const old = now - SPENT_TOKEN_RETENTION_MS - 1000;
-    const insert = db.db.prepare("INSERT INTO refresh_tokens (token_hash, uid, issued_at, expires_at, revoked_at) VALUES (?, 'plain', ?, ?, ?)");
-    insert.run(await sha256Hex("live"), now, now + 1e9, null);
-    insert.run("h-spent-old", old, now + 1e9, old);
-    insert.run("h-spent-recent", now, now + 1e9, now - 1000);
-    insert.run("h-expired", old, now - 1000, null);
-    const rotated = await rotateRefreshToken(env, "live", null);
-    const hashes = db.db.prepare("SELECT token_hash FROM refresh_tokens WHERE uid = 'plain'").all().map((r) => r.token_hash);
-    check("rotation issues a new token", typeof rotated.refreshToken === "string");
-    check("rotation drops long-spent and expired tokens", !hashes.includes("h-spent-old") && !hashes.includes("h-expired"), JSON.stringify(hashes));
-    check("recently spent tokens stay for replay detection", hashes.includes("h-spent-recent") && hashes.includes(await sha256Hex("live")));
-    let replay = null;
-    try { await rotateRefreshToken(env, "live", null); } catch (e) { replay = e; }
-    check("replaying the just-spent token is refused", replay?.status === 401, String(replay));
-    db.db.prepare("DELETE FROM refresh_tokens WHERE uid = 'plain'").run();
+    check("the nightly run drops expired and long-revoked sessions", sessionsOf(uid).length === 1
+        && (await refresh(live.body.refreshToken)).status === 200);
+    db.db.prepare("DELETE FROM users WHERE uid = ?").run(uid);
 }
 
 // ------------------------------------------------------------------ deletion
@@ -769,11 +801,11 @@ const target = db.db.prepare("SELECT id FROM media_images WHERE media_key = 'mov
 db.db.prepare("UPDATE users SET report_multiplier = 5 WHERE uid = 'plain'").run();
 res = await call("plain", "POST", "/v1/curation/report", { imageId: target.id, reason: "not_a_frame" });
 check("a heavy report hides the frame", res.status === 200 && db.db.prepare("SELECT status FROM media_images WHERE id = ?").get(target.id).status === "rejected", JSON.stringify(res));
-db.db.prepare("INSERT INTO refresh_tokens (token_hash, uid, issued_at, expires_at) VALUES ('h-plain', 'plain', 0, 9999999999999)").run();
+db.db.prepare("INSERT INTO refresh_sessions (id, uid, salt, created_at, expires_at) VALUES ('s-plain', 'plain', 'x', 0, 9999999999999)").run();
 res = await call("plain", "DELETE", "/v1/profile");
 const left = (table) => db.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE uid = 'plain'`).get().n;
 check("delete answers 204", res.status === 204, JSON.stringify(res));
-check("user, tokens, watched and reports are gone", left("users") + left("refresh_tokens") + left("watched_media") + left("image_reports") === 0);
+check("user, tokens, watched and reports are gone", left("users") + left("refresh_sessions") + left("watched_media") + left("image_reports") === 0);
 const restored = db.db.prepare("SELECT status, report_weight FROM media_images WHERE id = ?").get(target.id);
 check("their report stops hiding the frame", restored.status === "pending" && restored.report_weight === 0, JSON.stringify(restored));
 check("the old token no longer works", (await call("plain", "GET", "/v1/profile")).status === 401);

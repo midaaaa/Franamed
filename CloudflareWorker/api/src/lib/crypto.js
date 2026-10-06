@@ -33,6 +33,12 @@ export function timingSafeEqual(a, b) {
     return mismatch === 0;
 }
 
+// Base64url HMAC-SHA256, for values the server must be able to derive again.
+export async function hmacBase64Url(secret, message) {
+    const signature = await crypto.subtle.sign("HMAC", await hmacKey(secret), encoder.encode(message));
+    return base64UrlEncode(new Uint8Array(signature));
+}
+
 async function hmacKey(secret) {
     return crypto.subtle.importKey(
         "raw",

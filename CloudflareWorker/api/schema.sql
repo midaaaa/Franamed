@@ -36,16 +36,22 @@ CREATE TABLE IF NOT EXISTS identities (
 );
 CREATE INDEX IF NOT EXISTS idx_identities_uid ON identities(uid);
 
--- Only the SHA-256 of a refresh token is stored, never the token itself.
-CREATE TABLE IF NOT EXISTS refresh_tokens (
-    token_hash TEXT PRIMARY KEY,
+-- One row per sign-in, rotated in place. The token is "<id>.<generation>.<mac>",
+-- the mac derived from JWT_SECRET, the id, the salt and the generation, so this
+-- table holds nothing a dump could sign in with, and an older generation is
+-- recognised as a replay for as long as the session lives.
+CREATE TABLE IF NOT EXISTS refresh_sessions (
+    id         TEXT PRIMARY KEY,
     uid        TEXT    NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-    issued_at  INTEGER NOT NULL,
+    salt       TEXT    NOT NULL,
+    generation INTEGER NOT NULL DEFAULT 0,
+    rotated_at INTEGER,
+    created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
     revoked_at INTEGER,
     user_agent TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_refresh_uid ON refresh_tokens(uid);
+CREATE INDEX IF NOT EXISTS idx_refresh_sessions_uid ON refresh_sessions(uid);
 
 -- ---------------------------------------------------------------- catalog
 
