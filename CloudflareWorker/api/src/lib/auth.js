@@ -17,6 +17,9 @@ import { limitByUser } from "./limits.js";
 
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60;
+// Spent tokens are kept this long only so a replay is recognised as one
+// (and revokes the family) instead of passing as an unknown token.
+export const SPENT_TOKEN_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 const APPLE_ISSUER = "https://appleid.apple.com";
 const APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys";
@@ -143,7 +146,12 @@ export async function rotateRefreshToken(env, presentedToken, userAgent) {
          RETURNING uid`
     ).bind(now, hash).first();
 
-    if (claimed) return issueTokens(env, claimed.uid, userAgent);
+    if (claimed) {
+        await env.DB.prepare(
+            "DELETE FROM refresh_tokens WHERE uid = ?1 AND (revoked_at < ?2 OR expires_at < ?3)"
+        ).bind(claimed.uid, now - SPENT_TOKEN_RETENTION_MS, now).run();
+        return issueTokens(env, claimed.uid, userAgent);
+    }
 
     // Nothing claimed — read only to tell unknown from expired from already spent.
     const row = await env.DB.prepare("SELECT uid, expires_at FROM refresh_tokens WHERE token_hash = ?")

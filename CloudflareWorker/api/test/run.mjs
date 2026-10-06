@@ -10,7 +10,8 @@ const API = new URL("..", import.meta.url).pathname;
 const SECRET = "test-secret-test-secret-test-secret-00";
 
 const { default: worker } = await import(`${API}src/index.js`);
-const { signJWT } = await import(`${API}src/lib/crypto.js`);
+const { signJWT, sha256Hex } = await import(`${API}src/lib/crypto.js`);
+const { rotateRefreshToken, SPENT_TOKEN_RETENTION_MS } = await import(`${API}src/lib/auth.js`);
 const { refreshMediaCounters, buildCatalogQuery } = await import(`${API}src/lib/media.js`);
 const { reporterWeight } = await import(`${API}src/lib/limits.js`);
 
@@ -422,6 +423,28 @@ db.db.prepare("DELETE FROM daily_results WHERE date = '2000-03-01'").run();
 db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES (date('now'), ?, 0)").run(playable[0]);
 res = await call("mod", "DELETE", `/v1/admin/daily/${new Date().toISOString().slice(0, 10)}`);
 check("an unplayed today can be removed", res.status === 204, JSON.stringify(res.body));
+
+// ------------------------------------------------------------------ refresh tokens
+
+console.log("refresh tokens");
+{
+    const now = Date.now();
+    const old = now - SPENT_TOKEN_RETENTION_MS - 1000;
+    const insert = db.db.prepare("INSERT INTO refresh_tokens (token_hash, uid, issued_at, expires_at, revoked_at) VALUES (?, 'plain', ?, ?, ?)");
+    insert.run(await sha256Hex("live"), now, now + 1e9, null);
+    insert.run("h-spent-old", old, now + 1e9, old);
+    insert.run("h-spent-recent", now, now + 1e9, now - 1000);
+    insert.run("h-expired", old, now - 1000, null);
+    const rotated = await rotateRefreshToken(env, "live", null);
+    const hashes = db.db.prepare("SELECT token_hash FROM refresh_tokens WHERE uid = 'plain'").all().map((r) => r.token_hash);
+    check("rotation issues a new token", typeof rotated.refreshToken === "string");
+    check("rotation drops long-spent and expired tokens", !hashes.includes("h-spent-old") && !hashes.includes("h-expired"), JSON.stringify(hashes));
+    check("recently spent tokens stay for replay detection", hashes.includes("h-spent-recent") && hashes.includes(await sha256Hex("live")));
+    let replay = null;
+    try { await rotateRefreshToken(env, "live", null); } catch (e) { replay = e; }
+    check("replaying the just-spent token is refused", replay?.status === 401, String(replay));
+    db.db.prepare("DELETE FROM refresh_tokens WHERE uid = 'plain'").run();
+}
 
 // ------------------------------------------------------------------ deletion
 
