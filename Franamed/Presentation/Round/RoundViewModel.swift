@@ -99,12 +99,12 @@ final class RoundViewModel: ObservableObject {
                 $0.caseInsensitiveCompare(submittedAnswer) == .orderedSame
             }
         }
+        answerText = ""
         if isCorrect {
             outcome = .correct
             modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
             revealedCount = frameCount
         } else {
-            answerText = ""
             attemptsRemaining -= 1
 
             if revealedCount < frameCount {
