@@ -10,12 +10,15 @@ const DEFAULTS = {
     // weight. Set to 0 to let brand new accounts report at full strength.
     voteWeightMinRounds: 5,
     // Approved frames a finished title should have; the client draws it on the
-    // coverage bar, and a daily film needs at least this many.
-    targetApprovedFrames: 12,
+    // coverage bar, and a daily film needs at least this many: a round's six
+    // and one spare.
+    targetApprovedFrames: 7,
     // Live reports one account may file on a single title in a day before the
     // round stops offering it a free replacement frame.
     reportReplacementLimit: 2,
-    onboardingMediaKey: ""
+    onboardingMediaKey: "",
+    // The cron fills an empty tomorrow with a random unused film.
+    autoDaily: false
 };
 
 function coerce(key, raw) {

@@ -35,10 +35,11 @@ export async function handleCurationScreens(request, env, segments, url, { user,
     if (segments[0] === "home" && request.method === "GET") {
         requireRole(user, "moderator");
 
-        const [queue, reports] = await env.DB.batch([
+        const [queue, reports, missing] = await env.DB.batch([
             env.DB.prepare("SELECT COUNT(*) AS n FROM (SELECT 1 FROM media_items WHERE work_weight > 0 LIMIT ?)")
                 .bind(QUEUE_BADGE_CAP),
-            env.DB.prepare("SELECT COUNT(DISTINCT image_id) AS n FROM image_reports WHERE dismissed_at IS NULL")
+            env.DB.prepare("SELECT COUNT(DISTINCT image_id) AS n FROM image_reports WHERE dismissed_at IS NULL"),
+            env.DB.prepare("SELECT COUNT(*) AS n FROM media_items WHERE missing_images > 0")
         ]);
 
         const count = (result) => result.results[0]?.n ?? 0;
@@ -53,7 +54,8 @@ export async function handleCurationScreens(request, env, segments, url, { user,
             badges: {
                 queue: queueCount,
                 queueIsCapped: queueCount >= QUEUE_BADGE_CAP,
-                reports: count(reports)
+                reports: count(reports),
+                missingFrames: count(missing)
             }
         });
     }

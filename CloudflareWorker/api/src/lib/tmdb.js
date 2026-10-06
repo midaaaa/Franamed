@@ -10,7 +10,7 @@ import { markIndexDirtyStatement } from "./catalogIndex.js";
 
 const TMDB_ORIGIN = "https://api.themoviedb.org/3";
 
-async function tmdbFetch(env, path, params = {}) {
+export async function tmdbFetch(env, path, params = {}) {
     if (!env.TMDB_API_KEY) throw new APIError(500, "server_misconfigured", "TMDB_API_KEY is not set");
 
     const url = new URL(`${TMDB_ORIGIN}${path}`);
@@ -19,12 +19,14 @@ async function tmdbFetch(env, path, params = {}) {
 
     const response = await fetch(url.toString());
     if (!response.ok) {
-        throw new APIError(502, "tmdb_error", `TMDB responded with ${response.status}`);
+        const error = new APIError(502, "tmdb_error", `TMDB responded with ${response.status}`);
+        error.tmdbStatus = response.status;
+        throw error;
     }
     return response.json();
 }
 
-function releaseYear(details, mediaType) {
+export function releaseYear(details, mediaType) {
     const date = mediaType === "movie" ? details.release_date : details.first_air_date;
     if (!date) return null;
     const year = Number.parseInt(date.slice(0, 4), 10);
@@ -114,6 +116,11 @@ function bestPoster(details) {
     return clean[0]?.file_path || details.poster_path || null;
 }
 
+// The stills without burned-in text, the only ones a round can use.
+export function cleanBackdrops(details) {
+    return (details.images?.backdrops || []).filter((image) => image.iso_639_1 === null);
+}
+
 export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, language = "ru-RU" } = {}) {
     const details = await tmdbFetch(env, `/${mediaType}/${tmdbId}`, {
         language,
@@ -170,7 +177,7 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
         );
     }
 
-    const backdrops = (details.images?.backdrops || []).filter((image) => image.iso_639_1 === null);
+    const backdrops = cleanBackdrops(details);
 
     for (const backdrop of backdrops) {
         // Existing rows keep their curation state: re-syncing a title must
@@ -214,7 +221,7 @@ export async function fetchPosterOptions(env, mediaType, tmdbId) {
 
 // Fills in the rating of titles imported before it was stored. One TMDB call
 // per title, so a run takes a bounded batch under the 50-subrequest ceiling.
-export async function backfillRatings(env, { limit = 20 } = {}) {
+export async function backfillRatings(env, { limit = 15 } = {}) {
     const rows = await env.DB.prepare(
         "SELECT key, media_type, tmdb_id FROM media_items WHERE vote_count IS NULL LIMIT ?"
     ).bind(limit).all();

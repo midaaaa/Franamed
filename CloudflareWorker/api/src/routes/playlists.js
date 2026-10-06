@@ -10,20 +10,30 @@ import { MEDIA_TYPES } from "../lib/media.js";
 import { readConfig } from "../lib/config.js";
 import { grantBonusAttempts } from "../lib/daily.js";
 
-// Progress rows are matched against the playlist's *current* contents rather
-// than pruned when a curator edits the list. A title removed and later put back
-// keeps the progress it had, and nothing has to be cleaned up on edit.
+// Progress rows are matched against the playlist's *current* playable contents
+// rather than pruned when a curator edits the list or a title leaves the game.
+// A title removed and later put back keeps the progress it had, and nothing has
+// to be cleaned up on edit. The catalogue side and the player side are read
+// separately and matched here, so players can move to a database of their own.
 async function progressSummary(env, uid, playlistId) {
-    const row = await env.DB.prepare(
-        `SELECT
-            (SELECT COUNT(*) FROM playlist_items WHERE playlist_id = ?) AS total,
-            (SELECT COUNT(*) FROM playlist_progress pr
-              JOIN playlist_items pi ON pi.playlist_id = pr.playlist_id AND pi.media_key = pr.media_key
-              WHERE pr.uid = ? AND pr.playlist_id = ? AND pr.state = 'completed') AS answered,
-            (SELECT COUNT(*) FROM playlist_progress pr
-              JOIN playlist_items pi ON pi.playlist_id = pr.playlist_id AND pi.media_key = pr.media_key
-              WHERE pr.uid = ? AND pr.playlist_id = ? AND pr.state = 'completed' AND pr.was_correct = 1) AS correct`
-    ).bind(playlistId, uid, playlistId, uid, playlistId).first();
+    const [playable, progress] = await env.DB.batch([
+        env.DB.prepare(
+            `SELECT pi.media_key FROM playlist_items pi
+             JOIN media_items m ON m.key = pi.media_key
+             WHERE pi.playlist_id = ? AND m.published = 1`
+        ).bind(playlistId),
+        env.DB.prepare(
+            "SELECT media_key, was_correct FROM playlist_progress WHERE uid = ? AND playlist_id = ? AND state = 'completed'"
+        ).bind(uid, playlistId)
+    ]);
+
+    const keys = new Set(playable.results.map((item) => item.media_key));
+    const answeredRows = progress.results.filter((item) => keys.has(item.media_key));
+    const row = {
+        total: keys.size,
+        answered: answeredRows.length,
+        correct: answeredRows.filter((item) => item.was_correct === 1).length
+    };
 
     const completion = await env.DB.prepare(
         "SELECT times_completed, completed_at FROM playlist_completions WHERE uid = ? AND playlist_id = ?"
@@ -116,7 +126,7 @@ export async function handlePlaylists(request, env, segments, url) {
         const user = await authenticate(request, env);
 
         const items = await env.DB.prepare(
-            `SELECT m.key, m.title, m.release_year, m.poster_url, m.approved_images,
+            `SELECT m.key, m.title, m.release_year, m.poster_url, m.approved_images, m.published,
                     pr.state, pr.attempts_used, pr.was_correct
              FROM playlist_items pi
              JOIN media_items m ON m.key = pi.media_key
@@ -135,6 +145,7 @@ export async function handlePlaylists(request, env, segments, url) {
                 releaseYear: row.release_year,
                 posterURL: row.poster_url,
                 approvedImages: row.approved_images,
+                playable: row.published === 1,
                 state: row.state || "notStarted",
                 attemptsUsed: row.attempts_used ?? 0,
                 wasCorrect: row.was_correct === null || row.was_correct === undefined ? null : row.was_correct === 1

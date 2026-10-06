@@ -101,7 +101,7 @@ export async function handleCuration(request, env, segments, url) {
         if (reportsToday.count <= config.reportReplacementLimit) {
             const candidates = await env.DB.prepare(
                 `SELECT * FROM media_images
-                  WHERE media_key = ? AND status = 'approved' AND id != ?
+                  WHERE media_key = ? AND status = 'approved' AND missing_at IS NULL AND id != ?
                   ORDER BY RANDOM() LIMIT 20`
             ).bind(image.media_key, imageId).all();
 
@@ -140,6 +140,32 @@ export async function handleCuration(request, env, segments, url) {
         ]);
 
         return json(serializeImage(await recomputeImageStatus(env, imageId)));
+    }
+
+    // POST /v1/curation/images/{id}/restore — a missing frame is fine after all;
+    // POST /v1/curation/images/{id}/remove — it is gone for good: rejected and
+    // locked, the row kept so a re-import does not bring it back as new
+    if (segments[0] === "images" && ["restore", "remove"].includes(segments[2]) && request.method === "POST") {
+        requireRole(user, "moderator");
+
+        const imageId = Number.parseInt(segments[1], 10);
+        if (!Number.isInteger(imageId)) throw badRequest("Image id must be an integer");
+        const image = await env.DB.prepare("SELECT * FROM media_images WHERE id = ?").bind(imageId).first();
+        if (!image) throw notFound("Unknown image");
+
+        const now = Date.now();
+        await (segments[2] === "restore"
+            ? env.DB.prepare("UPDATE media_images SET missing_at = NULL WHERE id = ? AND removed_at IS NULL").bind(imageId)
+            : env.DB.prepare(
+                `UPDATE media_images
+                 SET removed_at = ?1, status = 'rejected', moderator_status = 'rejected', moderator_uid = ?2, moderator_at = ?1
+                 WHERE id = ?3`
+            ).bind(now, user.uid, imageId)
+        ).run();
+        await refreshMediaCounters(env, image.media_key);
+
+        const refreshed = await env.DB.prepare("SELECT * FROM media_images WHERE id = ?").bind(imageId).first();
+        return json(serializeImage(refreshed));
     }
 
     // PATCH /v1/curation/images/{id} — moderator tools: tier, rank, clustering, hash

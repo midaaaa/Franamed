@@ -67,8 +67,10 @@ CREATE TABLE IF NOT EXISTS media_items (
     approved_images   INTEGER NOT NULL DEFAULT 0,
 
     -- Players only ever see published titles. 'auto' publishes once every
-    -- frame is judged, six are approved and a poster is set; 'on' skips the
-    -- first condition, 'off' holds the title back. Derived by refreshMediaCounters.
+    -- frame is judged, six are approved and a poster is set, and keeps a
+    -- published title out there while new frames wait for judgement; 'on'
+    -- skips the judging condition, 'off' holds the title back. Derived by
+    -- refreshMediaCounters.
     publish_mode      TEXT    NOT NULL DEFAULT 'auto',           -- auto | on | off
     published         INTEGER NOT NULL DEFAULT 0,
 
@@ -103,7 +105,9 @@ CREATE TABLE IF NOT EXISTS media_items (
     -- TMDB's rating of the title, for the catalogue index the phone filters on.
     -- NULL until fetched.
     vote_average      REAL,
-    vote_count        INTEGER
+    vote_count        INTEGER,
+
+    missing_images    INTEGER NOT NULL DEFAULT 0                 -- frames gone from TMDB, awaiting a moderator
 );
 CREATE INDEX IF NOT EXISTS idx_media_type_status ON media_items(media_type, status);
 CREATE INDEX IF NOT EXISTS idx_media_year        ON media_items(release_year);
@@ -115,6 +119,8 @@ CREATE INDEX IF NOT EXISTS idx_media_type_new    ON media_items(media_type, crea
 CREATE INDEX IF NOT EXISTS idx_media_type_title  ON media_items(media_type, title COLLATE NOCASE, key);
 CREATE INDEX IF NOT EXISTS idx_media_shuffle     ON media_items(media_type, shuffle_key) WHERE published = 1;
 CREATE INDEX IF NOT EXISTS idx_media_unrated     ON media_items(key) WHERE vote_count IS NULL;
+CREATE INDEX IF NOT EXISTS idx_media_synced      ON media_items(last_synced_at);
+CREATE INDEX IF NOT EXISTS idx_media_missing     ON media_items(key) WHERE missing_images > 0;
 
 -- Genres as a join table rather than a serialised array: lets the database do
 -- the filtering, which is what removed the need to ship the whole catalogue to
@@ -153,6 +159,11 @@ CREATE TABLE IF NOT EXISTS media_images (
     height            INTEGER,
     aspect_ratio      REAL,
     created_at        INTEGER NOT NULL,
+
+    -- Gone from TMDB's list and answering 404: out of play, kept for the
+    -- moderator to restore or confirm. Confirmed removal also rejects it.
+    missing_at        INTEGER,
+    removed_at        INTEGER,
     UNIQUE (media_key, file_path)
 );
 CREATE INDEX IF NOT EXISTS idx_images_media     ON media_images(media_key, status);
@@ -228,8 +239,9 @@ CREATE TABLE IF NOT EXISTS daily_overrides (
     spare_ids   TEXT,                                            -- JSON array, used when a frame 404s
     frame_count INTEGER,
     frozen_at   INTEGER,
-    created_by  TEXT,
-    created_at  INTEGER NOT NULL
+    created_by  TEXT,                                            -- 'auto' when the cron picked it
+    created_at  INTEGER NOT NULL,
+    replaced_at INTEGER                                          -- a frame went missing and a spare took its place
 );
 CREATE INDEX IF NOT EXISTS idx_daily_media_key ON daily_overrides(media_key);
 
@@ -287,6 +299,6 @@ INSERT OR IGNORE INTO app_config (key, value) VALUES
     ('autoHideReportWeight',     '3'),
     ('catalogCacheTTLSeconds',   '86400'),
     ('voteWeightMinRounds',      '5'),
-    ('targetApprovedFrames',     '12'),
+    ('targetApprovedFrames',     '7'),
     ('reportReplacementLimit',   '2'),
     ('onboardingMediaKey',       '');

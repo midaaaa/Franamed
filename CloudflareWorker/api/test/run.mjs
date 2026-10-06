@@ -16,6 +16,9 @@ const { refreshMediaCounters, buildCatalogQuery } = await import(`${API}src/lib/
 const { reporterWeight } = await import(`${API}src/lib/limits.js`);
 const { selectRoundFrames, seededRandom } = await import(`${API}src/lib/frames.js`);
 const { stepDown } = await import(`${API}src/lib/catalogIndex.js`);
+const { syncDueTitles } = await import(`${API}src/lib/sync.js`);
+const { autoScheduleTomorrow } = await import(`${API}src/lib/daily.js`);
+const { NIGHTLY_CRON } = await import(`${API}src/lib/scheduled.js`);
 
 let failures = 0;
 function check(label, condition, detail = "") {
@@ -85,6 +88,8 @@ const movies = keys.filter((key) => key.startsWith("movie_"));
 // ------------------------------------------------------------------ transport
 
 const tmdbCalls = [];
+const tmdbTitles = new Map();
+const imageChecks = [];
 const graphqlCalls = [];
 globalThis.fetch = async (url, init) => {
     const target = new URL(url);
@@ -96,6 +101,10 @@ globalThis.fetch = async (url, init) => {
                 d1: [{ sum: { readQueries: 900, writeQueries: 50, rowsRead: 250000, rowsWritten: 4000 } }]
             }] } }
         }), { status: 200 });
+    }
+    if (target.hostname === "image.tmdb.org") {
+        imageChecks.push(target.pathname);
+        return new Response(null, { status: target.pathname.includes("gone") ? 404 : 200 });
     }
     tmdbCalls.push(target.pathname + target.search);
     const reply = (body) => new Response(JSON.stringify(body), { status: 200 });
@@ -136,6 +145,7 @@ globalThis.fetch = async (url, init) => {
         });
     }
     const details = target.pathname.match(/^\/3\/(movie|tv)\/(\d+)$/);
+    if (details && tmdbTitles.has(Number(details[2]))) return reply(tmdbTitles.get(Number(details[2])));
     if (details) return reply({ id: Number(details[2]), vote_average: 7.26, vote_count: 1234 });
     throw new Error(`unexpected fetch ${url}`);
 };
@@ -259,7 +269,10 @@ check("6 approved, one unjudged: auto waits", row("movie_4242").approved_images 
 res = await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { publishMode: "on" });
 check("'on' publishes early", res.status === 200 && row("movie_4242").published === 1, JSON.stringify(res.body));
 await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { publishMode: "auto" });
-check("back to auto withdraws it", row("movie_4242").published === 0);
+check("back to auto keeps a published title out there", row("movie_4242").published === 1);
+await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { publishMode: "off" });
+await call("mod", "PATCH", "/v1/catalog/items/movie_4242", { publishMode: "auto" });
+check("but auto does not bring back a withdrawn one with unjudged frames", row("movie_4242").published === 0);
 await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", { verdicts: [{ imageId: classic[6], status: "pending" }] });
 const undone = db.db.prepare("SELECT status, moderator_status FROM media_images WHERE id = ?").get(classic[6]);
 check("undo sends a frame back to unjudged", undone.status === "pending" && undone.moderator_status === null && row("movie_4242").unjudged_images === 2);
@@ -527,8 +540,8 @@ check("the backup restores everything the phone keeps", restoredEntry?.hidden ==
 console.log("catalogue index");
 check("steps round down", stepDown(7.26, 0.5) === 7 && stepDown(7.5, 0.5) === 7.5 && stepDown(1299, 100) === 1200 && stepDown(0.3, 0.1) === 0.3);
 check("ratings start empty", row("movie_102").vote_count === null);
-await worker.scheduled({ cron: "*/30 * * * *", scheduledTime: Date.now() }, env, {});
-check("the cron fills ratings in", db.db.prepare("SELECT COUNT(*) AS n FROM media_items WHERE vote_count IS NULL").get().n === 0
+for (let run = 0; run < 2; run += 1) await worker.scheduled({ cron: "*/30 * * * *", scheduledTime: Date.now() }, env, {});
+check("the cron fills ratings in a few titles a run", db.db.prepare("SELECT COUNT(*) AS n FROM media_items WHERE vote_count IS NULL").get().n === 0
     && row("movie_102").vote_count === 1234);
 const firstVersion = db.db.prepare("SELECT value FROM app_config WHERE key = 'catalogIndexVersion'").get()?.value;
 check("and builds the index", /^v1-[0-9a-f]{16}$/.test(firstVersion ?? ""), firstVersion);
@@ -540,6 +553,7 @@ check("the version is in the body and the header", res.body.version === firstVer
 res = await call("plain", "GET", "/v1/profile");
 check("every response carries the version", res.headers.get("X-Catalog-Version") === firstVersion);
 
+await worker.scheduled({}, env, {});
 const rowsBefore = db.db.prepare("SELECT COUNT(*) AS n FROM catalog_index").get().n;
 await worker.scheduled({}, env, {});
 check("a clean index is not rebuilt", db.db.prepare("SELECT COUNT(*) AS n FROM catalog_index").get().n === rowsBefore);
@@ -553,6 +567,178 @@ check("the old version stays for a while", db.db.prepare("SELECT 1 FROM catalog_
 await call("mod", "PATCH", `/v1/catalog/items/${published[0]}`, { publishMode: "auto" });
 await worker.scheduled({}, env, {});
 check("the same catalogue hashes to the same version", db.db.prepare("SELECT value FROM app_config WHERE key = 'catalogIndexVersion'").get().value === firstVersion);
+
+// ------------------------------------------------------------------ background upkeep
+
+console.log("sync with TMDB");
+{
+    addTitle("movie_7777", { title: "Синк", popularity: 3, frames: judged(8, 1, 0) });
+    const longAgo = Date.now() - 200 * 24 * 60 * 60 * 1000;
+    db.db.prepare("UPDATE media_items SET last_synced_at = ?, release_year = 1990, original_language = 'en', vote_average = 5, vote_count = 100 WHERE key = 'movie_7777'").run(longAgo);
+    const f = db.db.prepare("SELECT * FROM media_images WHERE media_key = 'movie_7777' ORDER BY id").all();
+    db.db.prepare("UPDATE media_images SET file_path = '/gone-a.jpg' WHERE id = ?").run(f[0].id);
+    db.db.prepare("UPDATE media_images SET file_path = '/moved.jpg' WHERE id = ?").run(f[1].id);
+    db.db.prepare("UPDATE media_images SET missing_at = 1 WHERE id = ?").run(f[2].id);
+    await refreshMediaCounters({ DB: db }, "movie_7777");
+    check("a title with a missing frame counts it", row("movie_7777").missing_images === 1 && row("movie_7777").approved_images === 7 && row("movie_7777").published === 1);
+
+    const listed = f.slice(2, 8).map((frame) => frame.file_path);
+    tmdbTitles.set(7777, {
+        id: 7777, title: "Синк 2", original_title: "Sync", release_date: "1990-01-01", original_language: "en",
+        popularity: 4, vote_average: 8.3, vote_count: 4321, genres: [{ id: 18 }],
+        images: { posters: [], backdrops: [
+            ...listed.map((path) => ({ file_path: path, iso_639_1: null, vote_average: 9.9, vote_count: 99 })),
+            { file_path: "/new1.jpg", iso_639_1: null, vote_average: 1, vote_count: 1, width: 1920, height: 1080, aspect_ratio: 1.778 },
+            { file_path: "/new2.jpg", iso_639_1: null, vote_average: 1, vote_count: 1 },
+            { file_path: "/titled.jpg", iso_639_1: "en", vote_average: 1, vote_count: 1 }
+        ] }
+    });
+
+    db.db.prepare("INSERT INTO daily_overrides (date, media_key, frame_ids, spare_ids, frame_count, created_at) VALUES ('2999-07-01', 'movie_7777', ?, ?, 6, 0)")
+        .run(JSON.stringify(f.slice(0, 6).map((x) => x.id).reverse()), JSON.stringify([f[6].id, f[7].id]));
+    db.db.prepare("INSERT INTO daily_overrides (date, media_key, frame_ids, spare_ids, frame_count, created_at) VALUES ('2999-07-02', 'movie_7777', ?, '[]', 6, 0)")
+        .run(JSON.stringify(f.slice(0, 6).map((x) => x.id)));
+    db.db.prepare("INSERT INTO daily_results (uid, date, media_key, was_correct, attempts_used, completed_at) VALUES ('mod', '2999-07-02', 'movie_7777', 1, 1, 0)").run();
+
+    imageChecks.length = 0;
+    const outcome = await syncDueTitles(env, { limit: 50 });
+    const synced = outcome?.synced?.find((entry) => entry.key === "movie_7777");
+    const frame = (id) => db.db.prepare("SELECT * FROM media_images WHERE id = ?").get(id);
+    check("the due title is synced", synced?.complete === true, JSON.stringify(outcome));
+    check("its own fields are rewritten", row("movie_7777").title === "Синк 2" && row("movie_7777").vote_count === 4321
+        && row("movie_7777").last_synced_at > longAgo);
+    check("genres follow TMDB", db.db.prepare("SELECT group_concat(genre_id) AS g FROM media_genres WHERE media_key = 'movie_7777'").get().g === "18");
+    check("frames already known are not rewritten", frame(f[3].id).tmdb_vote_average === f[3].tmdb_vote_average);
+    const fresh = db.db.prepare("SELECT status, moderator_status FROM media_images WHERE media_key = 'movie_7777' AND file_path IN ('/new1.jpg', '/new2.jpg')").all();
+    check("new stills arrive unjudged, titled ones not at all", fresh.length === 2 && fresh.every((x) => x.status === "pending" && x.moderator_status === null)
+        && !db.db.prepare("SELECT 1 FROM media_images WHERE file_path = '/titled.jpg'").get());
+    check("only unlisted frames still in play are checked", JSON.stringify(imageChecks.sort()) === JSON.stringify(["/t/p/w92/gone-a.jpg", "/t/p/w92/moved.jpg"]), JSON.stringify(imageChecks));
+    check("a 404 marks a frame missing", frame(f[0].id).missing_at > 0 && frame(f[0].id).status === "approved");
+    check("an unlisted frame that still loads is left alone", frame(f[1].id).missing_at === null);
+    check("a frame TMDB lists again is back", frame(f[2].id).missing_at === null);
+    check("new frames keep a published title published", row("movie_7777").published === 1 && row("movie_7777").unjudged_images === 2
+        && row("movie_7777").missing_images === 1 && row("movie_7777").approved_images === 7);
+    check("a rating change flags the index", db.db.prepare("SELECT 1 FROM app_config WHERE key = 'catalogIndexDirty'").get() !== undefined);
+
+    const day = db.db.prepare("SELECT * FROM daily_overrides WHERE date = '2999-07-01'").get();
+    const dayFrames = JSON.parse(day.frame_ids);
+    check("an unplayed daily swaps the missing frame for a spare", !dayFrames.includes(f[0].id) && dayFrames.length === 6
+        && dayFrames.includes(f[6].id) && day.replaced_at > 0, day.frame_ids);
+    check("in the same place", dayFrames[5] === f[6].id && JSON.stringify(dayFrames.slice(0, 5)) === JSON.stringify(f.slice(1, 6).map((x) => x.id).reverse()));
+    check("and its spares are all in play", JSON.parse(day.spare_ids).every((id) => frame(id).missing_at === null && !dayFrames.includes(id)));
+    check("a played daily is left as it was", db.db.prepare("SELECT replaced_at FROM daily_overrides WHERE date = '2999-07-02'").get().replaced_at === null);
+    res = await call("mod", "GET", "/v1/admin/daily/2999-07-01");
+    check("the moderator sees the swap", res.body.replacedAt > 0 && !res.body.images.some((image) => image.id === f[0].id), JSON.stringify(res.body).slice(0, 200));
+    await call("mod", "PUT", "/v1/admin/daily/2999-07-01/frames", { reroll: true });
+    check("re-laying a day clears the flag", db.db.prepare("SELECT replaced_at FROM daily_overrides WHERE date = '2999-07-01'").get().replaced_at === null);
+    db.db.prepare("DELETE FROM daily_results WHERE date = '2999-07-02'").run();
+    db.db.prepare("DELETE FROM daily_overrides WHERE media_key = 'movie_7777'").run();
+
+    check("a synced title is not due again", (await syncDueTitles(env, { limit: 50 }))?.synced?.some((entry) => entry.key === "movie_7777") !== true);
+
+    let dealtMissing = false;
+    for (let i = 0; i < 20; i += 1) {
+        const round = await call("mod", "GET", "/v1/round/next?mediaKey=movie_7777");
+        if ([...round.body.frames, ...round.body.spareFrames].some((x) => x.id === f[0].id)) dealtMissing = true;
+    }
+    check("a missing frame is never dealt", !dealtMissing);
+
+    res = await call("mod", "GET", "/v1/curation/home");
+    check("the missing badge counts titles", res.body.badges.missingFrames >= 1, JSON.stringify(res.body.badges));
+    res = await call("mod", "GET", "/v1/curation/catalog?mediaType=movie&filter=missingFrames");
+    check("and the filter finds them", res.status === 200 && res.body.items.some((item) => item.key === "movie_7777" && item.missingImages === 1));
+    res = await call("plain", "POST", `/v1/curation/images/${f[0].id}/remove`);
+    check("a player cannot confirm removal", res.status === 403);
+    res = await call("mod", "POST", `/v1/curation/images/${f[0].id}/remove`);
+    check("removal rejects and locks the frame", res.status === 200 && res.body.removedAt > 0 && res.body.status === "rejected"
+        && row("movie_7777").missing_images === 0, JSON.stringify(res.body));
+    await call("mod", "POST", "/v1/catalog/items/movie_7777/reset");
+    check("a reset does not bring a removed frame back", frame(f[0].id).status === "rejected" && frame(f[0].id).moderator_status === "rejected");
+    await call("mod", "POST", "/v1/curation/titles/movie_7777/verdicts", { verdicts: f.slice(1, 8).map((x) => ({ imageId: x.id, status: "approved", difficultyTier: "hard" }))
+        .concat([{ imageId: f[0].id, status: "approved", difficultyTier: "easy" }]), rejectRemaining: true });
+    check("nor does a verdict", frame(f[0].id).status === "rejected");
+
+    db.db.prepare("UPDATE media_images SET missing_at = 5 WHERE id IN (?, ?)").run(f[3].id, f[4].id);
+    await refreshMediaCounters({ DB: db }, "movie_7777");
+    check("fewer than six in play takes the title out", row("movie_7777").approved_images === 5 && row("movie_7777").published === 0);
+    res = await call("mod", "POST", `/v1/curation/images/${f[3].id}/restore`);
+    check("restoring a frame puts it back", res.status === 200 && res.body.missingAt === null && row("movie_7777").approved_images === 6
+        && row("movie_7777").published === 1, JSON.stringify(res.body));
+}
+
+console.log("random and automatic dailies");
+{
+    const today = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const later = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    db.db.prepare("DELETE FROM daily_overrides WHERE date >= ?").run(today);
+    db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES ('2000-01-01', 'movie_102', 0)").run();
+    const eligible = db.db.prepare(
+        "SELECT key FROM media_items WHERE media_type = 'movie' AND published = 1 AND approved_images >= 7 AND key != 'movie_102'"
+    ).all().map((r) => r.key);
+    const dayRow = (date) => db.db.prepare("SELECT * FROM daily_overrides WHERE date = ?").get(date);
+
+    check("off by default, the cron leaves tomorrow empty", (await autoScheduleTomorrow(env)) === null && !dayRow(tomorrow));
+
+    res = await call("mod", "PUT", `/v1/admin/daily/${later}`, { random: true });
+    check("a moderator can roll a random film for a day", res.status === 200 && eligible.includes(res.body.mediaKey)
+        && res.body.frameIds.length === 6 && dayRow(later).created_by === "mod", JSON.stringify(res.body));
+    res = await call("plain", "PUT", `/v1/admin/daily/${later}`, { random: true });
+    check("a player cannot", res.status === 403);
+
+    await call("me", "PATCH", "/v1/admin/config", { autoDaily: true });
+    const outcome = await autoScheduleTomorrow(env);
+    check("with the toggle on, tomorrow gets a film", outcome?.date === tomorrow && dayRow(tomorrow)?.created_by === "auto"
+        && JSON.parse(dayRow(tomorrow).frame_ids).length === 6, JSON.stringify(outcome));
+    check("an unused one", eligible.includes(dayRow(tomorrow).media_key) && dayRow(tomorrow).media_key !== dayRow(later).media_key);
+    check("today is never filled behind a moderator's back", !dayRow(today));
+    check("a filled tomorrow is left alone", (await autoScheduleTomorrow(env)) === null);
+    res = await call("mod", "GET", "/v1/admin/daily?limit=10");
+    check("the schedule says which were automatic", res.body.schedule.find((d) => d.date === tomorrow)?.autoPicked === true
+        && res.body.schedule.find((d) => d.date === later)?.autoPicked === false);
+
+    db.db.prepare("DELETE FROM daily_overrides WHERE date >= ?").run(today);
+    const keep = eligible.map((key) => `'${key}'`).join(",");
+    db.db.prepare(`INSERT INTO daily_overrides (date, media_key, created_at) SELECT '1999-01-' || printf('%02d', rowid % 28 + 1) || '-' || key, key, 0 FROM media_items WHERE key IN (${keep})`).run();
+    res = await call("mod", "PUT", `/v1/admin/daily/${later}`, { random: true });
+    check("when every film has had its day, a roll says so", res.status === 409, JSON.stringify(res.body));
+    check("and the cron stays quiet", (await autoScheduleTomorrow(env)) === null);
+    db.db.prepare("DELETE FROM daily_overrides WHERE date < '2000-01-02' OR date >= ?").run(today);
+    await call("me", "PATCH", "/v1/admin/config", { autoDaily: false });
+}
+
+console.log("playlists count what can be played");
+{
+    const pl = await call("mod", "POST", "/v1/playlists", { title: "Пропуски", mediaType: "movie" });
+    await call("mod", "PUT", `/v1/playlists/${pl.body.id}/items`, { mediaKeys: ["movie_101", "movie_102", "movie_7777"] });
+    res = await call("mod", "GET", `/v1/round/next?playlistId=${pl.body.id}`);
+    check("an unplayable entry is skipped and not counted", res.status === 200 && res.body.item.key === "movie_102"
+        && res.body.position === 1 && res.body.playlistTotal === 2, JSON.stringify(res.body).slice(0, 200));
+    await call("mod", "POST", "/v1/round/finish", { mediaKey: "movie_102", mode: "playlist", playlistId: pl.body.id, result: "wrong", frameCount: 6 });
+    res = await call("mod", "GET", `/v1/round/next?playlistId=${pl.body.id}`);
+    check("positions are among the playable", res.body.item.key === "movie_7777" && res.body.position === 2 && res.body.playlistTotal === 2);
+    res = await call("mod", "GET", `/v1/playlists/${pl.body.id}`);
+    check("progress counts the playable", res.body.progress.total === 2 && res.body.progress.answered === 1
+        && res.body.items.find((i) => i.key === "movie_101").playable === false, JSON.stringify(res.body.progress));
+    db.db.prepare("UPDATE media_items SET published = 0 WHERE key = 'movie_102'").run();
+    res = await call("mod", "GET", `/v1/playlists/${pl.body.id}`);
+    check("an answered title that leaves the game leaves the count", res.body.progress.total === 1 && res.body.progress.answered === 0);
+    await refreshMediaCounters({ DB: db }, "movie_102");
+    db.db.prepare("UPDATE media_items SET published = 1 WHERE key = 'movie_102'").run();
+}
+
+console.log("nightly token cleanup");
+{
+    const insert = db.db.prepare("INSERT INTO refresh_tokens (token_hash, uid, issued_at, expires_at, revoked_at) VALUES (?, 'mod', 0, ?, ?)");
+    insert.run("n-old-spent", Date.now() + 1e9, Date.now() - SPENT_TOKEN_RETENTION_MS - 1000);
+    insert.run("n-expired", Date.now() - 1000, null);
+    insert.run("n-recent", Date.now() + 1e9, Date.now() - 1000);
+    insert.run("n-live", Date.now() + 1e9, null);
+    await worker.scheduled({ cron: NIGHTLY_CRON, scheduledTime: Date.now() }, env, {});
+    const left = db.db.prepare("SELECT token_hash FROM refresh_tokens WHERE token_hash LIKE 'n-%' ORDER BY token_hash").all().map((r) => r.token_hash);
+    check("dead tokens go, live and recently spent stay", JSON.stringify(left) === JSON.stringify(["n-live", "n-recent"]), JSON.stringify(left));
+    db.db.prepare("DELETE FROM refresh_tokens WHERE token_hash LIKE 'n-%'").run();
+}
 
 // ------------------------------------------------------------------ refresh tokens
 
@@ -638,6 +824,11 @@ const hot = {
     reportBadge: ["SELECT COUNT(DISTINCT image_id) AS n FROM image_reports WHERE dismissed_at IS NULL", []],
     roundFrames: ["SELECT * FROM media_images WHERE media_key = ? AND status = 'approved'", ["movie_101"]],
     reporterBar: ["SELECT COUNT(*) AS count FROM (SELECT 1 FROM watched_media WHERE uid = ? LIMIT ?)", ["plain", 5]],
+    syncDue: [`SELECT * FROM media_items INDEXED BY idx_media_synced
+               WHERE last_synced_at < ?1 AND (last_synced_at < ?2 OR release_year >= ?3)
+               ORDER BY last_synced_at LIMIT ?4`, [1, 0, 2025, 2]],
+    unrated: ["SELECT key, media_type, tmdb_id FROM media_items WHERE vote_count IS NULL LIMIT ?", [5]],
+    missingBadge: ["SELECT COUNT(*) AS n FROM media_items WHERE missing_images > 0", []],
     titleStats: [`SELECT solved_at_frame AS frame, COUNT(*) AS n FROM watched_media
                   WHERE media_key = ? AND result IS NOT NULL GROUP BY solved_at_frame`, ["movie_101"]],
     dayStats: [`SELECT CASE WHEN was_correct = 1 THEN attempts_used END AS frame, COUNT(*) AS n

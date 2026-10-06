@@ -41,7 +41,7 @@ async function loadItemWithFrames(env, key, frameCount) {
     const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
     if (!item) throw notFound(`Unknown media item "${key}"`);
 
-    const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ? AND status = 'approved'")
+    const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ? AND status = 'approved' AND missing_at IS NULL")
         .bind(key)
         .all();
     const frames = selectRoundFrames(images.results, frameCount);
@@ -209,15 +209,19 @@ export async function handleRound(request, env, segments, url) {
 
         if (!row) throw notFound("Nothing left to play in this playlist");
 
+        // Counted over what can be dealt, so a title that left the game does
+        // not leave "17 of 100" forever one short.
         const total = await env.DB.prepare(
-            "SELECT COUNT(*) AS count FROM playlist_items WHERE playlist_id = ?"
-        ).bind(playlistId).first();
+            `SELECT COUNT(*) AS count, SUM(p.position <= ?) AS position
+             FROM playlist_items p JOIN media_items m ON m.key = p.media_key
+             WHERE p.playlist_id = ? AND m.published = 1`
+        ).bind(row.position, playlistId).first();
 
         return json({
             pool: "playlist",
             playlistId,
             // 1-based so the client can say "17 of 100" without arithmetic.
-            position: row.position + 1,
+            position: total.position,
             playlistTotal: total.count,
             ...(await loadItemWithFrames(env, row.key, frameCount))
         });

@@ -251,7 +251,7 @@ export async function handleCatalog(request, env, segments, url) {
             env.DB.prepare(
                 `UPDATE media_images
                  SET moderator_status = NULL, moderator_uid = NULL, moderator_at = NULL
-                 WHERE media_key = ?`
+                 WHERE media_key = ? AND removed_at IS NULL`
             ).bind(key),
             env.DB.prepare(
                 `UPDATE media_items

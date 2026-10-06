@@ -117,6 +117,15 @@ async function issueTokens(env, uid, userAgent) {
     };
 }
 
+// Rotation prunes only the account that refreshed; this catches accounts that
+// stopped refreshing, whose dead tokens would otherwise stay forever.
+export async function pruneRefreshTokens(env, { now = Date.now() } = {}) {
+    const result = await env.DB.prepare(
+        "DELETE FROM refresh_tokens WHERE revoked_at < ? OR expires_at < ?"
+    ).bind(now - SPENT_TOKEN_RETENTION_MS, now).run();
+    return { deleted: result.meta?.changes ?? 0 };
+}
+
 export function publicUser(user) {
     return {
         uid: user.uid,

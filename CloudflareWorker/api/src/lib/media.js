@@ -52,7 +52,8 @@ export function serializeMediaItem(row, genreIds = [], { uid = null, now = Date.
         previewPath: row.preview_path ?? null,
         pendingImages: row.pending_images ?? 0,
         unjudgedImages: row.unjudged_images ?? 0,
-        untieredApproved: row.untiered_approved ?? 0
+        untieredApproved: row.untiered_approved ?? 0,
+        missingImages: row.missing_images ?? 0
     };
 }
 
@@ -74,7 +75,9 @@ export function serializeImage(row) {
         voteCount: row.tmdb_vote_count,
         width: row.width,
         height: row.height,
-        aspectRatio: row.aspect_ratio
+        aspectRatio: row.aspect_ratio,
+        missingAt: row.missing_at ?? null,
+        removedAt: row.removed_at ?? null
     };
 }
 
@@ -125,7 +128,9 @@ export const CURATION_FILTERS = {
     hasNewFrames: "m.unjudged_images > 0 AND m.unjudged_images < m.total_images",
     noPoster: "m.poster_url IS NULL",
     published: "m.published = 1",
-    rejected: "m.status = 'rejected'"
+    rejected: "m.status = 'rejected'",
+    // TMDB stopped listing a frame and the image answers 404.
+    missingFrames: "m.missing_images > 0"
 };
 
 export const CURATION_FILTER_NAMES = Object.keys(CURATION_FILTERS);
@@ -259,10 +264,18 @@ export function workWeight({ status, publishMode, popularity, reviewed, unjudged
     return (reviewed > 0 ? 1_000_000 : 0) + popularity + 0.01;
 }
 
-// Whether players may be dealt the title, from the rule in schema.sql.
-export function isPublished({ status, publishMode, posterURL, approved, unjudged }) {
+// Whether players may be dealt the title, from the rule in schema.sql. Sticky
+// under 'auto': frames TMDB adds to a published title wait for judgement
+// without taking the title out of the game.
+export function isPublished({ status, publishMode, posterURL, approved, unjudged, wasPublished = false }) {
     if (publishMode === "off" || status === "rejected" || !posterURL || approved < PUBLISH_MIN_FRAMES) return false;
-    return publishMode === "on" || unjudged === 0;
+    return publishMode === "on" || unjudged === 0 || wasPublished;
+}
+
+// A frame that went missing from TMDB stays approved for when it comes back,
+// but is out of every round meanwhile.
+export function isPlayableFrame(frame) {
+    return frame.status === "approved" && (frame.missing_at ?? null) === null;
 }
 
 // Recomputes everything a list screen reads off a title. Derived rather than
@@ -275,11 +288,11 @@ export async function refreshMediaCounters(env, key) {
     if (!item) return;
 
     const frames = await env.DB.prepare(
-        `SELECT id, status, moderator_status, difficulty_tier, file_path, tmdb_vote_average
+        `SELECT id, status, moderator_status, difficulty_tier, file_path, tmdb_vote_average, missing_at, removed_at
          FROM media_images WHERE media_key = ?`
     ).bind(key).all();
 
-    const counts = { total: 0, reviewed: 0, approved: 0, pending: 0, unjudged: 0, untiered: 0 };
+    const counts = { total: 0, reviewed: 0, approved: 0, pending: 0, unjudged: 0, untiered: 0, missing: 0 };
     let preview = null;
     const standing = { approved: 0, pending: 1, rejected: 2 };
 
@@ -287,15 +300,16 @@ export async function refreshMediaCounters(env, key) {
         counts.total += 1;
         if (frame.status !== "pending") counts.reviewed += 1;
         if (frame.status === "pending") counts.pending += 1;
-        if (frame.status === "approved") counts.approved += 1;
-        if (frame.status === "approved" && frame.difficulty_tier === null) counts.untiered += 1;
+        if (isPlayableFrame(frame)) counts.approved += 1;
+        if (isPlayableFrame(frame) && frame.difficulty_tier === null) counts.untiered += 1;
+        if (frame.missing_at !== null && frame.removed_at === null) counts.missing += 1;
         if (frame.moderator_status === null) counts.unjudged += 1;
 
-        const better = !preview
+        const better = frame.missing_at === null && (!preview
             || standing[frame.status] < standing[preview.status]
             || (standing[frame.status] === standing[preview.status]
                 && (frame.tmdb_vote_average > preview.tmdb_vote_average
-                    || (frame.tmdb_vote_average === preview.tmdb_vote_average && frame.id < preview.id)));
+                    || (frame.tmdb_vote_average === preview.tmdb_vote_average && frame.id < preview.id))));
         if (better) preview = frame;
     }
 
@@ -315,7 +329,8 @@ export async function refreshMediaCounters(env, key) {
         publishMode,
         posterURL: item.poster_url,
         approved: counts.approved,
-        unjudged: counts.unjudged
+        unjudged: counts.unjudged,
+        wasPublished: item.published === 1
     }) ? 1 : 0;
 
     // These sit in indexes, and D1 bills a written row per index touched, so
@@ -335,12 +350,12 @@ export async function refreshMediaCounters(env, key) {
     const update = env.DB.prepare(
         `UPDATE media_items
          SET total_images = ?, reviewed_images = ?, approved_images = ?,
-             pending_images = ?, unjudged_images = ?, untiered_approved = ?,
+             pending_images = ?, unjudged_images = ?, untiered_approved = ?, missing_images = ?,
              preview_path = ?${moved.map((clause) => `, ${clause}`).join("")}
          WHERE key = ?`
     ).bind(
         counts.total, counts.reviewed, counts.approved,
-        counts.pending, counts.unjudged, counts.untiered,
+        counts.pending, counts.unjudged, counts.untiered, counts.missing,
         preview?.file_path ?? null, ...movedValues, key
     );
 
@@ -359,6 +374,7 @@ export async function recomputeTitleImageStatuses(env, key, { autoHideReportWeig
         `UPDATE media_images
          SET report_weight = ${liveReportWeight},
              status = CASE
+                 WHEN removed_at IS NOT NULL THEN 'rejected'
                  WHEN moderator_status IS NOT NULL THEN moderator_status
                  WHEN ${liveReportWeight} >= ?1 THEN 'rejected'
                  ELSE 'pending'

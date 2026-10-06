@@ -4,7 +4,7 @@ import { badRequest, conflict, json, noContent, notFound, parseInteger, readJSON
 import { ROLES, authenticate, requireRole, revokeAllTokens, roleRank } from "../lib/auth.js";
 import { readConfig, writeConfig } from "../lib/config.js";
 import { deleteAccount, recomputeReportedTitles } from "../lib/accounts.js";
-import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, setDailyFrames, utcDateString } from "../lib/daily.js";
+import { DEFAULT_DAILY_FRAME_COUNT, freezeDailyLayout, isValidDateString, pickRandomDailyFilm, setDailyFrames, utcDateString } from "../lib/daily.js";
 import { serializeImage } from "../lib/media.js";
 import { readUsage } from "../lib/usage.js";
 
@@ -111,14 +111,19 @@ export async function handleAdmin(request, env, segments, url) {
         if (date < utcDateString()) throw badRequest("A past day cannot be changed");
 
         const body = await readJSON(request);
-        const mediaKey = requireString(body, "mediaKey", { maxLength: 60 });
+        const config = await readConfig(env);
+
+        // {random: true} — the same pick the cron makes with autoDaily on.
+        const mediaKey = body.random === true
+            ? await pickRandomDailyFilm(env, { minApproved: config.targetApprovedFrames })
+            : requireString(body, "mediaKey", { maxLength: 60 });
+        if (!mediaKey) throw conflict("Every film that could be a daily has already had its day");
         const frameCount = parseInteger(body.frameCount, { fallback: DEFAULT_DAILY_FRAME_COUNT, min: 1, max: DEFAULT_DAILY_FRAME_COUNT });
 
         if (!mediaKey.startsWith("movie_")) {
             throw badRequest("The daily puzzle is movies only");
         }
 
-        const config = await readConfig(env);
         const item = await env.DB.prepare("SELECT approved_images, published FROM media_items WHERE key = ?").bind(mediaKey).first();
         if (!item) throw notFound("Unknown media item");
         if (item.published !== 1) throw badRequest("Only a title in the game can be a daily puzzle");
@@ -160,7 +165,7 @@ export async function handleAdmin(request, env, segments, url) {
         const plan = await loadEditableDay(env, segments[1], { forReading: true });
 
         const images = await env.DB.prepare(
-            "SELECT * FROM media_images WHERE media_key = ? AND status = 'approved' ORDER BY id"
+            "SELECT * FROM media_images WHERE media_key = ? AND status = 'approved' AND missing_at IS NULL ORDER BY id"
         ).bind(plan.media_key).all();
 
         return json({
@@ -169,6 +174,8 @@ export async function handleAdmin(request, env, segments, url) {
             frameIds: JSON.parse(plan.frame_ids || "[]"),
             spareIds: JSON.parse(plan.spare_ids || "[]"),
             editable: plan.editable,
+            autoPicked: plan.created_by === "auto",
+            replacedAt: plan.replaced_at ?? null,
             images: images.results.map(serializeImage)
         });
     }
@@ -213,7 +220,7 @@ export async function handleAdmin(request, env, segments, url) {
         const limit = parseInteger(url.searchParams.get("limit"), { fallback: 400, min: 1, max: 1000 });
 
         const rows = await env.DB.prepare(
-            `SELECT d.date, d.media_key, d.created_by, d.frame_ids, d.frame_count, d.frozen_at, m.title, m.poster_url
+            `SELECT d.date, d.media_key, d.created_by, d.frame_ids, d.frame_count, d.frozen_at, d.replaced_at, m.title, m.poster_url
              FROM daily_overrides d LEFT JOIN media_items m ON m.key = d.media_key
              ORDER BY d.date DESC LIMIT ?`
         ).bind(limit).all();
@@ -232,7 +239,9 @@ export async function handleAdmin(request, env, segments, url) {
                 posterURL: row.poster_url ?? null,
                 frameCount: row.frame_count,
                 frozen: Boolean(row.frame_ids),
-                scheduledBy: row.created_by
+                scheduledBy: row.created_by,
+                autoPicked: row.created_by === "auto",
+                replacedAt: row.replaced_at ?? null
             })),
             // Small enough to send whole, and it is what the planner needs to
             // grey out films that have already had their day.

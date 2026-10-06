@@ -1,5 +1,5 @@
 // Writing a moderator's verdicts on a title, all or just what changed since the
-// last save. Grouped by the change they make: 170 frames cost one statement per
+// last save. A frame confirmed removed from TMDB takes no verdicts. Grouped by the change they make: 170 frames cost one statement per
 // (status, tier) pair, against D1's limit of 50 queries per invocation.
 
 import { badRequest } from "./http.js";
@@ -82,12 +82,12 @@ export async function applyVerdicts(env, { mediaKey, verdicts, rejectRemaining, 
                     `UPDATE media_images
                      SET status = CASE WHEN report_weight >= ? THEN 'rejected' ELSE 'pending' END,
                          moderator_status = NULL, moderator_uid = NULL, moderator_at = NULL${tierClause}
-                     WHERE media_key = ? AND id IN (${placeholders})`
+                     WHERE media_key = ? AND removed_at IS NULL AND id IN (${placeholders})`
                 ).bind(autoHide, ...tierBinding, mediaKey, ...chunk)
                 : env.DB.prepare(
                     `UPDATE media_images
                      SET status = ?, moderator_status = ?, moderator_uid = ?, moderator_at = ?${tierClause}
-                     WHERE media_key = ? AND id IN (${placeholders})`
+                     WHERE media_key = ? AND removed_at IS NULL AND id IN (${placeholders})`
                 ).bind(status, status, moderatorUid, now, ...tierBinding, mediaKey, ...chunk);
 
             statements.push(statement);

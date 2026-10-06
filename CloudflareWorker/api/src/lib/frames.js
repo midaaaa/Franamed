@@ -10,6 +10,8 @@
 // can. No image is ever repeated inside a round — a short tier means other
 // tiers contribute more, never that a frame appears twice.
 
+import { isPlayableFrame } from "./media.js";
+
 const TIER_ORDER = ["hard", "medium", "easy"];
 
 // Least-voted first: a frame the community barely engaged with tends to be the
@@ -93,7 +95,7 @@ export function selectRoundFrames(images, frameCount = ROUND_LAYOUT_SIZE, { rand
 
 function layoutRoundFrames(images, { random }) {
     const frameCount = ROUND_LAYOUT_SIZE;
-    const approved = images.filter((image) => image.status === "approved");
+    const approved = images.filter(isPlayableFrame);
 
     // An explicit rank is a curator overriding one exact position. Last write
     // wins on collisions, matching how the curator UI assigns them.
@@ -157,7 +159,7 @@ function layoutRoundFrames(images, { random }) {
 // one for every player.
 export function selectSpareFrames(images, chosenIds, count = 3, { random = Math.random } = {}) {
     const available = shuffled(
-        images.filter((image) => image.status === "approved" && !chosenIds.has(image.id)),
+        images.filter((image) => isPlayableFrame(image) && !chosenIds.has(image.id)),
         random
     );
 

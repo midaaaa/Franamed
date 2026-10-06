@@ -7,6 +7,7 @@
 import { badRequest } from "./http.js";
 import { readConfig } from "./config.js";
 import { seededRandom, selectRoundFrames, selectSpareFrames } from "./frames.js";
+import { isPlayableFrame } from "./media.js";
 
 export function utcDateString(date = new Date()) {
     return date.toISOString().slice(0, 10);
@@ -23,7 +24,7 @@ export function isValidDateString(value) {
 }
 
 // FNV-1a. Any stable hash works here; this one is short and has no dependencies.
-function hashString(value) {
+export function hashString(value) {
     let hash = 0x811c9dc5;
     for (let i = 0; i < value.length; i += 1) {
         hash ^= value.charCodeAt(i);
@@ -64,7 +65,7 @@ export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount 
 
     await env.DB.prepare(
         `UPDATE daily_overrides
-         SET frame_ids = ?, spare_ids = ?, frame_count = ?, frozen_at = ?
+         SET frame_ids = ?, spare_ids = ?, frame_count = ?, frozen_at = ?, replaced_at = NULL
          WHERE date = ?`
     ).bind(
         JSON.stringify(frames.map((frame) => frame.id)),
@@ -81,7 +82,7 @@ export async function freezeDailyLayout(env, { dateString, mediaKey, frameCount 
 // rules so a broken frame keeps a stand-in the moderator did not have to choose.
 export async function setDailyFrames(env, { dateString, mediaKey, frameIds }) {
     const images = await env.DB.prepare("SELECT * FROM media_images WHERE media_key = ?").bind(mediaKey).all();
-    const approved = new Map(images.results.filter((image) => image.status === "approved").map((image) => [image.id, image]));
+    const approved = new Map(images.results.filter(isPlayableFrame).map((image) => [image.id, image]));
 
     if (new Set(frameIds).size !== frameIds.length) throw badRequest("Each frame may appear once");
     if (!frameIds.every((id) => approved.has(id))) throw badRequest("Every frame must be an approved frame of that film");
@@ -91,11 +92,96 @@ export async function setDailyFrames(env, { dateString, mediaKey, frameIds }) {
 
     await env.DB.prepare(
         `UPDATE daily_overrides
-         SET frame_ids = ?, spare_ids = ?, frame_count = ?, frozen_at = ?
+         SET frame_ids = ?, spare_ids = ?, frame_count = ?, frozen_at = ?, replaced_at = NULL
          WHERE date = ?`
     ).bind(JSON.stringify(frameIds), JSON.stringify(spares.map((frame) => frame.id)), frameIds.length, Date.now(), dateString).run();
 
     return { frameIds, spareIds: spares.map((frame) => frame.id) };
+}
+
+// A frame of an unplayed day that went missing from TMDB gives its place to a
+// spare, the same for everyone, and the day is flagged for the moderator. A
+// played day stays as it was: players have seen it, and the round's spares
+// cover the gap on their phones.
+export async function replaceMissingDailyFrames(env, mediaKey, images, { now = Date.now() } = {}) {
+    const days = await env.DB.prepare(
+        "SELECT * FROM daily_overrides WHERE media_key = ? AND date >= ? AND frame_ids IS NOT NULL"
+    ).bind(mediaKey, utcDateString(new Date(now))).all();
+
+    const byId = new Map(images.map((image) => [image.id, image]));
+    const usable = (id) => byId.has(id) && byId.get(id).missing_at === null;
+    let repaired = 0;
+
+    for (const day of days.results) {
+        const frameIds = JSON.parse(day.frame_ids);
+        const spareIds = JSON.parse(day.spare_ids || "[]");
+        if (frameIds.every(usable) && spareIds.every(usable)) continue;
+
+        const played = await env.DB.prepare("SELECT 1 AS yes FROM daily_results WHERE date = ? LIMIT 1").bind(day.date).first();
+        if (played) continue;
+
+        const random = seededRandom(hashString(`${day.date}:replace`));
+        const stock = spareIds.filter(usable);
+        const layout = [];
+        for (const id of frameIds) {
+            if (usable(id)) {
+                layout.push(id);
+                continue;
+            }
+            const next = stock.shift()
+                ?? selectSpareFrames(images, new Set([...frameIds, ...spareIds, ...layout]), 1, { random })[0]?.id;
+            if (next !== undefined) layout.push(next);
+        }
+
+        const spares = selectSpareFrames(images, new Set(layout), 3, { random }).map((image) => image.id);
+
+        await env.DB.prepare(
+            "UPDATE daily_overrides SET frame_ids = ?, spare_ids = ?, replaced_at = ? WHERE date = ?"
+        ).bind(JSON.stringify(layout), JSON.stringify(spares), now, day.date).run();
+        repaired += 1;
+    }
+
+    return repaired;
+}
+
+// A film for a day nobody chose by hand: published, with a spare frame beyond
+// the six, never a day before. Random, so the calendar does not follow the
+// catalogue's order. Null when every eligible film has had its day.
+export async function pickRandomDailyFilm(env, { minApproved }) {
+    const point = Math.random();
+    const from = `SELECT m.key FROM media_items m INDEXED BY idx_media_shuffle
+                  WHERE m.media_type = 'movie' AND m.published = 1 AND m.approved_images >= ?
+                    AND NOT EXISTS (SELECT 1 FROM daily_overrides d WHERE d.media_key = m.key)`;
+    const row = await env.DB.prepare(`${from} AND m.shuffle_key >= ? ORDER BY m.shuffle_key LIMIT 1`)
+        .bind(minApproved, point).first()
+        ?? await env.DB.prepare(`${from} AND m.shuffle_key < ? ORDER BY m.shuffle_key LIMIT 1`)
+            .bind(minApproved, point).first();
+    return row?.key ?? null;
+}
+
+// With `autoDaily` on, tomorrow gets a random film if nobody scheduled one.
+// Only tomorrow: a day that is already running is never filled behind a
+// moderator's back. A moderator can still replace the pick before it plays.
+export async function autoScheduleTomorrow(env, { now = Date.now() } = {}) {
+    const config = await readConfig(env);
+    if (!config.autoDaily) return null;
+
+    const date = utcDateString(new Date(now + 24 * 60 * 60 * 1000));
+    if (await loadDailyPlan(env, date)) return null;
+
+    const mediaKey = await pickRandomDailyFilm(env, { minApproved: config.targetApprovedFrames });
+    if (!mediaKey) {
+        console.error("No film left for an automatic daily", date);
+        return null;
+    }
+
+    const inserted = await env.DB.prepare(
+        "INSERT OR IGNORE INTO daily_overrides (date, media_key, created_by, created_at) VALUES (?, ?, 'auto', ?)"
+    ).bind(date, mediaKey, now).run();
+    if (!inserted.meta?.changes) return null;
+
+    await freezeDailyLayout(env, { dateString: date, mediaKey });
+    return { date, mediaKey };
 }
 
 // Days scheduled before freezing existed are frozen on first play, otherwise
