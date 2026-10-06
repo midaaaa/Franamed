@@ -82,7 +82,17 @@ export function allocateSlots(available, total) {
     return allocation;
 }
 
-export function selectRoundFrames(images, frameCount = 6, { random = Math.random } = {}) {
+// Every round is laid out as six, hardest first, and a shorter round is the
+// first N of that layout: fewer frames means a harder round, not the same
+// ladder squeezed into fewer steps.
+export const ROUND_LAYOUT_SIZE = 6;
+
+export function selectRoundFrames(images, frameCount = ROUND_LAYOUT_SIZE, { random = Math.random } = {}) {
+    return layoutRoundFrames(images, { random }).slice(0, Math.min(frameCount, ROUND_LAYOUT_SIZE));
+}
+
+function layoutRoundFrames(images, { random }) {
+    const frameCount = ROUND_LAYOUT_SIZE;
     const approved = images.filter((image) => image.status === "approved");
 
     // An explicit rank is a curator overriding one exact position. Last write

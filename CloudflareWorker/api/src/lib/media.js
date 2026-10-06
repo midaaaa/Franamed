@@ -1,6 +1,7 @@
 // Shared shapes and queries for the curated catalogue.
 
 import { badRequest, parseInteger } from "./http.js";
+import { markIndexDirtyStatement } from "./catalogIndex.js";
 
 export const MEDIA_TYPES = ["movie", "tv"];
 export const IMAGE_STATUSES = ["pending", "approved", "rejected"];
@@ -44,6 +45,8 @@ export function serializeMediaItem(row, genreIds = [], { uid = null, now = Date.
             ? { uid: row.worked_by, name: row.worked_by_name ?? null, since: row.worked_since, isMine: row.worked_by === uid }
             : null,
         lastSyncedAt: row.last_synced_at,
+        voteAverage: row.vote_average ?? null,
+        voteCount: row.vote_count ?? null,
         rejectedAt: row.rejected_at ?? null,
         rejectedReason: row.rejected_reason ?? null,
         previewPath: row.preview_path ?? null,
@@ -77,11 +80,8 @@ export function serializeImage(row) {
 
 // Reads the filter set out of a query string.
 //
-// Rating filters are intentionally absent. Ratings drift constantly on TMDB, so
-// a copy kept here would answer with numbers that quietly go stale; the curated
-// pool therefore filters on genre, year and language only. The fully random
-// TMDB pool still supports rating filters, because there the numbers come
-// straight from TMDB at request time.
+// No rating filters: the phone filters the curated pool by rating from the
+// catalogue index, and the server only deals frames for the title it picked.
 export function parseFilters(url) {
     const params = url.searchParams;
 
@@ -332,7 +332,7 @@ export async function refreshMediaCounters(env, key) {
         movedValues.push(value);
     }
 
-    await env.DB.prepare(
+    const update = env.DB.prepare(
         `UPDATE media_items
          SET total_images = ?, reviewed_images = ?, approved_images = ?,
              pending_images = ?, unjudged_images = ?, untiered_approved = ?,
@@ -342,7 +342,10 @@ export async function refreshMediaCounters(env, key) {
         counts.total, counts.reviewed, counts.approved,
         counts.pending, counts.unjudged, counts.untiered,
         preview?.file_path ?? null, ...movedValues, key
-    ).run();
+    );
+
+    if (published === item.published) await update.run();
+    else await env.DB.batch([update, markIndexDirtyStatement(env)]);
 }
 
 // Every frame's status on one title, re-derived from the live reports in a

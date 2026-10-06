@@ -12,6 +12,8 @@ import { handleCuration } from "./routes/curation.js";
 import { handlePlaylists } from "./routes/playlists.js";
 import { handleProfile } from "./routes/profile.js";
 import { handleAdmin } from "./routes/admin.js";
+import { CATALOG_VERSION_HEADER, currentIndexVersion } from "./lib/catalogIndex.js";
+import { runScheduled } from "./lib/scheduled.js";
 
 const HANDLERS = {
     auth: handleAuth,
@@ -45,8 +47,8 @@ export default {
 
         try {
             const response = await handler(request, env, segments.slice(2), url, ctx);
-            if (response) return response;
-            return json({ error: "not_found", message: "No route matches this method and path" }, 404);
+            if (!response) return json({ error: "not_found", message: "No route matches this method and path" }, 404);
+            return withCatalogVersion(env, response);
         } catch (error) {
             if (error instanceof APIError) {
                 return json({ error: error.code, message: error.message }, error.status);
@@ -57,5 +59,21 @@ export default {
             console.error("Unhandled error", error?.stack || error);
             return json({ error: "internal_error", message: "Something went wrong" }, 500);
         }
+    },
+
+    async scheduled(event, env, ctx) {
+        await runScheduled(env, event);
     }
 };
+
+// The phone compares this with the index it holds; no request of its own.
+async function withCatalogVersion(env, response) {
+    if (response.headers.has(CATALOG_VERSION_HEADER)) return response;
+    try {
+        const version = await currentIndexVersion(env);
+        if (version) response.headers.set(CATALOG_VERSION_HEADER, version);
+    } catch (error) {
+        console.error("Catalog version unavailable", error?.message);
+    }
+    return response;
+}

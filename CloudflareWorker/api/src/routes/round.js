@@ -5,10 +5,11 @@
 // the count of what is left is exact — no retry loop, no probabilistic "you
 // have probably seen everything" hedging.
 
-import { badRequest, json, notFound, parseInteger } from "../lib/http.js";
+import { badRequest, json, notFound, parseInteger, readJSON } from "../lib/http.js";
 import { authenticate } from "../lib/auth.js";
 import { buildCatalogQuery, loadGenreIds, parseFilters, serializeImage, serializeMediaItem } from "../lib/media.js";
-import { selectRoundFrames, selectSpareFrames } from "../lib/frames.js";
+import { ROUND_LAYOUT_SIZE, selectRoundFrames, selectSpareFrames } from "../lib/frames.js";
+import { finishRound } from "../lib/plays.js";
 import { dailyNumber, ensureFrozen, isValidDateString, loadDailyPlan, utcDateString } from "../lib/daily.js";
 
 const SPARE_FRAME_COUNT = 3;
@@ -85,10 +86,15 @@ async function loadFrozenDaily(env, plan, frameCount) {
 }
 
 export async function handleRound(request, env, segments, url) {
+    if (segments[0] === "finish" && request.method === "POST") {
+        const user = await authenticate(request, env);
+        return json(await finishRound(env, user, await readJSON(request)));
+    }
+
     if (segments[0] !== "next" || request.method !== "GET") return null;
 
     const user = await authenticate(request, env);
-    const frameCount = parseInteger(url.searchParams.get("frameCount"), { fallback: 6, min: 1, max: 12 });
+    const frameCount = parseInteger(url.searchParams.get("frameCount"), { fallback: ROUND_LAYOUT_SIZE, min: 1, max: ROUND_LAYOUT_SIZE });
     const pool = url.searchParams.get("pool") || "curated";
 
     // ------------------------------------------------------------- daily
@@ -123,6 +129,21 @@ export async function handleRound(request, env, segments, url) {
     filters.minApprovedImages = frameCount;
 
     const playlistId = url.searchParams.get("playlistId");
+    const requestedKey = url.searchParams.get("mediaKey");
+
+    // The phone picked the title from its index. Not refused for being an
+    // upcoming daily: the index cannot leave those out without naming them.
+    // Anything else unplayable means the phone's index is stale.
+    if (requestedKey && !playlistId) {
+        const item = await env.DB.prepare("SELECT published FROM media_items WHERE key = ?").bind(requestedKey).first();
+        if (item?.published !== 1) {
+            return json(
+                { error: "not_playable", mediaKey: requestedKey, message: "This title is not in the game any more" },
+                404
+            );
+        }
+        return json({ pool: "curated", ...(await loadItemWithFrames(env, requestedKey, frameCount)) });
+    }
     const excludeWatched = url.searchParams.get("excludeWatched") !== "false";
 
     if (playlistId) {
@@ -131,7 +152,6 @@ export async function handleRound(request, env, segments, url) {
         // inside another, or completion becomes something you can cheese by
         // playing elsewhere.
         const pick = url.searchParams.get("pick") || "next";
-        const requestedKey = url.searchParams.get("mediaKey");
 
         const notCompleted = `NOT EXISTS (
             SELECT 1 FROM playlist_progress pr

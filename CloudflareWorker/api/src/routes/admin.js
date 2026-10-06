@@ -112,7 +112,7 @@ export async function handleAdmin(request, env, segments, url) {
 
         const body = await readJSON(request);
         const mediaKey = requireString(body, "mediaKey", { maxLength: 60 });
-        const frameCount = parseInteger(body.frameCount, { fallback: DEFAULT_DAILY_FRAME_COUNT, min: 1, max: 12 });
+        const frameCount = parseInteger(body.frameCount, { fallback: DEFAULT_DAILY_FRAME_COUNT, min: 1, max: DEFAULT_DAILY_FRAME_COUNT });
 
         if (!mediaKey.startsWith("movie_")) {
             throw badRequest("The daily puzzle is movies only");

@@ -17,10 +17,35 @@ import { readConfig } from "../lib/config.js";
 import { utcDateString } from "../lib/daily.js";
 import { fetchDiscoverPage, fetchPosterOptions, importMediaItem } from "../lib/tmdb.js";
 import { limitByUser } from "../lib/limits.js";
+import { CATALOG_VERSION_HEADER, loadIndex, rebuildIndex } from "../lib/catalogIndex.js";
 
 const MAX_BULK_IMPORT = 20;
 
 export async function handleCatalog(request, env, segments, url) {
+    // GET /v1/catalog/index — every published title without its name; the
+    // version is in the body and in the header every response carries
+    if (segments[0] === "index" && segments.length === 1 && request.method === "GET") {
+        await authenticate(request, env);
+
+        let index = await loadIndex(env);
+        if (!index) {
+            await rebuildIndex(env);
+            index = await loadIndex(env);
+        }
+
+        if (request.headers.get("If-None-Match") === `"${index.version}"`) {
+            return new Response(null, { status: 304, headers: { ETag: `"${index.version}"` } });
+        }
+        return new Response(`{"version":${JSON.stringify(index.version)},${index.body.slice(1)}`, {
+            status: 200,
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                ETag: `"${index.version}"`,
+                [CATALOG_VERSION_HEADER]: index.version
+            }
+        });
+    }
+
     // GET /v1/catalog/items — browse the curated pool
     if (segments[0] === "items" && segments.length === 1 && request.method === "GET") {
         const user = await authenticate(request, env);

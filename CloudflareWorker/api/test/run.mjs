@@ -14,6 +14,8 @@ const { signJWT, sha256Hex } = await import(`${API}src/lib/crypto.js`);
 const { rotateRefreshToken, SPENT_TOKEN_RETENTION_MS } = await import(`${API}src/lib/auth.js`);
 const { refreshMediaCounters, buildCatalogQuery } = await import(`${API}src/lib/media.js`);
 const { reporterWeight } = await import(`${API}src/lib/limits.js`);
+const { selectRoundFrames, seededRandom } = await import(`${API}src/lib/frames.js`);
+const { stepDown } = await import(`${API}src/lib/catalogIndex.js`);
 
 let failures = 0;
 function check(label, condition, detail = "") {
@@ -133,6 +135,8 @@ globalThis.fetch = async (url, init) => {
             }
         });
     }
+    const details = target.pathname.match(/^\/3\/(movie|tv)\/(\d+)$/);
+    if (details) return reply({ id: Number(details[2]), vote_average: 7.26, vote_count: 1234 });
     throw new Error(`unexpected fetch ${url}`);
 };
 
@@ -145,7 +149,7 @@ async function call(uid, method, path, body) {
     });
     const response = await worker.fetch(request, env, {});
     const text = await response.text();
-    return { status: response.status, body: text ? JSON.parse(text) : null };
+    return { status: response.status, body: text ? JSON.parse(text) : null, headers: response.headers };
 }
 
 // ------------------------------------------------------------------ counters and publishing
@@ -424,6 +428,132 @@ db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES 
 res = await call("mod", "DELETE", `/v1/admin/daily/${new Date().toISOString().slice(0, 10)}`);
 check("an unplayed today can be removed", res.status === 204, JSON.stringify(res.body));
 
+// ------------------------------------------------------------------ cropped rounds
+
+console.log("frames are cropped, not squeezed");
+{
+    const frames = ["hard", "hard", "medium", "medium", "easy", "easy"].map((tier, i) => ({
+        id: i + 1, status: "approved", difficulty_tier: tier, difficulty_rank: null, tmdb_vote_average: i, tmdb_vote_count: i
+    }));
+    const tiersOf = (n) => selectRoundFrames(frames, n, { random: seededRandom(1) }).map((f) => f.difficulty_tier).join();
+    check("six frames run hard to easy", tiersOf(6) === "hard,hard,medium,medium,easy,easy", tiersOf(6));
+    check("three frames are the hardest three", tiersOf(3) === "hard,hard,medium", tiersOf(3));
+    check("one frame is a hard one", tiersOf(1) === "hard");
+    const six = selectRoundFrames(frames, 6, { random: seededRandom(5) }).map((f) => f.id);
+    const two = selectRoundFrames(frames, 2, { random: seededRandom(5) }).map((f) => f.id);
+    check("a short round is the start of the same layout", JSON.stringify(two) === JSON.stringify(six.slice(0, 2)));
+    const pinned = frames.map((f) => (f.id === 6 ? { ...f, difficulty_rank: 1 } : f));
+    check("a pinned rank keeps its place", selectRoundFrames(pinned, 2, { random: seededRandom(1) })[0].id === 6);
+}
+
+console.log("round by mediaKey");
+const dealt = playable[1];
+res = await call("mod", "GET", `/v1/round/next?mediaKey=${dealt}&frameCount=12`);
+check("the phone's pick is dealt, at most six frames", res.status === 200 && res.body.item.key === dealt && res.body.frames.length === 6, JSON.stringify(res.body).slice(0, 200));
+res = await call("mod", "GET", `/v1/round/next?mediaKey=${dealt}&frameCount=2`);
+check("two frames when asked for two", res.status === 200 && res.body.frames.length === 2);
+db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES ('2999-05-01', ?, 0)").run(dealt);
+res = await call("mod", "GET", `/v1/round/next?mediaKey=${dealt}`);
+check("an upcoming daily is still dealt by key", res.status === 200);
+db.db.prepare("DELETE FROM daily_overrides WHERE date = '2999-05-01'").run();
+res = await call("mod", "GET", "/v1/round/next?mediaKey=movie_101");
+check("an unpublished title says the index is stale", res.status === 404 && res.body.error === "not_playable", JSON.stringify(res.body));
+res = await call("mod", "GET", "/v1/round/next?mediaKey=movie_nope");
+check("an unknown title too", res.status === 404 && res.body.error === "not_playable");
+
+console.log("finishing a round");
+const watchedRow = (uid, key) => db.db.prepare("SELECT * FROM watched_media WHERE uid = ? AND media_key = ?").get(uid, key);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: dealt, mode: "random", result: "correct", solvedAtFrame: 2, frameCount: 6 });
+check("the first round counts", res.status === 200 && res.body.counted === true && res.body.repeat === false, JSON.stringify(res.body));
+check("it is the title's statistic", res.body.stats.players === 1 && res.body.stats.solvedAtFrame[1] === 1, JSON.stringify(res.body.stats));
+check("stored with frame and mode", watchedRow("mod", dealt).result === "correct" && watchedRow("mod", dealt).solved_at_frame === 2
+    && watchedRow("mod", dealt).mode === "random" && watchedRow("mod", dealt).plays === 1);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: dealt, mode: "random", result: "wrong", frameCount: 6 });
+check("a replay is marked and does not count", res.body.repeat === true && res.body.counted === false && res.body.stats.players === 1);
+check("a replay keeps the first result", watchedRow("mod", dealt).result === "correct" && watchedRow("mod", dealt).plays === 2 && watchedRow("mod", dealt).solved === 1);
+res = await call("me", "POST", "/v1/round/finish", { mediaKey: dealt, mode: "random", result: "wrong", frameCount: 3, counts: false });
+check("a round with a broken frame marks it seen without counting", res.body.counted === false && watchedRow("me", dealt).result === null
+    && watchedRow("me", dealt).plays === 1 && res.body.stats.players === 1);
+res = await call("me", "POST", "/v1/round/finish", { mediaKey: dealt, mode: "random", result: "correct", solvedAtFrame: 1, frameCount: 3 });
+check("and the next one is already a replay", res.body.repeat === true && res.body.counted === false && watchedRow("me", dealt).solved === 1);
+for (const [label, body] of [
+    ["solvedAtFrame past frameCount", { mediaKey: dealt, mode: "random", result: "correct", solvedAtFrame: 4, frameCount: 3 }],
+    ["seven frames", { mediaKey: dealt, mode: "random", result: "wrong", frameCount: 7 }],
+    ["an unknown mode", { mediaKey: dealt, mode: "tmdb", result: "wrong", frameCount: 6 }],
+    ["a correct answer without its frame", { mediaKey: dealt, mode: "random", result: "correct", frameCount: 6 }]
+]) {
+    res = await call("mod", "POST", "/v1/round/finish", body);
+    check(`${label} is 400`, res.status === 400, JSON.stringify(res.body));
+}
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: "movie_nope", mode: "random", result: "wrong", frameCount: 6 });
+check("an unknown title is 404", res.status === 404);
+
+const list = await call("mod", "POST", "/v1/playlists", { title: "Финиш", mediaType: "movie" });
+await call("mod", "PUT", `/v1/playlists/${list.body.id}/items`, { mediaKeys: [playable[2]] });
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[2], mode: "playlist", playlistId: list.body.id, result: "correct", solvedAtFrame: 3, frameCount: 6 });
+const progressRow = db.db.prepare("SELECT * FROM playlist_progress WHERE uid = 'mod' AND playlist_id = ?").get(list.body.id);
+check("a playlist round records its progress", res.status === 200 && progressRow?.was_correct === 1 && progressRow.attempts_used === 3
+    && res.body.playlist.progress.answered === 1, JSON.stringify(res.body));
+check("and marks the title seen for the random pool", watchedRow("mod", playable[2])?.mode === "playlist" && res.body.counted === true);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[0], mode: "playlist", playlistId: list.body.id, result: "wrong", frameCount: 6 });
+check("a title outside the playlist is 404", res.status === 404);
+
+const today = new Date().toISOString().slice(0, 10);
+db.db.prepare("INSERT INTO daily_overrides (date, media_key, created_at) VALUES (?, ?, 0)").run(today, playable[0]);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[1], mode: "daily", date: today, result: "wrong", frameCount: 6 });
+check("a daily with the wrong film is 400", res.status === 400);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[0], mode: "daily", date: today, result: "correct", solvedAtFrame: 4, frameCount: 6 });
+check("a daily writes the day's result", res.status === 200 && res.body.daily.dailyStreak === 1
+    && db.db.prepare("SELECT attempts_used FROM daily_results WHERE uid = 'mod' AND date = ?").get(today)?.attempts_used === 4, JSON.stringify(res.body));
+check("the day's statistic, not the title's", res.body.stats.players === 1 && res.body.stats.solvedAtFrame[3] === 1);
+check("a daily marks the title seen without counting it", watchedRow("mod", playable[0])?.solved === 1 && watchedRow("mod", playable[0]).result === null);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[0], mode: "daily", date: today, result: "wrong", frameCount: 6 });
+check("a day is played once", res.status === 200 && res.body.alreadyRecorded === true && res.body.daily.wasCorrect === true
+    && watchedRow("mod", playable[0]).plays === 1);
+db.db.prepare("DELETE FROM daily_results WHERE date = ?").run(today);
+db.db.prepare("DELETE FROM daily_overrides WHERE date = ?").run(today);
+
+res = await call("mod", "PATCH", `/v1/profile/watched/${dealt}`, { hidden: true });
+check("a title can be hidden", res.status === 200 && res.body.hidden === true && watchedRow("mod", dealt).plays === 2);
+res = await call("mod", "PATCH", "/v1/profile/watched/movie_unplayed", { hidden: true });
+check("even one never played", res.status === 200 && res.body.plays === 0 && res.body.sources.length === 0);
+res = await call("mod", "GET", "/v1/profile/watched");
+const restoredEntry = res.body.watched.find((entry) => entry.mediaKey === dealt);
+check("the backup restores everything the phone keeps", restoredEntry?.hidden === true && restoredEntry.result === "correct"
+    && restoredEntry.solvedAtFrame === 2 && restoredEntry.plays === 2 && restoredEntry.solved === true && restoredEntry.lastPlayedAt > 0, JSON.stringify(restoredEntry));
+
+// ------------------------------------------------------------------ catalogue index
+
+console.log("catalogue index");
+check("steps round down", stepDown(7.26, 0.5) === 7 && stepDown(7.5, 0.5) === 7.5 && stepDown(1299, 100) === 1200 && stepDown(0.3, 0.1) === 0.3);
+check("ratings start empty", row("movie_102").vote_count === null);
+await worker.scheduled({ cron: "*/30 * * * *", scheduledTime: Date.now() }, env, {});
+check("the cron fills ratings in", db.db.prepare("SELECT COUNT(*) AS n FROM media_items WHERE vote_count IS NULL").get().n === 0
+    && row("movie_102").vote_count === 1234);
+const firstVersion = db.db.prepare("SELECT value FROM app_config WHERE key = 'catalogIndexVersion'").get()?.value;
+check("and builds the index", /^v1-[0-9a-f]{16}$/.test(firstVersion ?? ""), firstVersion);
+res = await call("plain", "GET", "/v1/catalog/index");
+const published = db.db.prepare("SELECT key FROM media_items WHERE published = 1 ORDER BY key").all().map((r) => r.key);
+check("the index lists published titles", res.status === 200 && JSON.stringify(res.body.items.map((i) => i.key)) === JSON.stringify(published), JSON.stringify(res.body).slice(0, 300));
+check("with stepped numbers and no names", res.body.items.every((i) => i.rating === 7 && i.votes === 1200 && !("title" in i)) && res.body.steps.rating === 0.5);
+check("the version is in the body and the header", res.body.version === firstVersion && res.headers.get("X-Catalog-Version") === firstVersion);
+res = await call("plain", "GET", "/v1/profile");
+check("every response carries the version", res.headers.get("X-Catalog-Version") === firstVersion);
+
+const rowsBefore = db.db.prepare("SELECT COUNT(*) AS n FROM catalog_index").get().n;
+await worker.scheduled({}, env, {});
+check("a clean index is not rebuilt", db.db.prepare("SELECT COUNT(*) AS n FROM catalog_index").get().n === rowsBefore);
+await call("mod", "PATCH", `/v1/catalog/items/${published[0]}`, { publishMode: "off" });
+check("unpublishing marks the index dirty", db.db.prepare("SELECT 1 FROM app_config WHERE key = 'catalogIndexDirty'").get() !== undefined);
+await worker.scheduled({}, env, {});
+const secondVersion = db.db.prepare("SELECT value FROM app_config WHERE key = 'catalogIndexVersion'").get().value;
+check("the rebuild drops the title under a new version", secondVersion !== firstVersion
+    && !JSON.parse(db.db.prepare("SELECT body FROM catalog_index WHERE version = ?").get(secondVersion).body).items.some((i) => i.key === published[0]));
+check("the old version stays for a while", db.db.prepare("SELECT 1 FROM catalog_index WHERE version = ?").get(firstVersion) !== undefined);
+await call("mod", "PATCH", `/v1/catalog/items/${published[0]}`, { publishMode: "auto" });
+await worker.scheduled({}, env, {});
+check("the same catalogue hashes to the same version", db.db.prepare("SELECT value FROM app_config WHERE key = 'catalogIndexVersion'").get().value === firstVersion);
+
 // ------------------------------------------------------------------ refresh tokens
 
 console.log("refresh tokens");
@@ -507,7 +637,11 @@ const hot = {
     catalogRecent: ["SELECT * FROM media_items m WHERE m.media_type = ? AND m.status != 'rejected' ORDER BY m.created_at DESC, m.key LIMIT ? OFFSET ?", ["movie", 51, 0]],
     reportBadge: ["SELECT COUNT(DISTINCT image_id) AS n FROM image_reports WHERE dismissed_at IS NULL", []],
     roundFrames: ["SELECT * FROM media_images WHERE media_key = ? AND status = 'approved'", ["movie_101"]],
-    reporterBar: ["SELECT COUNT(*) AS count FROM (SELECT 1 FROM watched_media WHERE uid = ? LIMIT ?)", ["plain", 5]]
+    reporterBar: ["SELECT COUNT(*) AS count FROM (SELECT 1 FROM watched_media WHERE uid = ? LIMIT ?)", ["plain", 5]],
+    titleStats: [`SELECT solved_at_frame AS frame, COUNT(*) AS n FROM watched_media
+                  WHERE media_key = ? AND result IS NOT NULL GROUP BY solved_at_frame`, ["movie_101"]],
+    dayStats: [`SELECT CASE WHEN was_correct = 1 THEN attempts_used END AS frame, COUNT(*) AS n
+                FROM daily_results WHERE date = ? GROUP BY was_correct, attempts_used`, ["2026-01-01"]]
 };
 for (const [name, filters] of Object.entries({
     roundPick: baseFilters,
@@ -520,9 +654,10 @@ for (const [name, filters] of Object.entries({
 for (const [name, [sql, values]] of Object.entries(hot)) {
     const text = db.plan(sql, values).join(" | ");
     const scansFrames = /SCAN (i|media_images)\b/.test(text);
-    const sorts = /TEMP B-TREE FOR ORDER BY/.test(text);
+    const sorts = /TEMP B-TREE FOR (ORDER|GROUP) BY/.test(text);
+    const scansPlayers = /SCAN (watched_media|daily_results)\b/.test(text);
     const fullItems = /SCAN m\b(?! USING)/.test(text) || /SCAN media_items\b(?! USING)/.test(text);
-    check(`${name}: no frame scan, no sort, no bare table scan`, !scansFrames && !sorts && !fullItems, `\n      ${text}`);
+    check(`${name}: no frame scan, no sort, no bare table scan`, !scansFrames && !sorts && !fullItems && !scansPlayers, `\n      ${text}`);
 }
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");

@@ -3,6 +3,7 @@
 import { badRequest, json, noContent, parseInteger, readJSON, requireString } from "../lib/http.js";
 import { authenticate, publicUser } from "../lib/auth.js";
 import { deleteAccount } from "../lib/accounts.js";
+import { serializeWatched } from "../lib/plays.js";
 import { attemptBudget, consumeAttempt, isValidDateString, recordDailyResult, utcDateString } from "../lib/daily.js";
 
 const WATCHED_SOURCES = ["play", "kinopoisk", "imdb", "letterboxd"];
@@ -26,16 +27,24 @@ export async function handleProfile(request, env, segments, url) {
     if (segments[0] === "watched" && request.method === "GET") {
         const since = parseInteger(url.searchParams.get("since"), { fallback: 0, min: 0 });
         const rows = await env.DB.prepare(
-            "SELECT media_key, sources, added_at FROM watched_media WHERE uid = ? AND added_at > ? ORDER BY added_at"
+            "SELECT * FROM watched_media WHERE uid = ? AND added_at > ? ORDER BY added_at"
         ).bind(user.uid, since).all();
 
-        return json({
-            watched: rows.results.map((row) => ({
-                mediaKey: row.media_key,
-                sources: JSON.parse(row.sources),
-                addedAt: row.added_at
-            }))
-        });
+        return json({ watched: rows.results.map(serializeWatched) });
+    }
+
+    // PATCH /v1/profile/watched/{mediaKey} — {hidden}: "do not show this again"
+    if (segments[0] === "watched" && segments.length === 2 && request.method === "PATCH") {
+        const body = await readJSON(request);
+        if (typeof body.hidden !== "boolean") throw badRequest("hidden must be a boolean");
+
+        const row = (await env.DB.prepare(
+            `INSERT INTO watched_media (uid, media_key, sources, added_at, hidden) VALUES (?, ?, '[]', ?, ?)
+             ON CONFLICT (uid, media_key) DO UPDATE SET hidden = excluded.hidden
+             RETURNING *`
+        ).bind(user.uid, segments[1].slice(0, 60), Date.now(), body.hidden ? 1 : 0).all()).results[0];
+
+        return json(serializeWatched(row));
     }
 
     // POST /v1/profile/watched — push what the device recorded while offline

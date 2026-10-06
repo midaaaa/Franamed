@@ -6,6 +6,7 @@
 
 import { APIError } from "./http.js";
 import { mediaKey } from "./media.js";
+import { markIndexDirtyStatement } from "./catalogIndex.js";
 
 const TMDB_ORIGIN = "https://api.themoviedb.org/3";
 
@@ -128,9 +129,12 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
 
     await env.DB.prepare(
         `INSERT INTO media_items (key, tmdb_id, media_type, title, original_title, release_year,
-                                  original_language, popularity, poster_url, poster_auto, added_by, last_synced_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  original_language, popularity, poster_url, poster_auto, added_by, last_synced_at, created_at,
+                                  vote_average, vote_count)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (key) DO UPDATE SET
+            vote_average = excluded.vote_average,
+            vote_count = excluded.vote_count,
             poster_auto = CASE WHEN media_items.poster_url IS NULL THEN excluded.poster_auto ELSE media_items.poster_auto END,
             poster_url = COALESCE(media_items.poster_url, excluded.poster_url),
             title = excluded.title,
@@ -152,10 +156,13 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
         poster ? 1 : 0,
         addedBy,
         now,
-        now
+        now,
+        details.vote_average ?? 0,
+        details.vote_count ?? 0
     ).run();
 
-    const statements = [];
+    // A published title's year, genres or rating may have moved.
+    const statements = [markIndexDirtyStatement(env)];
 
     for (const genre of details.genres || []) {
         statements.push(
@@ -189,7 +196,7 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
         );
     }
 
-    if (statements.length) await env.DB.batch(statements);
+    await env.DB.batch(statements);
 
     return { key, importedImages: backdrops.length, posterPath: details.poster_path || null };
 }
@@ -203,4 +210,30 @@ export async function fetchPosterOptions(env, mediaType, tmdbId) {
         width: poster.width,
         height: poster.height
     }));
+}
+
+// Fills in the rating of titles imported before it was stored. One TMDB call
+// per title, so a run takes a bounded batch under the 50-subrequest ceiling.
+export async function backfillRatings(env, { limit = 20 } = {}) {
+    const rows = await env.DB.prepare(
+        "SELECT key, media_type, tmdb_id FROM media_items WHERE vote_count IS NULL LIMIT ?"
+    ).bind(limit).all();
+
+    if (!rows.results.length) return null;
+
+    let filled = 0;
+    for (const row of rows.results) {
+        try {
+            const details = await tmdbFetch(env, `/${row.media_type}/${row.tmdb_id}`, {});
+            await env.DB.prepare("UPDATE media_items SET vote_average = ?, vote_count = ? WHERE key = ?")
+                .bind(details.vote_average ?? 0, details.vote_count ?? 0, row.key)
+                .run();
+            filled += 1;
+        } catch (error) {
+            console.error("Rating backfill failed", row.key, error?.message);
+        }
+    }
+
+    if (filled) await markIndexDirtyStatement(env).run();
+    return { filled, remaining: rows.results.length - filled };
 }

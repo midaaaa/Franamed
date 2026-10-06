@@ -10,6 +10,10 @@ preview_urls = false
 [vars]
 CF_ACCOUNT_ID = "809ef16163b84b808871148009f3257c"
 
+# Ratings backfill and the catalogue index rebuild; see src/lib/scheduled.js.
+[triggers]
+crons = ["*/30 * * * *"]
+
 # Filled in by `wrangler d1 create franamed` — copy the printed database_id here.
 [[d1_databases]]
 binding = "DB"

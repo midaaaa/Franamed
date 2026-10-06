@@ -98,7 +98,12 @@ CREATE TABLE IF NOT EXISTS media_items (
 
     -- A fixed random point in [0, 1) that picking a round walks from, so a
     -- random title is an index seek instead of ORDER BY RANDOM() over the pool.
-    shuffle_key       REAL    NOT NULL DEFAULT ((random() & 4294967295) / 4294967296.0)
+    shuffle_key       REAL    NOT NULL DEFAULT ((random() & 4294967295) / 4294967296.0),
+
+    -- TMDB's rating of the title, for the catalogue index the phone filters on.
+    -- NULL until fetched.
+    vote_average      REAL,
+    vote_count        INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_media_type_status ON media_items(media_type, status);
 CREATE INDEX IF NOT EXISTS idx_media_year        ON media_items(release_year);
@@ -109,6 +114,7 @@ CREATE INDEX IF NOT EXISTS idx_media_type_pop    ON media_items(media_type, popu
 CREATE INDEX IF NOT EXISTS idx_media_type_new    ON media_items(media_type, created_at DESC, key);
 CREATE INDEX IF NOT EXISTS idx_media_type_title  ON media_items(media_type, title COLLATE NOCASE, key);
 CREATE INDEX IF NOT EXISTS idx_media_shuffle     ON media_items(media_type, shuffle_key) WHERE published = 1;
+CREATE INDEX IF NOT EXISTS idx_media_unrated     ON media_items(key) WHERE vote_count IS NULL;
 
 -- Genres as a join table rather than a serialised array: lets the database do
 -- the filtering, which is what removed the need to ship the whole catalogue to
@@ -236,6 +242,7 @@ CREATE TABLE IF NOT EXISTS daily_results (
     completed_at  INTEGER NOT NULL,
     PRIMARY KEY (uid, date)
 );
+CREATE INDEX IF NOT EXISTS idx_daily_results_date ON daily_results(date, was_correct, attempts_used);
 
 -- ---------------------------------------------------------------- misc
 
@@ -244,7 +251,28 @@ CREATE TABLE IF NOT EXISTS watched_media (
     media_key TEXT    NOT NULL,
     sources   TEXT    NOT NULL DEFAULT '["play"]',               -- JSON array: play | kinopoisk | imdb | letterboxd
     added_at  INTEGER NOT NULL,
+
+    -- The first counted round is the title's statistic; replays only bump
+    -- `plays` and can turn `solved` on. A daily or a round with a frame that
+    -- failed to load marks the title seen without counting.
+    result          TEXT,                                        -- correct | wrong, NULL = not counted
+    solved_at_frame INTEGER,                                     -- 1-based, set when result = correct
+    frame_count     INTEGER,
+    mode            TEXT,                                        -- random | playlist | daily
+    solved          INTEGER NOT NULL DEFAULT 0,                  -- any round answered right
+    hidden          INTEGER NOT NULL DEFAULT 0,                  -- "do not show again"
+    plays           INTEGER NOT NULL DEFAULT 0,
+    last_played_at  INTEGER,
     PRIMARY KEY (uid, media_key)
+);
+CREATE INDEX IF NOT EXISTS idx_watched_stats ON watched_media(media_key, solved_at_frame) WHERE result IS NOT NULL;
+
+-- The catalogue index the phone picks titles from, one row per version. The
+-- version is the hash of the body, so an unchanged catalogue writes nothing.
+CREATE TABLE IF NOT EXISTS catalog_index (
+    version    TEXT PRIMARY KEY,                                 -- v1-<first 16 hex of SHA-256>
+    body       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS app_config (

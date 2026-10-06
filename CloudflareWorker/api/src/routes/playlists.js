@@ -249,32 +249,11 @@ export async function handlePlaylists(request, env, segments, url) {
         }
         if (typeof body.wasCorrect !== "boolean") throw badRequest("wasCorrect must be a boolean");
 
-        // Retrying overwrites the single record for that title; no history is
-        // kept, which is what makes "replay the ones I got wrong" simple.
-        await env.DB.prepare(
-            `INSERT INTO playlist_progress (uid, playlist_id, media_key, state, attempts_used, was_correct, updated_at)
-             VALUES (?, ?, ?, 'completed', ?, ?, ?)
-             ON CONFLICT (uid, playlist_id, media_key) DO UPDATE SET
-                state = 'completed', attempts_used = excluded.attempts_used,
-                was_correct = excluded.was_correct, updated_at = excluded.updated_at`
-        ).bind(user.uid, playlistId, mediaKey, attemptsUsed, body.wasCorrect ? 1 : 0, Date.now()).run();
-
-        const summary = await progressSummary(env, user.uid, playlistId);
-        let awardedAttempts = 0;
-
-        if (summary.total > 0 && summary.answered >= summary.total && summary.completedAt === null) {
-            const config = await readConfig(env);
-            await env.DB.prepare(
-                `INSERT INTO playlist_completions (uid, playlist_id, times_completed, completed_at)
-                 VALUES (?, ?, 1, ?)
-                 ON CONFLICT (uid, playlist_id) DO UPDATE SET completed_at = excluded.completed_at`
-            ).bind(user.uid, playlistId, Date.now()).run();
-
-            awardedAttempts = config.playlistCompletionReward;
-            await grantBonusAttempts(env, user.uid, awardedAttempts);
-        }
-
-        return json({ progress: await progressSummary(env, user.uid, playlistId), awardedAttempts });
+        return json(await recordPlaylistAnswer(env, user, playlistId, {
+            mediaKey,
+            attemptsUsed,
+            wasCorrect: body.wasCorrect
+        }));
     }
 
     // POST /v1/playlists/{id}/reset
@@ -305,4 +284,33 @@ export async function handlePlaylists(request, env, segments, url) {
     }
 
     return null;
+}
+
+export async function recordPlaylistAnswer(env, user, playlistId, { mediaKey, attemptsUsed, wasCorrect }) {
+    // Retrying overwrites the single record for that title; no history is
+    // kept, which is what makes "replay the ones I got wrong" simple.
+    await env.DB.prepare(
+        `INSERT INTO playlist_progress (uid, playlist_id, media_key, state, attempts_used, was_correct, updated_at)
+         VALUES (?, ?, ?, 'completed', ?, ?, ?)
+         ON CONFLICT (uid, playlist_id, media_key) DO UPDATE SET
+            state = 'completed', attempts_used = excluded.attempts_used,
+            was_correct = excluded.was_correct, updated_at = excluded.updated_at`
+    ).bind(user.uid, playlistId, mediaKey, attemptsUsed, wasCorrect ? 1 : 0, Date.now()).run();
+
+    const summary = await progressSummary(env, user.uid, playlistId);
+    let awardedAttempts = 0;
+
+    if (summary.total > 0 && summary.answered >= summary.total && summary.completedAt === null) {
+        const config = await readConfig(env);
+        await env.DB.prepare(
+            `INSERT INTO playlist_completions (uid, playlist_id, times_completed, completed_at)
+             VALUES (?, ?, 1, ?)
+             ON CONFLICT (uid, playlist_id) DO UPDATE SET completed_at = excluded.completed_at`
+        ).bind(user.uid, playlistId, Date.now()).run();
+
+        awardedAttempts = config.playlistCompletionReward;
+        await grantBonusAttempts(env, user.uid, awardedAttempts);
+    }
+
+    return { progress: await progressSummary(env, user.uid, playlistId), awardedAttempts };
 }
