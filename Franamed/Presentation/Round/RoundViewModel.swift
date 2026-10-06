@@ -12,6 +12,7 @@ import SwiftData
 @MainActor
 final class RoundViewModel: ObservableObject {
     let mediaType: MediaType
+    let source: RoundSource
     let frameCount: Int
     private let modelContext: ModelContext
     @Published private(set) var attemptsMade = 0
@@ -35,10 +36,11 @@ final class RoundViewModel: ObservableObject {
     private var detailsTask: Task<Void, Never>?
     private let mediaFacade: MediaFacadeProtocol
 
-    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
+    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6) {
         self.mediaFacade = mediaFacade
         self.modelContext = modelContext
         self.mediaType = mediaType
+        self.source = source
         self.filters = filters
         self.frameCount = frameCount
         self.attemptsRemaining = frameCount
@@ -62,7 +64,7 @@ final class RoundViewModel: ObservableObject {
         selectedSuggestion = nil
 
         do {
-            let loaded = try await mediaFacade.fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
+            let loaded = try await mediaFacade.fetchRound(source: source, mediaType: mediaType, filters: filters, frameCount: frameCount)
             mediaItemWithBackdrops = loaded
             prefetchDetails(for: loaded.item)
             prefetchGenreNames()

@@ -14,6 +14,10 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
         MediaItem(id: 2, mediaType: mediaType, title: "Movie 2", originalTitle: "Movie 2", releaseDate: "2026-04-05", overview: "Preview overview 2")
     ]}
 
+    func fetchRound(source: RoundSource, mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> MediaItemWithBackdrops {
+        try await fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
+    }
+
     func fetchRandomMediaItemAndBackdrops(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> MediaItemWithBackdrops {
         let randomId = Int.random(in: 1...1_000_000)
         return MediaItemWithBackdrops(
@@ -60,8 +64,7 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
                 totalImages: 12,
                 reviewedImages: 12,
                 approvedImages: 8,
-                adminFinalized: true,
-                finalizedAt: nil,
+                published: true,
                 lastSyncedAt: nil
             ),
             frames: (1...frameCount).map { index in

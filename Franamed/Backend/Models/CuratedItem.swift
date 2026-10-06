@@ -22,8 +22,7 @@ struct CuratedItem: Codable, Sendable, Identifiable, Equatable {
     let totalImages: Int
     let reviewedImages: Int
     let approvedImages: Int
-    let adminFinalized: Bool
-    let finalizedAt: Double?
+    let published: Bool
     let lastSyncedAt: Double?
 
     var id: String { key }

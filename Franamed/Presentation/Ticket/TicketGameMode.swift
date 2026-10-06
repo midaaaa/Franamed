@@ -28,6 +28,13 @@ enum TicketGameMode: Int, CaseIterable {
         }
     }
 
+    var roundSource: RoundSource {
+        switch self {
+        case .curated: .curated
+        case .random, .pvp, .collection: .tmdb
+        }
+    }
+
     func advanced(by step: Int) -> TicketGameMode {
         let all = Self.allCases
         let index = ((rawValue + step) % all.count + all.count) % all.count

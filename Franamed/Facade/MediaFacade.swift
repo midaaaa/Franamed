@@ -31,6 +31,16 @@ final class MediaFacade: MediaFacadeProtocol {
         throw TMDBError.noSuitableMovieFound
     }
 
+    func fetchRound(source: RoundSource, mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> MediaItemWithBackdrops {
+        switch source {
+        case .tmdb:
+            return try await fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
+        case .curated:
+            let payload = try await fetchCuratedRound(mediaType: mediaType, filters: filters, frameCount: frameCount, excludeWatched: false)
+            return payload.asMediaItemWithBackdrops(imageBaseURL: backend.configuration.imageBaseURL)
+        }
+    }
+
     func searchMedia(mediaType: MediaType, query: String, language: String) async throws -> [MediaItem] {
         try await tmdbClient.searchMedia(mediaType: mediaType, query: query, language: language)
     }
