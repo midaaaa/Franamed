@@ -30,6 +30,10 @@ struct AnswerInputBar: View {
             .glassEffect(.regular, in: shape)
     }
 
+    private var placeholder: Text {
+        Text(hasOutcome ? "" : "Your guess").foregroundStyle(.white.opacity(0.6))
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             barBackground
@@ -44,7 +48,7 @@ struct AnswerInputBar: View {
                     onSelect: onSelectSuggestion
                 )
 
-                TextField("Your guess", text: $answerText)
+                TextField("", text: $answerText, prompt: placeholder)
                     .textFieldStyle(.plain)
                     .autocorrectionDisabled()
                     .focused(isFocused)
