@@ -14,18 +14,12 @@ final class BackendRoundService: BackendRoundServiceProtocol {
         self.client = client
     }
 
-    func nextCuratedRound(
-        mediaType: MediaType,
-        filters: MediaFilters,
-        frameCount: Int,
-        excludeWatched: Bool
-    ) async throws -> RoundPayload {
-        var query = BackendQuery.filters(mediaType: mediaType, filters: filters)
-        query.append(URLQueryItem(name: "pool", value: RoundPool.curated.rawValue))
-        query.append(URLQueryItem(name: "frameCount", value: "\(frameCount)"))
-        query.append(URLQueryItem(name: "excludeWatched", value: excludeWatched ? "true" : "false"))
-
-        return try await client.get("/v1/round/next", query: query)
+    func curatedRound(mediaKey: String, frameCount: Int) async throws -> RoundPayload {
+        try await client.get("/v1/round/next", query: [
+            URLQueryItem(name: "pool", value: RoundPool.curated.rawValue),
+            URLQueryItem(name: "mediaKey", value: mediaKey),
+            URLQueryItem(name: "frameCount", value: "\(frameCount)")
+        ])
     }
 
     func nextPlaylistRound(

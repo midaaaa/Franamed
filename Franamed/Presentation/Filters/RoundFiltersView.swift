@@ -14,8 +14,8 @@ struct RoundFiltersView: View {
     @StateObject private var viewModel: RoundFiltersViewModel
     let onApply: (RoundSetup) -> Void
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, setup: RoundSetup, onApply: @escaping (RoundSetup) -> Void) {
-        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, mediaType: mediaType, initialSetup: setup))
+    init(mediaFacade: MediaFacadeProtocol, source: RoundSource, mediaType: MediaType, setup: RoundSetup, onApply: @escaping (RoundSetup) -> Void) {
+        _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, source: source, mediaType: mediaType, initialSetup: setup))
         self.onApply = onApply
     }
 
@@ -43,10 +43,14 @@ struct RoundFiltersView: View {
     var body: some View {
         NavigationStack {
             Form {
-                AdultFilterSection(includeAdult: $viewModel.filters.includeAdult,
-                                   mediaType: viewModel.mediaType)
+                if viewModel.source == .tmdb {
+                    AdultFilterSection(includeAdult: $viewModel.filters.includeAdult,
+                                       mediaType: viewModel.mediaType)
+                }
                 DifficultyFilterSection(frameCount: $viewModel.frameCount)
-                SortByFilterSection(sortBy: $viewModel.filters.sortBy, mediaType: viewModel.mediaType)
+                if viewModel.source == .tmdb {
+                    SortByFilterSection(sortBy: $viewModel.filters.sortBy, mediaType: viewModel.mediaType)
+                }
                 GenresFilterSection(viewModel: viewModel)
 
                 OptionalThresholdFilterSection(
@@ -142,5 +146,9 @@ struct RoundFiltersView: View {
 }
 
 #Preview {
-    RoundFiltersView(mediaFacade: PreviewMediaFacade(), mediaType: .movie, setup: RoundSetup()) { _ in }
+    RoundFiltersView(mediaFacade: PreviewMediaFacade(), source: .tmdb, mediaType: .movie, setup: RoundSetup()) { _ in }
+}
+
+#Preview("Курируемый") {
+    RoundFiltersView(mediaFacade: PreviewMediaFacade(), source: .curated, mediaType: .movie, setup: RoundSetup()) { _ in }
 }

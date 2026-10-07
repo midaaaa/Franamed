@@ -16,6 +16,7 @@ struct Backend: Sendable {
     let playlists: BackendPlaylistServiceProtocol
     let profile: BackendProfileServiceProtocol
     let admin: BackendAdminServiceProtocol
+    let catalogIndex: CatalogIndexStore
 
     init(configuration: BackendConfiguration = .default, session: URLSession = .shared) {
         let client = BackendAPIClient(configuration: configuration, session: session)
@@ -28,5 +29,6 @@ struct Backend: Sendable {
         self.playlists = BackendPlaylistService(client: client)
         self.profile = BackendProfileService(client: client)
         self.admin = BackendAdminService(client: client)
+        self.catalogIndex = CatalogIndexStore(catalog: catalog, latestVersion: { client.latestCatalogVersion })
     }
 }

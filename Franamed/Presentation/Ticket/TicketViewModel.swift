@@ -13,7 +13,7 @@ final class TicketViewModel: ObservableObject {
     let mediaFacade: MediaFacadeProtocol
     @Published private(set) var mediaType: MediaType = .movie
     @Published private(set) var mode: TicketGameMode = .random
-    @Published private(set) var setupByMode: [MediaType: RoundSetup] = [:]
+    @Published private(set) var setupBySource: [RoundSource: [MediaType: RoundSetup]] = [:]
     @Published private(set) var genreNamesByType: [MediaType: [Int: String]] = [:]
 
     init(mediaFacade: MediaFacadeProtocol) {
@@ -30,7 +30,7 @@ final class TicketViewModel: ObservableObject {
     }
 
     func setup(for mediaType: MediaType) -> RoundSetup {
-        setupByMode[mediaType] ?? RoundSetup()
+        setupBySource[mode.roundSource]?[mediaType] ?? RoundSetup()
     }
 
     func genreNames(for mediaType: MediaType) -> [String] {
@@ -58,6 +58,6 @@ final class TicketViewModel: ObservableObject {
     }
 
     func saveSetup(_ roundSetup: RoundSetup, for mediaType: MediaType) {
-        setupByMode[mediaType] = roundSetup
+        setupBySource[mode.roundSource, default: [:]][mediaType] = roundSetup
     }
 }

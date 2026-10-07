@@ -8,12 +8,7 @@
 import Foundation
 
 protocol BackendRoundServiceProtocol: Sendable {
-    func nextCuratedRound(
-        mediaType: MediaType,
-        filters: MediaFilters,
-        frameCount: Int,
-        excludeWatched: Bool
-    ) async throws -> RoundPayload
+    func curatedRound(mediaKey: String, frameCount: Int) async throws -> RoundPayload
 
     func nextPlaylistRound(
         playlistId: String,

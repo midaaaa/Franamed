@@ -89,6 +89,7 @@ struct TicketView: View {
                 .sheet(item: $filtersSheetMediaType) { mediaType in
                     RoundFiltersView(
                         mediaFacade: viewModel.mediaFacade,
+                        source: viewModel.mode.roundSource,
                         mediaType: mediaType,
                         setup: viewModel.setup(for: mediaType)
                     ) { newSetup in

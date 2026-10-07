@@ -15,6 +15,6 @@ protocol MediaFacadeProtocol {
     func fetchDetails(mediaType: MediaType, id: Int) async throws -> MediaDetails
     func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int
 
-    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, excludeWatched: Bool) async throws -> RoundPayload
-    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters, excludeWatched: Bool) async throws -> Int
+    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> RoundPayload
+    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int
 }

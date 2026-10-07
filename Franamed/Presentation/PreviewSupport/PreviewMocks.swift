@@ -42,7 +42,7 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
         124
     }
 
-    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, excludeWatched: Bool) async throws -> RoundPayload {
+    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> RoundPayload {
         let key = "\(mediaType.rawValue)_\(Int.random(in: 1...1_000_000))"
 
         return RoundPayload(
@@ -94,7 +94,7 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
         )
     }
 
-    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters, excludeWatched: Bool) async throws -> Int {
+    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
         87
     }
 }

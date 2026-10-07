@@ -33,6 +33,11 @@ enum BackendError: Error, LocalizedError, Sendable {
         return false
     }
 
+    var isNotPlayable: Bool {
+        if case let .api(_, code, _) = self { return code == "not_playable" }
+        return false
+    }
+
     var isNotSignedIn: Bool {
         if case .notSignedIn = self { return true }
         return false

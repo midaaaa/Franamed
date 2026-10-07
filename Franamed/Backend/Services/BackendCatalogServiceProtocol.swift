@@ -10,7 +10,7 @@ import Foundation
 protocol BackendCatalogServiceProtocol: Sendable {
     func items(mediaType: MediaType, filters: MediaFilters, query: String, includeUnapproved: Bool, limit: Int, offset: Int) async throws -> [CuratedItem]
 
-    func count(mediaType: MediaType, filters: MediaFilters, excludeWatched: Bool) async throws -> CatalogCount
+    func index(ifNoneMatch version: String?) async throws -> CatalogIndex?
 
     func item(key: String) async throws -> CuratedItemDetail
 

@@ -10,6 +10,7 @@ import Foundation
 final class MediaFacade: MediaFacadeProtocol {
     private static let minAvailableBackdrops = 6
     private static let maxSelectionAttempts = 8
+    private static let maxStaleIndexRetries = 2
 
     let tmdbClient: TMDBClientProtocol
     let backend: Backend
@@ -36,7 +37,7 @@ final class MediaFacade: MediaFacadeProtocol {
         case .tmdb:
             return try await fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
         case .curated:
-            let payload = try await fetchCuratedRound(mediaType: mediaType, filters: filters, frameCount: frameCount, excludeWatched: false)
+            let payload = try await fetchCuratedRound(mediaType: mediaType, filters: filters, frameCount: frameCount)
             return payload.asMediaItemWithBackdrops(imageBaseURL: backend.configuration.imageBaseURL)
         }
     }
@@ -57,16 +58,22 @@ final class MediaFacade: MediaFacadeProtocol {
         try await tmdbClient.fetchResultsCount(mediaType: mediaType, filters: filters)
     }
 
-    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, excludeWatched: Bool) async throws -> RoundPayload {
-        try await backend.round.nextCuratedRound(
-            mediaType: mediaType,
-            filters: filters,
-            frameCount: frameCount,
-            excludeWatched: excludeWatched
-        )
+    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> RoundPayload {
+        var index = try await backend.catalogIndex.current()
+        for _ in 0...Self.maxStaleIndexRetries {
+            guard let entry = index.entries(mediaType: mediaType, filters: filters).randomElement() else {
+                throw CuratedRoundError.noMatches
+            }
+            do {
+                return try await backend.round.curatedRound(mediaKey: entry.key, frameCount: frameCount)
+            } catch let error as BackendError where error.isNotPlayable {
+                index = try await backend.catalogIndex.refresh()
+            }
+        }
+        throw CuratedRoundError.noMatches
     }
 
-    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters, excludeWatched: Bool) async throws -> Int {
-        try await backend.catalog.count(mediaType: mediaType, filters: filters, excludeWatched: excludeWatched).count
+    func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
+        try await backend.catalogIndex.current().entries(mediaType: mediaType, filters: filters).count
     }
 }

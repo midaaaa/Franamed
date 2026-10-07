@@ -36,10 +36,8 @@ final class BackendCatalogService: BackendCatalogServiceProtocol {
         return response.items
     }
 
-    func count(mediaType: MediaType, filters: MediaFilters, excludeWatched: Bool) async throws -> CatalogCount {
-        var query = BackendQuery.filters(mediaType: mediaType, filters: filters)
-        query.append(URLQueryItem(name: "excludeWatched", value: excludeWatched ? "true" : "false"))
-        return try await client.get("/v1/catalog/count", query: query)
+    func index(ifNoneMatch version: String?) async throws -> CatalogIndex? {
+        try await client.get("/v1/catalog/index", ifNoneMatch: version)
     }
 
     func item(key: String) async throws -> CuratedItemDetail {

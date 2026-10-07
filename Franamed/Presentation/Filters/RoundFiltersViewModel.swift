@@ -10,6 +10,7 @@ import Combine
 
 @MainActor
 final class RoundFiltersViewModel: ObservableObject {
+    let source: RoundSource
     let mediaType: MediaType
     @Published var filters: MediaFilters
     @Published var frameCount: Int
@@ -46,8 +47,9 @@ final class RoundFiltersViewModel: ObservableObject {
 
     private let mediaFacade: MediaFacadeProtocol
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType, initialSetup: RoundSetup) {
+    init(mediaFacade: MediaFacadeProtocol, source: RoundSource, mediaType: MediaType, initialSetup: RoundSetup) {
         self.mediaFacade = mediaFacade
+        self.source = source
         self.mediaType = mediaType
         self.initialSetup = initialSetup
         self.filters = initialSetup.filters
@@ -107,7 +109,10 @@ final class RoundFiltersViewModel: ObservableObject {
         guard !Task.isCancelled else { return }
 
         do {
-            previewResultsCount = try await mediaFacade.fetchResultsCount(mediaType: mediaType, filters: filters)
+            previewResultsCount = switch source {
+            case .tmdb: try await mediaFacade.fetchResultsCount(mediaType: mediaType, filters: filters)
+            case .curated: try await mediaFacade.fetchCuratedCount(mediaType: mediaType, filters: filters)
+            }
         } catch {
             previewResultsCount = 0
         }

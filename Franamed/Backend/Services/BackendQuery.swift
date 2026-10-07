@@ -24,12 +24,4 @@ enum BackendQuery {
 
         return items
     }
-
-    static func unsupportedByCuratedPool(_ filters: MediaFilters) -> [String] {
-        var unsupported: [String] = []
-        if filters.minRating != nil { unsupported.append("минимальный рейтинг") }
-        if filters.minVoteCount != nil { unsupported.append("число оценок") }
-        if filters.sortBy != .popularityDesc { unsupported.append("сортировка") }
-        return unsupported
-    }
 }
