@@ -69,7 +69,8 @@ struct TicketView: View {
                             mediaType: mediaType,
                             mode: viewModel.mode,
                             filters: viewModel.setup(for: mediaType).filters,
-                            frameCount: viewModel.setup(for: mediaType).frameCount
+                            frameCount: viewModel.setup(for: mediaType).frameCount,
+                            shuffle: viewModel.setup(for: mediaType).shuffle
                         )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {

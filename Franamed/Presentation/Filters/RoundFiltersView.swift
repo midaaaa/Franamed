@@ -48,8 +48,9 @@ struct RoundFiltersView: View {
                                        mediaType: viewModel.mediaType)
                 }
                 DifficultyFilterSection(frameCount: $viewModel.frameCount)
-                if viewModel.source == .tmdb {
-                    SortByFilterSection(sortBy: $viewModel.filters.sortBy, mediaType: viewModel.mediaType)
+                switch viewModel.source {
+                case .tmdb: SortByFilterSection(sortBy: $viewModel.filters.sortBy, mediaType: viewModel.mediaType)
+                case .curated: ShuffleFilterSection(shuffle: $viewModel.shuffle)
                 }
                 GenresFilterSection(viewModel: viewModel)
 

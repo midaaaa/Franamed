@@ -14,6 +14,7 @@ final class RoundFiltersViewModel: ObservableObject {
     let mediaType: MediaType
     @Published var filters: MediaFilters
     @Published var frameCount: Int
+    @Published var shuffle: ShuffleMode
     @Published private(set) var genres: [Genre] = []
     @Published private(set) var isLoadingGenres = false
     @Published private(set) var previewResultsCount: Int?
@@ -54,6 +55,7 @@ final class RoundFiltersViewModel: ObservableObject {
         self.initialSetup = initialSetup
         self.filters = initialSetup.filters
         self.frameCount = initialSetup.frameCount
+        self.shuffle = initialSetup.shuffle
         self.limitYears = initialSetup.filters.yearRange != nil
         self.yearFrom = initialSetup.filters.yearRange?.lowerBound ?? Self.defaultYearFrom
         self.yearTo = initialSetup.filters.yearRange?.upperBound ?? Self.currentYear
@@ -82,7 +84,7 @@ final class RoundFiltersViewModel: ObservableObject {
     }
 
     var setup: RoundSetup {
-        RoundSetup(filters: previewFilters, frameCount: frameCount)
+        RoundSetup(filters: previewFilters, frameCount: frameCount, shuffle: shuffle)
     }
 
     func loadGenres() async {
@@ -133,6 +135,7 @@ final class RoundFiltersViewModel: ObservableObject {
         let defaults = RoundSetup()
         filters = defaults.filters
         frameCount = defaults.frameCount
+        shuffle = defaults.shuffle
         limitYears = false
         yearFrom = Self.defaultYearFrom
         yearTo = Self.currentYear

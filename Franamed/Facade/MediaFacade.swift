@@ -32,14 +32,18 @@ final class MediaFacade: MediaFacadeProtocol {
         throw TMDBError.noSuitableMovieFound
     }
 
-    func fetchRound(source: RoundSource, mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> MediaItemWithBackdrops {
+    func fetchRound(source: RoundSource, mediaType: MediaType, filters: MediaFilters, frameCount: Int, shuffle: ShuffleMode) async throws -> MediaItemWithBackdrops {
         switch source {
         case .tmdb:
             return try await fetchRandomMediaItemAndBackdrops(mediaType: mediaType, filters: filters, frameCount: frameCount)
         case .curated:
-            let payload = try await fetchCuratedRound(mediaType: mediaType, filters: filters, frameCount: frameCount)
+            let payload = try await fetchCuratedRound(mediaType: mediaType, filters: filters, frameCount: frameCount, shuffle: shuffle)
             return payload.asMediaItemWithBackdrops(imageBaseURL: backend.configuration.imageBaseURL)
         }
+    }
+
+    private var playedTitles: [String: PlayedTitle] {
+        [:]
     }
 
     func searchMedia(mediaType: MediaType, query: String, language: String) async throws -> [MediaItem] {
@@ -58,10 +62,11 @@ final class MediaFacade: MediaFacadeProtocol {
         try await tmdbClient.fetchResultsCount(mediaType: mediaType, filters: filters)
     }
 
-    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int) async throws -> RoundPayload {
+    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, shuffle: ShuffleMode) async throws -> RoundPayload {
         var index = try await backend.catalogIndex.current()
         for _ in 0...Self.maxStaleIndexRetries {
-            guard let entry = index.entries(mediaType: mediaType, filters: filters).randomElement() else {
+            let entries = index.entries(mediaType: mediaType, filters: filters)
+            guard let entry = CuratedPicker.pick(from: entries, played: playedTitles, shuffle: shuffle) else {
                 throw CuratedRoundError.noMatches
             }
             do {

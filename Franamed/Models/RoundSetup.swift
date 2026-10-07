@@ -10,4 +10,5 @@ import Foundation
 struct RoundSetup: Hashable {
     var filters = MediaFilters()
     var frameCount = 6
+    var shuffle = ShuffleMode.smart
 }

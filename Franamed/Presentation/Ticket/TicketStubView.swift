@@ -53,9 +53,8 @@ struct TicketStubBody: View {
             VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
                 TicketMetaRow(
                     mediaType: card.mediaType,
-                    includeAdult: setup.filters.includeAdult,
-                    frameCount: setup.frameCount,
-                    sortBy: setup.filters.sortBy
+                    source: card.mode.roundSource,
+                    setup: setup
                 )
                 TicketFilterSummaryView(
                     summary: TicketFilterSummary(filters: setup.filters, genreNames: genreNames)
@@ -81,20 +80,22 @@ struct TicketStubBody: View {
 
 private struct TicketMetaRow: View {
     let mediaType: MediaType
-    let includeAdult: Bool
-    let frameCount: Int
-    let sortBy: SortBy
+    let source: RoundSource
+    let setup: RoundSetup
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: TicketStyle.metaSpacing) {
             Text(mediaType.displayName.uppercased())
                 .lineLimit(1)
-            if includeAdult {
+            if source == .tmdb && setup.filters.includeAdult {
                 adultBadge
             }
             Spacer(minLength: 0)
             frameBadge
-            sortBadge
+            switch source {
+            case .tmdb: sortBadge
+            case .curated: ShuffleIcon(mode: setup.shuffle)
+            }
         }
         .font(TicketStyle.meta)
         .foregroundStyle(Color.black)
@@ -113,15 +114,15 @@ private struct TicketMetaRow: View {
     private var frameBadge: some View {
         HStack(spacing: TicketStyle.symbolTextSpacing) {
             Image(systemName: "film")
-            Text("\(frameCount)")
+            Text("\(setup.frameCount)")
         }
         .lineLimit(1)
     }
 
     private var sortBadge: some View {
         HStack(spacing: TicketStyle.symbolTextSpacing) {
-            Image(systemName: sortBy.ticketIcon)
-            Text(sortBy.ticketLabel)
+            Image(systemName: setup.filters.sortBy.ticketIcon)
+            Text(setup.filters.sortBy.ticketLabel)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -140,6 +141,19 @@ private struct TicketMetaRow: View {
             frameCount: 6
         ),
         genreNames: ["Комедия", "Ужасы"],
+        isInteractive: true,
+        onOpenFilters: {},
+        onStart: {}
+    )
+    .modifier(TicketStubFrame(width: 300, edgeStyle: .scalloped))
+    .background(Color.white)
+}
+
+#Preview("Курируемый") {
+    TicketStubView(
+        card: TicketCard(mediaType: .movie, posterPath: nil, mode: .curated),
+        setup: RoundSetup(filters: MediaFilters(genres: [1], minRating: 7), frameCount: 6, shuffle: .smart),
+        genreNames: ["Комедия"],
         isInteractive: true,
         onOpenFilters: {},
         onStart: {}
