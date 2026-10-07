@@ -21,15 +21,7 @@ final class BackendAuthService: BackendAuthServiceProtocol {
         return try await refreshCurrentUser()
     }
 
-    func isSignedIn() async -> Bool {
-        await client.tokens.isSignedIn
-    }
-
-    func currentUser() async -> BackendUser? {
-        await client.tokens.user
-    }
-
-    func refreshCurrentUser() async throws -> BackendUser {
+    private func refreshCurrentUser() async throws -> BackendUser {
         let user: BackendUser = try await client.get("/v1/auth/me")
         await client.tokens.updateCachedUser(user)
         return user

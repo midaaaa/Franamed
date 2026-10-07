@@ -35,10 +35,6 @@ actor BackendTokenStore {
 
     var isSignedOut: Bool { defaults.bool(forKey: Self.signedOutKey) }
 
-    var hasStoredSession: Bool { KeychainStore.readString(Self.refreshTokenKey) != nil }
-
-    var isSignedIn: Bool { hasStoredSession && !isSignedOut }
-
     private var lastAccountWasAnonymous: Bool {
         defaults.object(forKey: Self.lastAccountAnonymousKey) as? Bool ?? true
     }

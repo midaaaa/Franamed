@@ -97,12 +97,6 @@ struct PreviewAuthService: BackendAuthServiceProtocol {
     @discardableResult
     func ensureSession() async throws -> BackendUser { user }
 
-    func isSignedIn() async -> Bool { true }
-
-    func currentUser() async -> BackendUser? { user }
-
-    func refreshCurrentUser() async throws -> BackendUser { user }
-
     @discardableResult
     func signInAnonymously() async throws -> BackendUser { user }
 

@@ -10,14 +10,7 @@ import Combine
 
 @MainActor
 final class SessionStore: ObservableObject {
-    enum State {
-        case loading
-        case signedOut
-        case signedIn(BackendUser)
-        case failed(String)
-    }
-
-    @Published private(set) var state: State = .loading
+    @Published private(set) var user: BackendUser?
 
     private let auth: BackendAuthServiceProtocol
     private let profile: BackendProfileServiceProtocol
@@ -32,11 +25,6 @@ final class SessionStore: ObservableObject {
 
     // MARK: State
 
-    var user: BackendUser? {
-        if case let .signedIn(user) = state { return user }
-        return nil
-    }
-
     var role: UserRole { user?.role ?? .user }
 
     var canModerate: Bool { role >= .moderator }
@@ -46,54 +34,20 @@ final class SessionStore: ObservableObject {
     // MARK: Actions
 
     func start() async {
-        switch state {
-        case .signedIn: return
-        default: break
-        }
+        guard user == nil else { return }
 
-        state = .loading
-
-        do {
-            state = .signedIn(try await auth.ensureSession())
-        } catch let error as BackendError where error.isNotSignedIn {
-            state = .signedOut
-        } catch {
-            state = .failed(message(for: error))
-        }
-    }
-
-    func signInAnonymously() async {
-        state = .loading
-
-        do {
-            state = .signedIn(try await auth.signInAnonymously())
-        } catch {
-            state = .failed(message(for: error))
-        }
-    }
-
-    func refreshUser() async {
-        guard case .signedIn = state else { return }
-
-        if let user = try? await auth.refreshCurrentUser() {
-            state = .signedIn(user)
+        if let signedIn = try? await auth.ensureSession() {
+            user = signedIn
+        } else {
+            user = try? await auth.signInAnonymously()
         }
     }
 
     func setStatsExcluded(_ excluded: Bool) async {
-        guard case .signedIn = state else { return }
+        guard user != nil else { return }
 
-        if let user = try? await profile.setStatsExcluded(excluded) {
-            state = .signedIn(user)
+        if let updated = try? await profile.setStatsExcluded(excluded) {
+            user = updated
         }
-    }
-
-    func signOut() async {
-        await auth.signOut()
-        state = .signedOut
-    }
-
-    private func message(for error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }

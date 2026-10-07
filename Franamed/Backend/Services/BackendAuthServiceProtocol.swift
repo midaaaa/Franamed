@@ -11,10 +11,6 @@ protocol BackendAuthServiceProtocol: Sendable {
     @discardableResult
     func ensureSession() async throws -> BackendUser
 
-    func isSignedIn() async -> Bool
-    func currentUser() async -> BackendUser?
-    func refreshCurrentUser() async throws -> BackendUser
-
     @discardableResult
     func signInAnonymously() async throws -> BackendUser
     func signInWithApple(identityToken: String, nonce: String?, displayName: String?) async throws -> BackendUser
