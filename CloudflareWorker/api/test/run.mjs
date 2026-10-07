@@ -636,6 +636,19 @@ console.log("sync with TMDB");
 
     check("a synced title is not due again", (await syncDueTitles(env, { limit: 50 }))?.synced?.some((entry) => entry.key === "movie_7777") !== true);
 
+    res = await call("mod", "POST", "/v1/catalog/items/movie_7777/reimport");
+    check("a manual check right after a sync is refused", res.status === 429, JSON.stringify(res.body));
+    const before = row("movie_7777");
+    db.db.prepare("UPDATE media_items SET last_synced_at = ? WHERE key = 'movie_7777'").run(longAgo);
+    tmdbTitles.get(7777).images.backdrops.push({ file_path: "/new3.jpg", iso_639_1: null, vote_average: 1, vote_count: 1 });
+    res = await call("plain", "POST", "/v1/catalog/items/movie_7777/reimport");
+    check("a player cannot run it", res.status === 403);
+    res = await call("mod", "POST", "/v1/catalog/items/movie_7777/reimport");
+    check("a manual check is the sync", res.status === 200 && res.body.newFrames === 1 && res.body.item.lastSyncedAt > longAgo
+        && res.body.totalFrames === db.db.prepare("SELECT COUNT(*) AS n FROM media_images WHERE media_key = 'movie_7777'").get().n, JSON.stringify(res.body));
+    check("and leaves known frames alone", frame(f[3].id).tmdb_vote_average === f[3].tmdb_vote_average && row("movie_7777").approved_images === before.approved_images);
+    tmdbTitles.get(7777).images.backdrops.pop();
+
     let dealtMissing = false;
     for (let i = 0; i < 20; i += 1) {
         const round = await call("mod", "GET", "/v1/round/next?mediaKey=movie_7777");

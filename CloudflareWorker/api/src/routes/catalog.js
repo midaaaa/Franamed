@@ -1,4 +1,4 @@
-import { badRequest, json, notFound, optionalString, parseInteger, readJSON, requireEnum } from "../lib/http.js";
+import { badRequest, json, notFound, optionalString, parseInteger, readJSON, requireEnum, tooManyRequests } from "../lib/http.js";
 import { authenticate, requireRole, roleRank } from "../lib/auth.js";
 import {
     CURATION_FILTER_NAMES,
@@ -18,8 +18,10 @@ import { utcDateString } from "../lib/daily.js";
 import { fetchDiscoverPage, fetchPosterOptions, importMediaItem } from "../lib/tmdb.js";
 import { limitByUser } from "../lib/limits.js";
 import { CATALOG_VERSION_HEADER, loadIndex, rebuildIndex } from "../lib/catalogIndex.js";
+import { syncTitle } from "../lib/sync.js";
 
 const MAX_BULK_IMPORT = 20;
+const MANUAL_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 
 export async function handleCatalog(request, env, segments, url) {
     // GET /v1/catalog/index — every published title without its name; the
@@ -301,9 +303,9 @@ export async function handleCatalog(request, env, segments, url) {
         return json({ item: serializeMediaItem(refreshed, genres.get(key) || []) });
     }
 
-    // POST /v1/catalog/items/{key}/reimport — pull this title from TMDB again.
-    // Safe to repeat: the import upserts and existing rows keep their curation
-    // state, so it only adds frames TMDB has published since.
+    // POST /v1/catalog/items/{key}/reimport — the cron's TMDB check, now:
+    // new stills arrive unjudged, vanished ones are marked missing, curation
+    // stays. A title checked minutes ago is not fetched again.
     if (segments[0] === "items" && segments[2] === "reimport" && request.method === "POST") {
         const user = await authenticate(request, env);
         requireRole(user, "moderator");
@@ -313,24 +315,25 @@ export async function handleCatalog(request, env, segments, url) {
         const item = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
         if (!item) throw notFound(`Unknown media item "${key}"`);
 
-        const before = await env.DB.prepare(
-            "SELECT COUNT(*) AS count FROM media_images WHERE media_key = ?"
-        ).bind(key).first();
+        const now = Date.now();
+        if (now - item.last_synced_at < MANUAL_SYNC_COOLDOWN_MS) {
+            throw tooManyRequests("Тайтл уже сверялся с TMDB несколько минут назад");
+        }
 
-        await importMediaItem(env, item.media_type, item.tmdb_id, { addedBy: item.added_by });
-        await refreshMediaCounters(env, key);
+        const result = await syncTitle(env, item, { now, manual: true });
 
-        const after = await env.DB.prepare(
-            "SELECT COUNT(*) AS count FROM media_images WHERE media_key = ?"
-        ).bind(key).first();
-
-        const refreshed = await env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key).first();
+        const [refreshed, total] = await env.DB.batch([
+            env.DB.prepare("SELECT * FROM media_items WHERE key = ?").bind(key),
+            env.DB.prepare("SELECT COUNT(*) AS count FROM media_images WHERE media_key = ?").bind(key)
+        ]);
         const genres = await loadGenreIds(env, [key]);
 
         return json({
-            item: serializeMediaItem(refreshed, genres.get(key) || []),
-            newFrames: after.count - before.count,
-            totalFrames: after.count
+            item: serializeMediaItem(refreshed.results[0], genres.get(key) || []),
+            newFrames: result.added,
+            missingFrames: result.missing,
+            returnedFrames: result.returned,
+            totalFrames: total.results[0].count
         });
     }
 

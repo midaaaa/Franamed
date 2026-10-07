@@ -26,13 +26,14 @@ const INSERT_CHUNK = 12;
 
 const IMAGE_CHECK_ORIGIN = "https://image.tmdb.org/t/p/w92";
 
+const recentYear = (now) => new Date(now).getUTCFullYear() - 1;
+
 export async function syncDueTitles(env, { now = Date.now(), limit = SYNC_TITLES_PER_RUN } = {}) {
-    const recentYear = new Date(now).getUTCFullYear() - 1;
     const due = await env.DB.prepare(
         `SELECT * FROM media_items INDEXED BY idx_media_synced
          WHERE last_synced_at < ?1 AND (last_synced_at < ?2 OR release_year >= ?3)
          ORDER BY last_synced_at LIMIT ?4`
-    ).bind(now - RECENT_SYNC_MS, now - OLD_SYNC_MS, recentYear, limit).all();
+    ).bind(now - RECENT_SYNC_MS, now - OLD_SYNC_MS, recentYear(now), limit).all();
 
     if (!due.results.length) return null;
 
@@ -40,13 +41,16 @@ export async function syncDueTitles(env, { now = Date.now(), limit = SYNC_TITLES
     const synced = [];
     for (const item of due.results) {
         if (budget.requests <= 0) break;
-        synced.push(await syncTitle(env, item, { budget, now, recent: item.release_year >= recentYear }));
+        synced.push(await syncTitle(env, item, { budget, now }));
     }
     return { synced };
 }
 
-async function syncTitle(env, item, { budget, now, recent }) {
+// Also the curator's "check against TMDB": `manual` reports a TMDB failure to
+// the caller instead of postponing the title in the cron queue.
+export async function syncTitle(env, item, { budget = { requests: OUTSIDE_REQUESTS_PER_RUN }, now = Date.now(), manual = false } = {}) {
     const key = item.key;
+    const recent = item.release_year >= recentYear(now);
     let details;
     try {
         budget.requests -= 1;
@@ -56,6 +60,7 @@ async function syncTitle(env, item, { budget, now, recent }) {
             include_image_language: "null"
         });
     } catch (error) {
+        if (manual) throw error;
         // Tried again in a day rather than at once, so a title TMDB lost does
         // not hold the head of the queue.
         const retryAt = now - (recent ? RECENT_SYNC_MS : OLD_SYNC_MS) + DAY_MS;
