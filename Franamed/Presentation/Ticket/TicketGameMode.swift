@@ -8,7 +8,7 @@
 import Foundation
 
 enum TicketGameMode: Int, CaseIterable {
-    case random, pvp, curated, collection
+    case random, curated, collection, pvp
 
     var displayName: String {
         switch self {

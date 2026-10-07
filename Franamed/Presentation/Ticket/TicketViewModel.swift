@@ -12,7 +12,7 @@ import Combine
 final class TicketViewModel: ObservableObject {
     let mediaFacade: MediaFacadeProtocol
     @Published private(set) var mediaType: MediaType = .movie
-    @Published private(set) var mode: TicketGameMode = .random
+    @Published private(set) var mode: TicketGameMode = .curated
     @Published private(set) var setupBySource: [RoundSource: [MediaType: RoundSetup]] = [:]
     @Published private(set) var genreNamesByType: [MediaType: [Int: String]] = [:]
 
