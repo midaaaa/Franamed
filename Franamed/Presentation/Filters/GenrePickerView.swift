@@ -36,7 +36,7 @@ struct GenrePickerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Сброс") {
+                Button("Очистить") {
                     viewModel.filters.genres = nil
                 }
             }

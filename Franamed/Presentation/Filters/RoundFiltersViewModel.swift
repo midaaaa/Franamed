@@ -131,11 +131,8 @@ final class RoundFiltersViewModel: ObservableObject {
         filters.genres = current.isEmpty ? nil : current
     }
 
-    func reset() {
-        let defaults = RoundSetup()
-        filters = defaults.filters
-        frameCount = defaults.frameCount
-        shuffle = defaults.shuffle
+    func clearFilters() {
+        filters = MediaFilters()
         limitYears = false
         yearFrom = Self.defaultYearFrom
         yearTo = Self.currentYear

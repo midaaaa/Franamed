@@ -117,8 +117,8 @@ struct RoundFiltersView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button("Сброс") {
-                viewModel.reset()
+            Button("Очистить") {
+                viewModel.clearFilters()
             }
         }
     }
