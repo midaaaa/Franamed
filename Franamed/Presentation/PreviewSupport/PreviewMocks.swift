@@ -174,10 +174,7 @@ extension BackendUser {
         reportMultiplier: 1,
         dailyStreak: 3,
         longestStreak: 7,
-        lastDailyCompletedDate: nil,
-        bonusAttemptsAvailable: 0,
-        attemptsUsedToday: 2,
-        lastAttemptResetDate: nil
+        lastDailyCompletedDate: nil
     )
 }
 #endif

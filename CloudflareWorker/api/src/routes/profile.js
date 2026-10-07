@@ -1,10 +1,10 @@
-// The player's own state: watched history, attempt budget, daily results.
+// The player's own state: watched history and daily results.
 
-import { badRequest, json, noContent, parseInteger, readJSON, requireString } from "../lib/http.js";
+import { json, noContent, parseInteger, readJSON } from "../lib/http.js";
 import { authenticate, publicUser } from "../lib/auth.js";
 import { deleteAccount } from "../lib/accounts.js";
 import { serializeWatched } from "../lib/plays.js";
-import { attemptBudget, consumeAttempt, isValidDateString, recordDailyResult, utcDateString } from "../lib/daily.js";
+import { utcDateString } from "../lib/daily.js";
 
 const WATCHED_SOURCES = ["play", "kinopoisk", "imdb", "letterboxd"];
 const MAX_WATCHED_BATCH = 500;
@@ -14,7 +14,7 @@ export async function handleProfile(request, env, segments, url) {
 
     // GET /v1/profile
     if (segments.length === 0 && request.method === "GET") {
-        return json({ user: publicUser(user), budget: await attemptBudget(env, user) });
+        return json({ user: publicUser(user) });
     }
 
     // DELETE /v1/profile — the account and everything keyed to it
@@ -105,17 +105,6 @@ export async function handleProfile(request, env, segments, url) {
         return noContent();
     }
 
-    // GET /v1/profile/budget
-    if (segments[0] === "budget" && request.method === "GET") {
-        return json(await attemptBudget(env, user));
-    }
-
-    // POST /v1/profile/budget/consume
-    if (segments[0] === "budget" && segments[1] === "consume" && request.method === "POST") {
-        const allowed = await consumeAttempt(env, user);
-        return json({ allowed, budget: await attemptBudget(env, user) }, allowed ? 200 : 429);
-    }
-
     // GET /v1/profile/daily — today's status plus the archive
     if (segments[0] === "daily" && request.method === "GET") {
         const rows = await env.DB.prepare(
@@ -137,28 +126,6 @@ export async function handleProfile(request, env, segments, url) {
                 completedAt: row.completed_at
             }))
         });
-    }
-
-    // POST /v1/profile/daily — record the outcome of today's puzzle
-    if (segments[0] === "daily" && request.method === "POST") {
-        const body = await readJSON(request);
-        const date = requireString(body, "date", { maxLength: 10 });
-        if (!isValidDateString(date)) throw badRequest("date must be YYYY-MM-DD");
-
-        const attemptsUsed = Number.parseInt(body.attemptsUsed, 10);
-        if (!Number.isInteger(attemptsUsed) || attemptsUsed < 0 || attemptsUsed > 6) {
-            throw badRequest("attemptsUsed must be 0–6");
-        }
-        if (typeof body.wasCorrect !== "boolean") throw badRequest("wasCorrect must be a boolean");
-
-        const result = await recordDailyResult(env, user, {
-            dateString: date,
-            mediaKey: requireString(body, "mediaKey", { maxLength: 60 }),
-            wasCorrect: body.wasCorrect,
-            attemptsUsed
-        });
-
-        return json(result);
     }
 
     return null;

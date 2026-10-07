@@ -208,10 +208,7 @@ export function publicUser(user) {
         reportMultiplier: user.report_multiplier,
         dailyStreak: user.daily_streak,
         longestStreak: user.longest_streak,
-        lastDailyCompletedDate: user.last_daily_completed_date,
-        bonusAttemptsAvailable: user.bonus_attempts_available,
-        attemptsUsedToday: user.attempts_used_today,
-        lastAttemptResetDate: user.last_attempt_reset_date
+        lastDailyCompletedDate: user.last_daily_completed_date
     };
 }
 

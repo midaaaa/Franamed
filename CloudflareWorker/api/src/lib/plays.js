@@ -7,7 +7,7 @@
 import { badRequest, notFound, requireEnum, requireString } from "./http.js";
 import { ROUND_LAYOUT_SIZE } from "./frames.js";
 import { isValidDateString, loadDailyPlan, recordDailyResult, utcDateString } from "./daily.js";
-import { recordPlaylistAnswer } from "../routes/playlists.js";
+import { recordPlaylistAnswer } from "./playlists.js";
 
 export const PLAY_MODES = ["random", "playlist", "daily"];
 

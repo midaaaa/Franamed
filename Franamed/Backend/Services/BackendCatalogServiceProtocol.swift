@@ -14,14 +14,8 @@ protocol BackendCatalogServiceProtocol: Sendable {
 
     func item(key: String) async throws -> CuratedItemDetail
 
-    func importTitles(mediaType: MediaType, tmdbIds: [Int]) async throws -> CatalogImportResult
-    func importPopular(mediaType: MediaType, page: Int, limit: Int) async throws -> CatalogImportResult
-
-    func curateTitle(key: String, verdicts: [FrameVerdict], rejectRemaining: Bool) async throws -> CuratedItem
-
     func posterOptions(key: String) async throws -> [PosterOption]
     func setPoster(key: String, posterURL: String?) async throws -> CuratedItem
-    func setFinalized(key: String, finalized: Bool) async throws -> CuratedItem
 }
 
 extension BackendCatalogServiceProtocol {

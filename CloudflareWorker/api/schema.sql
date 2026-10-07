@@ -15,13 +15,10 @@ CREATE TABLE IF NOT EXISTS users (
     is_anonymous              INTEGER NOT NULL DEFAULT 1,
     created_at                INTEGER NOT NULL,
 
-    -- daily economy
+    -- daily streak
     daily_streak              INTEGER NOT NULL DEFAULT 0,
     longest_streak            INTEGER NOT NULL DEFAULT 0,
-    last_daily_completed_date TEXT,                              -- YYYY-MM-DD
-    bonus_attempts_available  INTEGER NOT NULL DEFAULT 0,
-    attempts_used_today       INTEGER NOT NULL DEFAULT 0,
-    last_attempt_reset_date   TEXT
+    last_daily_completed_date TEXT                               -- YYYY-MM-DD
 );
 CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at DESC);
 
@@ -299,9 +296,6 @@ CREATE TABLE IF NOT EXISTS app_config (
 );
 
 INSERT OR IGNORE INTO app_config (key, value) VALUES
-    ('dailyFreeAttempts',        '6'),
-    ('attemptsPerCorrectStreak', '1'),
-    ('playlistCompletionReward', '3'),
     ('autoHideReportWeight',     '3'),
     ('catalogCacheTTLSeconds',   '86400'),
     ('voteWeightMinRounds',      '5'),

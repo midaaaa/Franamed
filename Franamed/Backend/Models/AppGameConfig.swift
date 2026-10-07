@@ -8,9 +8,6 @@
 import Foundation
 
 struct AppGameConfig: Codable, Sendable, Equatable {
-    let dailyFreeAttempts: Int
-    let attemptsPerCorrectStreak: Int
-    let playlistCompletionReward: Int
     let autoHideReportWeight: Double
     let catalogCacheTTLSeconds: Int
     let onboardingMediaKey: String

@@ -63,47 +63,7 @@ final class BackendCurationService: BackendCurationServiceProtocol {
         )
     }
 
-    func lock(imageId: Int, status: ImageStatus?, difficultyTier: DifficultyTier??) async throws -> CuratedImage {
-        struct Payload: Encodable, Sendable {
-            let status: ImageStatus?
-            var difficultyTier: DifficultyTier??
-
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(status, forKey: .status)
-                if let difficultyTier { try container.encode(difficultyTier, forKey: .difficultyTier) }
-            }
-
-            enum CodingKeys: String, CodingKey { case status, difficultyTier }
-        }
-
-        return try await client.post(
-            "/v1/curation/images/\(imageId)/lock",
-            body: Payload(status: status, difficultyTier: difficultyTier)
-        )
-    }
-
-    func contested(limit: Int) async throws -> [ContestedFrame] {
-        struct Response: Decodable, Sendable {
-            let items: [ContestedFrame]
-        }
-        let response: Response = try await client.get("/v1/curation/contested", query: [
-            URLQueryItem(name: "limit", value: "\(limit)")
-        ])
-        return response.items
-    }
-
     func dismissDisputes(imageId: Int) async throws -> CuratedImage {
         try await client.post("/v1/curation/images/\(imageId)/dismiss-disputes")
-    }
-
-    func reports(limit: Int) async throws -> [CurationReportEntry] {
-        struct Response: Decodable, Sendable {
-            let reports: [CurationReportEntry]
-        }
-        let response: Response = try await client.get("/v1/curation/reports", query: [
-            URLQueryItem(name: "limit", value: "\(limit)")
-        ])
-        return response.reports
     }
 }

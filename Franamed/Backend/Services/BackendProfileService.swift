@@ -14,8 +14,12 @@ final class BackendProfileService: BackendProfileServiceProtocol {
         self.client = client
     }
 
-    func profile() async throws -> ProfileSnapshot {
-        try await client.get("/v1/profile")
+    func profile() async throws -> BackendUser {
+        struct Response: Decodable, Sendable {
+            let user: BackendUser
+        }
+        let response: Response = try await client.get("/v1/profile")
+        return response.user
     }
 
     func watched(since: Double) async throws -> [WatchedEntry] {
@@ -45,28 +49,7 @@ final class BackendProfileService: BackendProfileServiceProtocol {
         try await client.delete("/v1/profile/watched", query: query)
     }
 
-    func budget() async throws -> AttemptBudget {
-        try await client.get("/v1/profile/budget")
-    }
-
-    func consumeAttempt() async throws -> ConsumeAttemptResult {
-        try await client.post("/v1/profile/budget/consume")
-    }
-
     func dailyStatus() async throws -> DailyStatus {
         try await client.get("/v1/profile/daily")
-    }
-
-    func recordDaily(date: String, mediaKey: String, attemptsUsed: Int, wasCorrect: Bool) async throws -> DailyResultOutcome {
-        struct Payload: Encodable, Sendable {
-            let date: String
-            let mediaKey: String
-            let attemptsUsed: Int
-            let wasCorrect: Bool
-        }
-        return try await client.post(
-            "/v1/profile/daily",
-            body: Payload(date: date, mediaKey: mediaKey, attemptsUsed: attemptsUsed, wasCorrect: wasCorrect)
-        )
     }
 }

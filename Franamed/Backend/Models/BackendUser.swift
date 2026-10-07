@@ -16,9 +16,6 @@ struct BackendUser: Codable, Sendable, Identifiable, Equatable {
     let dailyStreak: Int
     let longestStreak: Int
     let lastDailyCompletedDate: String?
-    let bonusAttemptsAvailable: Int
-    let attemptsUsedToday: Int
-    let lastAttemptResetDate: String?
 
     var id: String { uid }
 }

@@ -15,7 +15,6 @@ protocol BackendPlaylistServiceProtocol: Sendable {
     func setPublished(id: String, published: Bool) async throws -> Playlist
     func setItems(id: String, mediaKeys: [String]) async throws
 
-    func recordProgress(id: String, mediaKey: String, attemptsUsed: Int, wasCorrect: Bool) async throws -> PlaylistProgress
     func reset(id: String, mode: PlaylistResetMode) async throws -> PlaylistProgress
 }
 

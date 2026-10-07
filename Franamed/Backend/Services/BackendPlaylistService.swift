@@ -58,24 +58,6 @@ final class BackendPlaylistService: BackendPlaylistServiceProtocol {
         let _: Response = try await client.put("/v1/playlists/\(id)/items", body: Payload(mediaKeys: mediaKeys))
     }
 
-    func recordProgress(id: String, mediaKey: String, attemptsUsed: Int, wasCorrect: Bool) async throws -> PlaylistProgress {
-        struct Payload: Encodable, Sendable {
-            let mediaKey: String
-            let attemptsUsed: Int
-            let wasCorrect: Bool
-        }
-        struct Response: Decodable, Sendable {
-            let progress: PlaylistProgress
-            let awardedAttempts: Int
-        }
-
-        let response: Response = try await client.post(
-            "/v1/playlists/\(id)/progress",
-            body: Payload(mediaKey: mediaKey, attemptsUsed: attemptsUsed, wasCorrect: wasCorrect)
-        )
-        return response.progress
-    }
-
     func reset(id: String, mode: PlaylistResetMode) async throws -> PlaylistProgress {
         struct Payload: Encodable, Sendable {
             let mode: PlaylistResetMode

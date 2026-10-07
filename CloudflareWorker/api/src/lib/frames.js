@@ -181,10 +181,3 @@ export function selectSpareFrames(images, chosenIds, count = 3, { random = Math.
 
     return spares.slice(0, count);
 }
-
-// Six approved images is the eligibility bar for the six-frame mode. It counts
-// raw images, deliberately not visual variety: a film shot entirely at night
-// legitimately has six near-identical frames and is still playable.
-export function hasEnoughFrames(images, frameCount = 6) {
-    return images.filter((image) => image.status === "approved").length >= frameCount;
-}

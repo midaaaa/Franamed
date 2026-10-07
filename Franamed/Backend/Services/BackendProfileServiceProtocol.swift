@@ -8,17 +8,13 @@
 import Foundation
 
 protocol BackendProfileServiceProtocol: Sendable {
-    func profile() async throws -> ProfileSnapshot
+    func profile() async throws -> BackendUser
 
     func watched(since: Double) async throws -> [WatchedEntry]
     func syncWatched(_ entries: [WatchedEntry]) async throws -> Int
     func resetWatched(source: WatchedSource?) async throws
 
-    func budget() async throws -> AttemptBudget
-    func consumeAttempt() async throws -> ConsumeAttemptResult
-
     func dailyStatus() async throws -> DailyStatus
-    func recordDaily(date: String, mediaKey: String, attemptsUsed: Int, wasCorrect: Bool) async throws -> DailyResultOutcome
 }
 
 extension BackendProfileServiceProtocol {

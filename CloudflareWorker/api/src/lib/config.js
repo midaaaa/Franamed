@@ -1,9 +1,6 @@
 // Runtime knobs that live in the database so they can change without a deploy.
 
 const DEFAULTS = {
-    dailyFreeAttempts: 6,
-    attemptsPerCorrectStreak: 1,
-    playlistCompletionReward: 3,
     autoHideReportWeight: 3,
     catalogCacheTTLSeconds: 86400,
     // Rounds an account must have played before its frame reports carry any

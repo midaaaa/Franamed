@@ -46,39 +46,6 @@ final class BackendCatalogService: BackendCatalogServiceProtocol {
         try await client.get("/v1/catalog/items/\(key)")
     }
 
-    func importTitles(mediaType: MediaType, tmdbIds: [Int]) async throws -> CatalogImportResult {
-        struct Payload: Encodable, Sendable {
-            let mediaType: MediaType
-            let tmdbIds: [Int]
-        }
-        return try await client.post("/v1/catalog/import", body: Payload(mediaType: mediaType, tmdbIds: tmdbIds))
-    }
-
-    func importPopular(mediaType: MediaType, page: Int, limit: Int) async throws -> CatalogImportResult {
-        struct Payload: Encodable, Sendable {
-            let mediaType: MediaType
-            let page: Int
-            let limit: Int
-        }
-        return try await client.post("/v1/catalog/import-popular", body: Payload(mediaType: mediaType, page: page, limit: limit))
-    }
-
-    func curateTitle(key: String, verdicts: [FrameVerdict], rejectRemaining: Bool) async throws -> CuratedItem {
-        struct Payload: Encodable, Sendable {
-            let verdicts: [FrameVerdict]
-            let rejectRemaining: Bool
-        }
-        struct Response: Decodable, Sendable {
-            let item: CuratedItem
-        }
-
-        let response: Response = try await client.post(
-            "/v1/catalog/items/\(key)/curate",
-            body: Payload(verdicts: verdicts, rejectRemaining: rejectRemaining)
-        )
-        return response.item
-    }
-
     func posterOptions(key: String) async throws -> [PosterOption] {
         struct Response: Decodable, Sendable {
             let posters: [PosterOption]
@@ -92,12 +59,5 @@ final class BackendCatalogService: BackendCatalogServiceProtocol {
             let posterURL: String?
         }
         return try await client.patch("/v1/catalog/items/\(key)", body: Payload(posterURL: posterURL))
-    }
-
-    func setFinalized(key: String, finalized: Bool) async throws -> CuratedItem {
-        struct Payload: Encodable, Sendable {
-            let adminFinalized: Bool
-        }
-        return try await client.patch("/v1/catalog/items/\(key)", body: Payload(adminFinalized: finalized))
     }
 }
