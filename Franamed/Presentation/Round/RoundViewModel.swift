@@ -107,6 +107,7 @@ final class RoundViewModel: ObservableObject {
         if isCorrect {
             outcome = .correct
             modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
+            reportFinish(of: item, solvedAtFrame: attemptsMade)
             revealedCount = frameCount
         } else {
             attemptsRemaining -= 1
@@ -119,7 +120,15 @@ final class RoundViewModel: ObservableObject {
             if attemptsRemaining == 0 {
                 outcome = .incorrect
                 modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
+                reportFinish(of: item, solvedAtFrame: nil)
             }
+        }
+    }
+
+    private func reportFinish(of item: MediaItem, solvedAtFrame: Int?) {
+        guard source == .curated else { return }
+        Task { [mediaFacade, mediaType, frameCount] in
+            await mediaFacade.finishCuratedRound(mediaType: mediaType, tmdbId: item.id, frameCount: frameCount, solvedAtFrame: solvedAtFrame)
         }
     }
 

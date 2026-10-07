@@ -22,6 +22,22 @@ final class BackendRoundService: BackendRoundServiceProtocol {
         ])
     }
 
+    func finishCuratedRound(_ finish: PendingFinish) async throws -> RoundFinish {
+        struct Payload: Encodable, Sendable {
+            let mediaKey: String
+            let mode = "random"
+            let result: String
+            let frameCount: Int
+            let solvedAtFrame: Int?
+        }
+        return try await client.post("/v1/round/finish", body: Payload(
+            mediaKey: finish.mediaKey,
+            result: finish.solvedAtFrame == nil ? "wrong" : "correct",
+            frameCount: finish.frameCount,
+            solvedAtFrame: finish.solvedAtFrame
+        ))
+    }
+
     func nextPlaylistRound(
         playlistId: String,
         pick: PlaylistPickMode,

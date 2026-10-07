@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct PlayedTitle: Sendable {
+struct PlayedTitle: Codable, Sendable {
     let isHidden: Bool
     let lastPlayedAt: Date
 }

@@ -42,10 +42,6 @@ final class MediaFacade: MediaFacadeProtocol {
         }
     }
 
-    private var playedTitles: [String: PlayedTitle] {
-        [:]
-    }
-
     func searchMedia(mediaType: MediaType, query: String, language: String) async throws -> [MediaItem] {
         try await tmdbClient.searchMedia(mediaType: mediaType, query: query, language: language)
     }
@@ -62,11 +58,13 @@ final class MediaFacade: MediaFacadeProtocol {
         try await tmdbClient.fetchResultsCount(mediaType: mediaType, filters: filters)
     }
 
-    func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, shuffle: ShuffleMode) async throws -> RoundPayload {
+    private func fetchCuratedRound(mediaType: MediaType, filters: MediaFilters, frameCount: Int, shuffle: ShuffleMode) async throws -> RoundPayload {
         var index = try await backend.catalogIndex.current()
+        Task { [playedTitles = backend.playedTitles] in await playedTitles.sendPending() }
+        let played = await backend.playedTitles.all()
         for _ in 0...Self.maxStaleIndexRetries {
             let entries = index.entries(mediaType: mediaType, filters: filters)
-            guard let entry = CuratedPicker.pick(from: entries, played: playedTitles, shuffle: shuffle) else {
+            guard let entry = CuratedPicker.pick(from: entries, played: played, shuffle: shuffle) else {
                 throw CuratedRoundError.noMatches
             }
             do {
@@ -76,6 +74,15 @@ final class MediaFacade: MediaFacadeProtocol {
             }
         }
         throw CuratedRoundError.noMatches
+    }
+
+    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async {
+        await backend.playedTitles.record(PendingFinish(
+            mediaKey: "\(mediaType.rawValue)_\(tmdbId)",
+            frameCount: frameCount,
+            solvedAtFrame: solvedAtFrame,
+            playedAt: .now
+        ))
     }
 
     func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
