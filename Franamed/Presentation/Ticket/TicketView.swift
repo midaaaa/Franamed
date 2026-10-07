@@ -6,12 +6,10 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct TicketView: View {
     @StateObject private var viewModel: TicketViewModel
     @ObservedObject var coordinator: AppCoordinator
-    @Environment(\.modelContext) private var modelContext
 
     @Environment(\.displayScale) private var displayScale
 
@@ -65,7 +63,6 @@ struct TicketView: View {
                     NavigationStack {
                         RoundView(
                             mediaFacade: viewModel.mediaFacade,
-                            modelContext: modelContext,
                             mediaType: mediaType,
                             mode: viewModel.mode,
                             filters: viewModel.setup(for: mediaType).filters,
@@ -85,7 +82,7 @@ struct TicketView: View {
                     .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
                 }
                 .sheet(isPresented: $isShowingProfile) {
-                    ProfileSheet()
+                    ProfileSheet(mediaFacade: viewModel.mediaFacade)
                 }
                 .sheet(item: $filtersSheetMediaType) { mediaType in
                     RoundFiltersView(
@@ -296,5 +293,4 @@ struct TicketView: View {
 
 #Preview {
     TicketView(coordinator: AppCoordinator(), mediaFacade: PreviewMediaFacade())
-        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

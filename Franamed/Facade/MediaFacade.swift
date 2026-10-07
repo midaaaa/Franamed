@@ -85,6 +85,10 @@ final class MediaFacade: MediaFacadeProtocol {
         ))
     }
 
+    func resetPlayedTitles() async throws {
+        try await backend.playedTitles.reset()
+    }
+
     func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
         try await backend.catalogIndex.current().entries(mediaType: mediaType, filters: filters).count
     }

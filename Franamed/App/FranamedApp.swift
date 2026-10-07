@@ -6,27 +6,14 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct FranamedApp: App {
     let mediaFacade = AppFactory.makeMediaFacade()
 
-    let container: ModelContainer = {
-        let schema = Schema([RoundRecord.self, WatchedRecord.self])
-        let configuration = ModelConfiguration(schema: schema)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [configuration])
-        } catch {
-            fatalError("Не удалось создать ModelContainer: \(error)")
-        }
-    }()
-
     var body: some Scene {
         WindowGroup {
             RootView(mediaFacade: mediaFacade)
-                .modelContainer(container)
         }
     }
 }

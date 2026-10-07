@@ -54,6 +54,13 @@ actor PlayedTitlesStore {
         }
     }
 
+    func reset() async throws {
+        await sendPending()
+        try await profile.resetWatched(source: nil)
+        titles = [:]
+        titlesCache.save([:])
+    }
+
     private func loadTitles() async -> [String: PlayedTitle]? {
         if let titles { return titles }
         if let saved = titlesCache.load() {

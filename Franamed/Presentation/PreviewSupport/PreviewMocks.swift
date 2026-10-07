@@ -44,6 +44,8 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
 
     func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async {}
 
+    func resetPlayedTitles() async throws {}
+
     func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int {
         87
     }

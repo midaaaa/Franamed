@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import SwiftData
 import UIKit
 
 struct RoundView: View {
@@ -41,9 +40,9 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
 
-    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart) {
         self.mode = mode
-        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, modelContext: modelContext, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle))
+        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle))
     }
 
     var body: some View {
@@ -273,20 +272,11 @@ private struct FrameRequest: Equatable {
     let isRoundLoading: Bool
 }
 
-private struct RoundViewPreviewHost: View {
-    @Environment(\.modelContext) private var modelContext
-
-    var body: some View {
-        RoundView(mediaFacade: PreviewMediaFacade(), modelContext: modelContext)
-    }
-}
-
 private struct StubIdentity: Hashable {
     let itemID: Int
     let round: Int
 }
 
 #Preview {
-    RoundViewPreviewHost()
-        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
+    RoundView(mediaFacade: PreviewMediaFacade())
 }

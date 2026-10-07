@@ -6,10 +6,8 @@
 //
 
 import SwiftUI
-import SwiftData
 
 struct ProfileSheet: View {
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @AppStorage(Haptics.enabledKey) private var hapticsEnabled = true
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
@@ -17,6 +15,7 @@ struct ProfileSheet: View {
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
     @EnvironmentObject private var session: SessionStore
+    let mediaFacade: MediaFacadeProtocol
 
     @State private var isConfirmingReset = false
 
@@ -58,19 +57,19 @@ struct ProfileSheet: View {
                 #endif
 
                 Section {
-                    Button("Сбросить историю просмотров", role: .destructive) {
+                    Button("Сбросить сыгранное", role: .destructive) {
                         isConfirmingReset = true
                     }
                     .confirmationDialog(
-                        "Удалить всю историю просмотренных фильмов и сериалов?",
+                        "Сбросить сыгранное в курируемом рандоме?",
                         isPresented: $isConfirmingReset,
                         titleVisibility: .visible
                     ) {
-                        Button("Удалить историю", role: .destructive) {
-                            try? modelContext.delete(model: WatchedRecord.self)
+                        Button("Сбросить", role: .destructive) {
+                            Task { try? await mediaFacade.resetPlayedTitles() }
                         }
                     } message: {
-                        Text("Это нельзя отменить.")
+                        Text("Все тайтлы снова станут новыми. Это нельзя отменить.")
                     }
                 }
             }
@@ -85,7 +84,6 @@ struct ProfileSheet: View {
 }
 
 #Preview {
-    ProfileSheet()
+    ProfileSheet(mediaFacade: PreviewMediaFacade())
         .environmentObject(SessionStore(auth: PreviewAuthService()))
-        .modelContainer(for: [RoundRecord.self, WatchedRecord.self], inMemory: true)
 }

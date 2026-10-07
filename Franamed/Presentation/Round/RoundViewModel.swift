@@ -7,7 +7,6 @@
 
 import Foundation
 import Combine
-import SwiftData
 
 @MainActor
 final class RoundViewModel: ObservableObject {
@@ -15,7 +14,6 @@ final class RoundViewModel: ObservableObject {
     let source: RoundSource
     let frameCount: Int
     let shuffle: ShuffleMode
-    private let modelContext: ModelContext
     @Published private(set) var attemptsMade = 0
     let filters: MediaFilters
 
@@ -37,9 +35,8 @@ final class RoundViewModel: ObservableObject {
     private var detailsTask: Task<Void, Never>?
     private let mediaFacade: MediaFacadeProtocol
 
-    init(mediaFacade: MediaFacadeProtocol, modelContext: ModelContext, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart) {
         self.mediaFacade = mediaFacade
-        self.modelContext = modelContext
         self.mediaType = mediaType
         self.source = source
         self.filters = filters
@@ -92,9 +89,6 @@ final class RoundViewModel: ObservableObject {
         let submittedAnswer = answerText
         let item = mediaItemWithBackdrops.item
         attemptsMade += 1
-        if attemptsMade == 1 {
-            modelContext.insert(WatchedRecord(tmdbId: item.id, mediaType: mediaType, addedAt: .now))
-        }
         let isCorrect: Bool
         if let pickedId = pickedSuggestionId {
             isCorrect = pickedId == item.id
@@ -106,7 +100,6 @@ final class RoundViewModel: ObservableObject {
         answerText = ""
         if isCorrect {
             outcome = .correct
-            modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: true, guessedTitle: submittedAnswer, isDaily: false))
             reportFinish(of: item, solvedAtFrame: attemptsMade)
             revealedCount = frameCount
         } else {
@@ -119,7 +112,6 @@ final class RoundViewModel: ObservableObject {
 
             if attemptsRemaining == 0 {
                 outcome = .incorrect
-                modelContext.insert(RoundRecord(tmdbId: item.id, mediaType: mediaType, playedAt: .now, attemptsUsed: attemptsMade, wasCorrect: false, guessedTitle: submittedAnswer, isDaily: false))
                 reportFinish(of: item, solvedAtFrame: nil)
             }
         }
