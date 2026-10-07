@@ -22,6 +22,17 @@ final class BackendProfileService: BackendProfileServiceProtocol {
         return response.user
     }
 
+    func setStatsExcluded(_ excluded: Bool) async throws -> BackendUser {
+        struct Payload: Encodable, Sendable {
+            let statsExcluded: Bool
+        }
+        struct Response: Decodable, Sendable {
+            let user: BackendUser
+        }
+        let response: Response = try await client.patch("/v1/profile", body: Payload(statsExcluded: excluded))
+        return response.user
+    }
+
     func watched(since: Double) async throws -> [WatchedEntry] {
         struct Response: Decodable, Sendable {
             let watched: [WatchedEntry]

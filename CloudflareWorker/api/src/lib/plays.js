@@ -99,7 +99,7 @@ async function titleStats(env, mediaKey) {
 async function dayStats(env, date) {
     const rows = await env.DB.prepare(
         `SELECT CASE WHEN was_correct = 1 THEN attempts_used END AS frame, COUNT(*) AS n
-         FROM daily_results WHERE date = ? GROUP BY was_correct, attempts_used`
+         FROM daily_results WHERE date = ? AND counted = 1 GROUP BY was_correct, attempts_used`
     ).bind(date).all();
     return tally(rows.results);
 }
@@ -148,7 +148,8 @@ export async function finishRound(env, user, body) {
             dateString: date,
             mediaKey: play.mediaKey,
             wasCorrect: play.wasCorrect,
-            attemptsUsed: play.attemptsUsed
+            attemptsUsed: play.attemptsUsed,
+            counted: user.stats_excluded !== 1
         });
         response.daily = { date, wasCorrect: play.wasCorrect, attemptsUsed: play.attemptsUsed, ...outcome };
     } else {
@@ -170,7 +171,7 @@ export async function finishRound(env, user, body) {
         });
     }
 
-    const counted = play.mode !== "daily" && play.counts;
+    const counted = play.mode !== "daily" && play.counts && user.stats_excluded !== 1;
     const watched = await markWatched(env, user.uid, play, { counted, now });
 
     return {

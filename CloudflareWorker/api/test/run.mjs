@@ -523,6 +523,19 @@ check("a daily marks the title seen without counting it", watchedRow("mod", play
 res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[0], mode: "daily", date: today, result: "wrong", frameCount: 6 });
 check("a day is played once", res.status === 200 && res.body.alreadyRecorded === true && res.body.daily.wasCorrect === true
     && watchedRow("mod", playable[0]).plays === 1);
+res = await call("plain", "PATCH", "/v1/profile", { statsExcluded: true });
+check("a player cannot leave the statistics", res.status === 403);
+res = await call("mod", "PATCH", "/v1/profile", { statsExcluded: true });
+check("a moderator can", res.status === 200 && res.body.user.statsExcluded === true);
+db.db.prepare("DELETE FROM daily_results WHERE date = ?").run(today);
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[0], mode: "daily", date: today, result: "correct", solvedAtFrame: 2, frameCount: 6 });
+check("an excluded daily keeps the streak but not the statistic", res.status === 200 && res.body.daily.wasCorrect === true && res.body.stats.players === 0
+    && db.db.prepare("SELECT counted FROM daily_results WHERE uid = 'mod' AND date = ?").get(today)?.counted === 0, JSON.stringify(res.body));
+res = await call("mod", "POST", "/v1/round/finish", { mediaKey: playable[3], mode: "random", result: "correct", solvedAtFrame: 1, frameCount: 6 });
+check("an excluded round is seen but not counted", res.status === 200 && res.body.counted === false && res.body.repeat === false
+    && watchedRow("mod", playable[3]).result === null && watchedRow("mod", playable[3]).plays === 1, JSON.stringify(res.body));
+await call("mod", "PATCH", "/v1/profile", { statsExcluded: false });
+db.db.prepare("DELETE FROM watched_media WHERE uid = 'mod' AND media_key = ?").run(playable[3]);
 db.db.prepare("DELETE FROM daily_results WHERE date = ?").run(today);
 db.db.prepare("DELETE FROM daily_overrides WHERE date = ?").run(today);
 

@@ -124,7 +124,8 @@ extension BackendUser {
         reportMultiplier: 1,
         dailyStreak: 3,
         longestStreak: 7,
-        lastDailyCompletedDate: nil
+        lastDailyCompletedDate: nil,
+        statsExcluded: false
     )
 }
 #endif

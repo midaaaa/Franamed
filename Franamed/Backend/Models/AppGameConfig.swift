@@ -11,4 +11,5 @@ struct AppGameConfig: Codable, Sendable, Equatable {
     let autoHideReportWeight: Double
     let catalogCacheTTLSeconds: Int
     let onboardingMediaKey: String
+    let statsMinPlayers: Int
 }

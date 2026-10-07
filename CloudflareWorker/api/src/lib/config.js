@@ -14,6 +14,9 @@ const DEFAULTS = {
     // round stops offering it a free replacement frame.
     reportReplacementLimit: 2,
     onboardingMediaKey: "",
+    // Players a title or a day needs before the result screen shows shares
+    // instead of plain counts: two players make every share 50 or 100%.
+    statsMinPlayers: 10,
     // The cron fills an empty tomorrow with a random unused film.
     autoDaily: false
 };

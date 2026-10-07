@@ -1,7 +1,7 @@
 // The player's own state: watched history and daily results.
 
-import { json, noContent, parseInteger, readJSON } from "../lib/http.js";
-import { authenticate, publicUser } from "../lib/auth.js";
+import { badRequest, json, noContent, parseInteger, readJSON } from "../lib/http.js";
+import { authenticate, publicUser, requireRole } from "../lib/auth.js";
 import { deleteAccount } from "../lib/accounts.js";
 import { serializeWatched } from "../lib/plays.js";
 import { utcDateString } from "../lib/daily.js";
@@ -15,6 +15,19 @@ export async function handleProfile(request, env, segments, url) {
     // GET /v1/profile
     if (segments.length === 0 && request.method === "GET") {
         return json({ user: publicUser(user) });
+    }
+
+    // PATCH /v1/profile — {statsExcluded}: a moderator playing to test keeps
+    // their rounds out of the statistics while it is on
+    if (segments.length === 0 && request.method === "PATCH") {
+        requireRole(user, "moderator");
+        const body = await readJSON(request);
+        if (typeof body.statsExcluded !== "boolean") throw badRequest("statsExcluded must be a boolean");
+
+        const updated = await env.DB.prepare("UPDATE users SET stats_excluded = ? WHERE uid = ? RETURNING *")
+            .bind(body.statsExcluded ? 1 : 0, user.uid)
+            .first();
+        return json({ user: publicUser(updated) });
     }
 
     // DELETE /v1/profile — the account and everything keyed to it

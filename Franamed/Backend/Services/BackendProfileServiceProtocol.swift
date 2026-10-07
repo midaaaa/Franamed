@@ -9,6 +9,7 @@ import Foundation
 
 protocol BackendProfileServiceProtocol: Sendable {
     func profile() async throws -> BackendUser
+    func setStatsExcluded(_ excluded: Bool) async throws -> BackendUser
 
     func watched(since: Double) async throws -> [WatchedEntry]
     func syncWatched(_ entries: [WatchedEntry]) async throws -> Int

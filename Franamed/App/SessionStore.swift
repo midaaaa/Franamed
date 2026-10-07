@@ -20,9 +20,14 @@ final class SessionStore: ObservableObject {
     @Published private(set) var state: State = .loading
 
     private let auth: BackendAuthServiceProtocol
+    private let profile: BackendProfileServiceProtocol
 
-    init(auth: BackendAuthServiceProtocol = AppFactory.makeBackend().auth) {
+    init(
+        auth: BackendAuthServiceProtocol = AppFactory.makeBackend().auth,
+        profile: BackendProfileServiceProtocol = AppFactory.makeBackend().profile
+    ) {
         self.auth = auth
+        self.profile = profile
     }
 
     // MARK: State
@@ -71,6 +76,14 @@ final class SessionStore: ObservableObject {
         guard case .signedIn = state else { return }
 
         if let user = try? await auth.refreshCurrentUser() {
+            state = .signedIn(user)
+        }
+    }
+
+    func setStatsExcluded(_ excluded: Bool) async {
+        guard case .signedIn = state else { return }
+
+        if let user = try? await profile.setStatsExcluded(excluded) {
             state = .signedIn(user)
         }
     }

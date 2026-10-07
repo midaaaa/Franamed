@@ -30,6 +30,16 @@ struct ProfileSheet: View {
                             LabeledContent("Роль", value: user.role.displayName)
                         }
                     }
+                    if session.canModerate {
+                        Section {
+                            Toggle("Не учитывать мою игру", isOn: Binding(
+                                get: { user.statsExcluded },
+                                set: { excluded in Task { await session.setStatsExcluded(excluded) } }
+                            ))
+                        } footer: {
+                            Text("Пока включено, твои раунды не попадают в общую статистику тайтлов и ежедневки.")
+                        }
+                    }
                 }
 
                 Section("Настройки") {

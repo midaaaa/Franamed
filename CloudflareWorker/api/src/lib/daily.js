@@ -213,7 +213,7 @@ export function nextStreak(user, dateString, wasCorrect) {
     return { dailyStreak, longestStreak: Math.max(user.longest_streak, dailyStreak) };
 }
 
-export async function recordDailyResult(env, user, { dateString, mediaKey, wasCorrect, attemptsUsed }) {
+export async function recordDailyResult(env, user, { dateString, mediaKey, wasCorrect, attemptsUsed, counted = true }) {
     const existing = await env.DB.prepare("SELECT date FROM daily_results WHERE uid = ? AND date = ?")
         .bind(user.uid, dateString)
         .first();
@@ -221,10 +221,10 @@ export async function recordDailyResult(env, user, { dateString, mediaKey, wasCo
     const { dailyStreak, longestStreak } = nextStreak(user, dateString, wasCorrect);
 
     await env.DB.prepare(
-        `INSERT INTO daily_results (uid, date, media_key, was_correct, attempts_used, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO daily_results (uid, date, media_key, was_correct, attempts_used, completed_at, counted)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (uid, date) DO NOTHING`
-    ).bind(user.uid, dateString, mediaKey, wasCorrect ? 1 : 0, attemptsUsed, Date.now()).run();
+    ).bind(user.uid, dateString, mediaKey, wasCorrect ? 1 : 0, attemptsUsed, Date.now(), counted ? 1 : 0).run();
 
     // Replaying an already-recorded day must not move the streak again.
     if (existing) return { dailyStreak: user.daily_streak, longestStreak: user.longest_streak };

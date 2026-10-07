@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS users (
     -- daily streak
     daily_streak              INTEGER NOT NULL DEFAULT 0,
     longest_streak            INTEGER NOT NULL DEFAULT 0,
-    last_daily_completed_date TEXT                               -- YYYY-MM-DD
+    last_daily_completed_date TEXT,                              -- YYYY-MM-DD
+
+    -- a moderator testing the game keeps their rounds out of everyone's statistics
+    stats_excluded            INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_users_created ON users(created_at DESC);
 
@@ -255,6 +258,7 @@ CREATE TABLE IF NOT EXISTS daily_results (
     was_correct   INTEGER NOT NULL,
     attempts_used INTEGER NOT NULL,
     completed_at  INTEGER NOT NULL,
+    counted       INTEGER NOT NULL DEFAULT 1,                    -- 0: kept out of the day's statistics
     PRIMARY KEY (uid, date)
 );
 CREATE INDEX IF NOT EXISTS idx_daily_results_date ON daily_results(date, was_correct, attempts_used);
@@ -299,6 +303,7 @@ INSERT OR IGNORE INTO app_config (key, value) VALUES
     ('autoHideReportWeight',     '3'),
     ('catalogCacheTTLSeconds',   '86400'),
     ('voteWeightMinRounds',      '5'),
+    ('statsMinPlayers',          '10'),
     ('targetApprovedFrames',     '7'),
     ('reportReplacementLimit',   '2'),
     ('onboardingMediaKey',       '');
