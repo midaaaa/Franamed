@@ -13,10 +13,12 @@ struct RoundFiltersView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: RoundFiltersViewModel
     let onApply: (RoundSetup) -> Void
+    let onPlayOptionsChange: (Int, ShuffleMode) -> Void
 
-    init(mediaFacade: MediaFacadeProtocol, source: RoundSource, mediaType: MediaType, setup: RoundSetup, onApply: @escaping (RoundSetup) -> Void) {
+    init(mediaFacade: MediaFacadeProtocol, source: RoundSource, mediaType: MediaType, setup: RoundSetup, onPlayOptionsChange: @escaping (Int, ShuffleMode) -> Void, onApply: @escaping (RoundSetup) -> Void) {
         _viewModel = StateObject(wrappedValue: RoundFiltersViewModel(mediaFacade: mediaFacade, source: source, mediaType: mediaType, initialSetup: setup))
         self.onApply = onApply
+        self.onPlayOptionsChange = onPlayOptionsChange
     }
 
     private var frameCountBinding: Binding<Double> {
@@ -35,8 +37,8 @@ struct RoundFiltersView: View {
 
     private var yearSectionFooterText: String {
         switch viewModel.mediaType {
-        case .movie: "Диапазон года выхода фильма."
-        case .tv: "Диапазон года начала показа сериала."
+        case .movie: "Год премьеры фильма."
+        case .tv: "Год выхода первого сезона."
         }
     }
 
@@ -56,7 +58,8 @@ struct RoundFiltersView: View {
 
                 OptionalThresholdFilterSection(
                     title: "Рейтинг",
-                    footer: "\(viewModel.mediaType.displayName) с рейтингом не ниже указанного.",
+                    toggleTitle: "Не ниже",
+                    footer: "Средняя оценка зрителей на TMDB.",
                     range: 0...10,
                     step: 0.5,
                     defaultValue: RoundFiltersViewModel.defaultMinRating,
@@ -76,7 +79,8 @@ struct RoundFiltersView: View {
 
                 OptionalThresholdFilterSection(
                     title: "Голоса",
-                    footer: "Отсекает случайные оценки — рейтинг от пары голосов ненадёжен.",
+                    toggleTitle: "Не меньше",
+                    footer: "Сколько зрителей поставили оценку. Рейтинг от пары голосов ненадёжен.",
                     range: 0...5000,
                     step: 100,
                     defaultValue: RoundFiltersViewModel.defaultMinVoteCount,
@@ -93,6 +97,8 @@ struct RoundFiltersView: View {
             .toolbar { toolbarContent }
             .safeAreaInset(edge: .bottom) { applyButton }
             .task { await viewModel.loadGenres() }
+            .onChange(of: viewModel.frameCount) { onPlayOptionsChange(viewModel.frameCount, viewModel.shuffle) }
+            .onChange(of: viewModel.shuffle) { onPlayOptionsChange(viewModel.frameCount, viewModel.shuffle) }
             .task(id: viewModel.previewFilters) { await viewModel.refreshPreview(filters: viewModel.previewFilters) }
         }
     }
@@ -147,9 +153,9 @@ struct RoundFiltersView: View {
 }
 
 #Preview {
-    RoundFiltersView(mediaFacade: PreviewMediaFacade(), source: .tmdb, mediaType: .movie, setup: RoundSetup()) { _ in }
+    RoundFiltersView(mediaFacade: PreviewMediaFacade(), source: .tmdb, mediaType: .movie, setup: RoundSetup(), onPlayOptionsChange: { _, _ in }) { _ in }
 }
 
 #Preview("Курируемый") {
-    RoundFiltersView(mediaFacade: PreviewMediaFacade(), source: .curated, mediaType: .movie, setup: RoundSetup()) { _ in }
+    RoundFiltersView(mediaFacade: PreviewMediaFacade(), source: .curated, mediaType: .movie, setup: RoundSetup(), onPlayOptionsChange: { _, _ in }) { _ in }
 }

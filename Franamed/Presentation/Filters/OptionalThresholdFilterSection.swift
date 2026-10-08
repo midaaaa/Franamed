@@ -9,6 +9,7 @@ import SwiftUI
 
 struct OptionalThresholdFilterSection: View {
     let title: String
+    let toggleTitle: String
     let footer: String
     let range: ClosedRange<Double>
     let step: Double
@@ -27,7 +28,7 @@ struct OptionalThresholdFilterSection: View {
 
     var body: some View {
         Section {
-            Toggle("Ограничить", isOn: $isEnabled)
+            Toggle(toggleTitle, isOn: $isEnabled)
             if isEnabled {
                 HStack {
                     Slider(value: sliderBinding, in: range, step: step) {
@@ -59,7 +60,8 @@ private struct OptionalThresholdFilterSectionPreview: View {
         Form {
             OptionalThresholdFilterSection(
                 title: "Рейтинг",
-                footer: "Минимальная оценка на TMDB.",
+                toggleTitle: "Не ниже",
+                footer: "Средняя оценка зрителей на TMDB.",
                 range: 0...10,
                 step: 0.5,
                 defaultValue: 6,

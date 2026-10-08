@@ -13,7 +13,7 @@ struct YearRangeFilterSection: View {
     let earliestYear: Int
     let currentYear: Int
     var headerTitle: String = "Годы выхода"
-    var footerText: String = "Диапазон года выхода."
+    var footerText: String = "Год выхода."
 
     @Binding var isEnabled: Bool
     @Binding var yearFrom: Int
@@ -21,7 +21,7 @@ struct YearRangeFilterSection: View {
 
     var body: some View {
         Section {
-            Toggle("Ограничить", isOn: $isEnabled)
+            Toggle("Задать диапазон", isOn: $isEnabled)
             if isEnabled {
                 HStack {
                     yearPicker("От", selection: $yearFrom) { newValue in

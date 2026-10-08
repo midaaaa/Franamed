@@ -89,7 +89,13 @@ struct TicketView: View {
                         mediaFacade: viewModel.mediaFacade,
                         source: viewModel.mode.roundSource,
                         mediaType: mediaType,
-                        setup: viewModel.setup(for: mediaType)
+                        setup: viewModel.setup(for: mediaType),
+                        onPlayOptionsChange: { frameCount, shuffle in
+                            var setup = viewModel.setup(for: mediaType)
+                            setup.frameCount = frameCount
+                            setup.shuffle = shuffle
+                            viewModel.saveSetup(setup, for: mediaType)
+                        }
                     ) { newSetup in
                         viewModel.saveSetup(newSetup, for: mediaType)
                     }
