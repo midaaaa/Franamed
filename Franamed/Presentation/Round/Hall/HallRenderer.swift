@@ -15,10 +15,8 @@ final class HallRenderer: @unchecked Sendable {
         let scene: HallScene
         let args: HallShaderArgs
         let meshes: HallMeshSet
-    }
-
-    struct LayerBox: @unchecked Sendable {
-        let layer: CAMetalLayer
+        var picture: HallPicture?
+        var phone: HallPhoneDraw?
     }
 
     private struct MeshDraw {
@@ -26,20 +24,34 @@ final class HallRenderer: @unchecked Sendable {
         var instance: SIMD4<Float>
     }
 
+    private struct Targets {
+        let color: MTLTexture
+        let depth: MTLTexture
+    }
+
     static let shared = MTLCreateSystemDefaultDevice().flatMap(HallRenderer.init)
 
     private static let sampleCount = 4
+    private static let phonePerimeterSegments = 160
+    private static let buttonSegments = 24
 
     let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let meshPipelines: [MTLRenderPipelineState]
-    private let occluderPipeline: MTLRenderPipelineState
+    private let picturePipeline: MTLRenderPipelineState
+    private let phonePipeline: MTLRenderPipelineState
+    private let phoneSidePipeline: MTLRenderPipelineState
+    private let phoneButtonPipelines: [MTLRenderPipelineState]
+    private let phoneGlowPipeline: MTLRenderPipelineState
+    private let screenGlowPipeline: MTLRenderPipelineState
+    private let veilPipeline: MTLRenderPipelineState
+    private let screenGlowDepth: MTLDepthStencilState
+    private let blankPicture: MTLTexture
+    private let clearPicture: MTLTexture
     private let depthState: MTLDepthStencilState
     private let queue = DispatchQueue(label: "hall.render", qos: .userInteractive)
-    private let lock = NSLock()
-    private var pending: [ObjectIdentifier: (frame: Frame, layer: LayerBox)] = [:]
-    private var scheduled = false
-    private var targets: (color: MTLTexture, depth: MTLTexture)?
+    private var targets: [SIMD2<Int>: Targets] = [:]
+    private var lens: MTLTexture?
     private var grid: (sample: HallFrameSample, buffer: MTLBuffer)?
 
     private init?(device: MTLDevice) {
@@ -62,50 +74,86 @@ final class HallRenderer: @unchecked Sendable {
             descriptor.fragmentFunction = try? library.makeFunction(name: "hallMeshFragment", constantValues: constants)
             return try? device.makeRenderPipelineState(descriptor: descriptor)
         }
-        descriptor.vertexFunction = library.makeFunction(name: "hallMeshOccluder")
-        descriptor.fragmentFunction = library.makeFunction(name: "hallMeshBlack")
-        guard meshPipelines.count == 3,
-              let occluderPipeline = try? device.makeRenderPipelineState(descriptor: descriptor) else { return nil }
+        descriptor.vertexFunction = library.makeFunction(name: "hallPictureVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "hallPictureFragment")
+        let picturePipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+
+        descriptor.vertexFunction = library.makeFunction(name: "hallPhoneVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "hallPhoneFragment")
+        let blend = descriptor.colorAttachments[0]!
+        blend.isBlendingEnabled = true
+        blend.sourceRGBBlendFactor = .one
+        blend.sourceAlphaBlendFactor = .one
+        blend.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        blend.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        let phonePipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.vertexFunction = library.makeFunction(name: "hallPhoneSideVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "hallPhoneMetalFragment")
+        let phoneSidePipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+        let phoneButtonPipelines = ["hallPhoneButtonRimVertex", "hallPhoneButtonCapVertex"].compactMap { name in
+            descriptor.vertexFunction = library.makeFunction(name: name)
+            return try? device.makeRenderPipelineState(descriptor: descriptor)
+        }
+
+        blend.destinationRGBBlendFactor = .one
+        blend.destinationAlphaBlendFactor = .one
+        descriptor.vertexFunction = library.makeFunction(name: "hallPhoneGlowVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "hallPhoneGlowFragment")
+        let phoneGlowPipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.vertexFunction = library.makeFunction(name: "hallScreenGlowVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "hallScreenGlowFragment")
+        let screenGlowPipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+        blend.sourceRGBBlendFactor = .zero
+        blend.sourceAlphaBlendFactor = .zero
+        blend.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        blend.destinationAlphaBlendFactor = .one
+        descriptor.fragmentFunction = library.makeFunction(name: "hallVeilFragment")
+        let veilPipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+        let glow = MTLDepthStencilDescriptor()
+        glow.depthCompareFunction = .always
+        glow.isDepthWriteEnabled = false
+        let screenGlowDepth = device.makeDepthStencilState(descriptor: glow)
+
+        let blank = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 1, height: 1,
+                                                             mipmapped: false)
+        guard meshPipelines.count == 3, let picturePipeline, let phonePipeline, let phoneSidePipeline, phoneButtonPipelines.count == 2,
+              let phoneGlowPipeline, let screenGlowPipeline, let veilPipeline, let screenGlowDepth,
+              let blankPicture = device.makeTexture(descriptor: blank),
+              let clearPicture = device.makeTexture(descriptor: blank) else { return nil }
+        var black: UInt32 = 0xFF00_0000
+        blankPicture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &black, bytesPerRow: 4)
 
         self.device = device
         self.commandQueue = commandQueue
         self.meshPipelines = meshPipelines
-        self.occluderPipeline = occluderPipeline
+        self.picturePipeline = picturePipeline
+        self.phonePipeline = phonePipeline
+        self.phoneSidePipeline = phoneSidePipeline
+        self.phoneButtonPipelines = phoneButtonPipelines
+        self.phoneGlowPipeline = phoneGlowPipeline
+        self.screenGlowPipeline = screenGlowPipeline
+        self.veilPipeline = veilPipeline
+        self.screenGlowDepth = screenGlowDepth
+        self.blankPicture = blankPicture
+        var clear: UInt32 = 0
+        clearPicture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &clear, bytesPerRow: 4)
+        self.clearPicture = clearPicture
         self.depthState = depthState
     }
 
-    func submit(_ frame: Frame, to layer: LayerBox) {
-        lock.lock()
-        pending[ObjectIdentifier(layer.layer)] = (frame, layer)
-        let start = !scheduled
-        scheduled = true
-        lock.unlock()
-        if start { queue.async { self.drain() } }
+    func present(_ frame: Frame, to drawable: CAMetalDrawable) {
+        queue.sync {
+            guard let commandBuffer = commandQueue.makeCommandBuffer(),
+                  encode(frame, target: drawable.texture, commandBuffer: commandBuffer) else { return }
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
+        }
     }
 
     func snapshot(_ frame: Frame, width: Int, height: Int) async -> CGImage? {
         await withCheckedContinuation { continuation in
             queue.async { continuation.resume(returning: self.image(frame, width: width, height: height)) }
         }
-    }
-
-    private func drain() {
-        while true {
-            lock.lock()
-            let next = pending
-            pending = [:]
-            if next.isEmpty { scheduled = false }
-            lock.unlock()
-            if next.isEmpty { return }
-            next.values.forEach { draw($0.frame, layer: $0.layer.layer) }
-        }
-    }
-
-    private func draw(_ frame: Frame, layer: CAMetalLayer) {
-        guard let drawable = layer.nextDrawable(), let commandBuffer = commandQueue.makeCommandBuffer(),
-              encode(frame, target: drawable.texture, commandBuffer: commandBuffer) else { return }
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
     }
 
     private func image(_ frame: Frame, width: Int, height: Int) -> CGImage? {
@@ -134,8 +182,67 @@ final class HallRenderer: @unchecked Sendable {
     }
 
     private func encode(_ frame: Frame, target: MTLTexture, commandBuffer: MTLCommandBuffer) -> Bool {
-        guard let grid = gridBuffer(for: frame.sample),
-              let targets = meshTargets(width: target.width, height: target.height) else { return false }
+        guard let grid = gridBuffer(for: frame.sample) else { return false }
+        var screen: MTLTexture?
+        if let draw = frame.phone, draw.screenOn > 0.001 {
+            if draw.reusesLens, let lens, lens.width == draw.lensWidth, lens.height == draw.lensHeight {
+                screen = lens
+            } else if let lens = lensTexture(width: draw.lensWidth, height: draw.lensHeight),
+                      let encoder = hallPass(frame, args: draw.lensArgs, target: lens, grid: grid,
+                                             commandBuffer: commandBuffer) {
+                encoder.endEncoding()
+                screen = lens
+            }
+        }
+        guard let encoder = hallPass(frame, args: frame.args, target: target, grid: grid,
+                                     commandBuffer: commandBuffer) else { return false }
+        if frame.args.glow.x > 0 || frame.args.glow.y > 0 {
+            encoder.setCullMode(.none)
+            encoder.setDepthStencilState(screenGlowDepth)
+            if frame.args.glow.x > 0 {
+                encoder.setRenderPipelineState(screenGlowPipeline)
+                encoder.setFragmentTexture(frame.picture?.texture ?? blankPicture, index: 0)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            }
+            if frame.args.glow.y > 0 {
+                encoder.setRenderPipelineState(veilPipeline)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            }
+            encoder.setDepthStencilState(depthState)
+        }
+        if let phone = frame.phone {
+            var args = phone.args
+            encoder.setCullMode(.none)
+            encoder.setVertexBytes(&args, length: MemoryLayout<HallPhoneArgs>.stride, index: 2)
+            encoder.setFragmentBytes(&args, length: MemoryLayout<HallPhoneArgs>.stride, index: 2)
+            encoder.setRenderPipelineState(phoneSidePipeline)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
+                                   vertexCount: 2 * (Self.phonePerimeterSegments + 1))
+            encoder.setRenderPipelineState(phoneButtonPipelines[0])
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 2 * (Self.buttonSegments + 1),
+                                   instanceCount: 4)
+            encoder.setRenderPipelineState(phoneButtonPipelines[1])
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3 * Self.buttonSegments,
+                                   instanceCount: 4)
+            encoder.setRenderPipelineState(phonePipeline)
+            encoder.setFragmentTexture(screen ?? clearPicture, index: 0)
+            encoder.setFragmentTexture(phone.chrome?.texture ?? clearPicture, index: 1)
+            encoder.setFragmentTexture(phone.turnedChrome?.texture ?? phone.chrome?.texture ?? clearPicture, index: 2)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+            if phone.args.glow.w > 0 {
+                encoder.setDepthStencilState(screenGlowDepth)
+                encoder.setRenderPipelineState(phoneGlowPipeline)
+                encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+                encoder.setDepthStencilState(depthState)
+            }
+        }
+        encoder.endEncoding()
+        return true
+    }
+
+    private func hallPass(_ frame: Frame, args: HallShaderArgs, target: MTLTexture, grid: MTLBuffer,
+                          commandBuffer: MTLCommandBuffer) -> MTLRenderCommandEncoder? {
+        guard let targets = meshTargets(width: target.width, height: target.height) else { return nil }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = targets.color
         pass.colorAttachments[0].resolveTexture = target
@@ -146,9 +253,9 @@ final class HallRenderer: @unchecked Sendable {
         pass.depthAttachment.loadAction = .clear
         pass.depthAttachment.clearDepth = 1
         pass.depthAttachment.storeAction = .dontCare
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return false }
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
 
-        var args = frame.args
+        var args = args
         var viewport = SIMD4<Float>(Float(target.width), Float(target.height), 0, 0)
         encoder.setDepthStencilState(depthState)
         encoder.setFrontFacing(.clockwise)
@@ -157,7 +264,8 @@ final class HallRenderer: @unchecked Sendable {
         encoder.setFragmentBytes(&args, length: MemoryLayout<HallShaderArgs>.stride, index: 0)
         encoder.setFragmentBuffer(grid, offset: 0, index: 1)
 
-        encoder.setRenderPipelineState(occluderPipeline)
+        encoder.setRenderPipelineState(picturePipeline)
+        encoder.setFragmentTexture(frame.picture?.texture ?? blankPicture, index: 0)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.setCullMode(.back)
 
@@ -181,8 +289,7 @@ final class HallRenderer: @unchecked Sendable {
                      seats: Int(last - first) + 1, encoder: encoder)
             }
         }
-        encoder.endEncoding()
-        return true
+        return encoder
     }
 
     private func draw(_ mesh: HallMesh, row: SIMD4<Float>, firstSeat: Float, seats: Int,
@@ -205,8 +312,9 @@ final class HallRenderer: @unchecked Sendable {
         return buffer
     }
 
-    private func meshTargets(width: Int, height: Int) -> (color: MTLTexture, depth: MTLTexture)? {
-        if let targets, targets.color.width == width, targets.color.height == height { return targets }
+    private func meshTargets(width: Int, height: Int) -> Targets? {
+        let key = SIMD2(width, height)
+        if let cached = targets[key] { return cached }
         func texture(_ format: MTLPixelFormat) -> MTLTexture? {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: width,
                                                                       height: height, mipmapped: false)
@@ -217,8 +325,21 @@ final class HallRenderer: @unchecked Sendable {
             return device.makeTexture(descriptor: descriptor)
         }
         guard let color = texture(.bgra8Unorm), let depth = texture(.depth32Float) else { return nil }
-        targets = (color, depth)
-        return targets
+        if targets.count >= 3 { targets.removeAll() }
+        let made = Targets(color: color, depth: depth)
+        targets[key] = made
+        return made
+    }
+
+    private func lensTexture(width: Int, height: Int) -> MTLTexture? {
+        if let lens, lens.width == width, lens.height == height { return lens }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: width,
+                                                                  height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .private
+        guard width > 0, height > 0 else { return nil }
+        lens = device.makeTexture(descriptor: descriptor)
+        return lens
     }
 
     private static func halfWidthSlope(args: HallShaderArgs, width: Float) -> Float {

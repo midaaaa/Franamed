@@ -10,11 +10,23 @@ import SwiftUI
 struct RoundBackground: View {
     let light: HallFrameSample
     let frameHeight: CGFloat
+    let picture: HallPicture?
+    let isWaiting: Bool
+    let phone: HallPhone
     let isProtected: Bool
     let showsCaptureBanner: Bool
     let coordinateSpace: String
 
     @Environment(\.displayScale) private var displayScale
+    @AppStorage(DebugSettings.phoneAimKey) private var phoneAim = Double(HallPhone.Settings().aim)
+    @AppStorage(DebugSettings.phoneWidthKey) private var phoneWidth = Double(HallPhone.Settings().width)
+    @AppStorage(DebugSettings.phonePortraitKey) private var isPhonePortrait = false
+    @AppStorage(DebugSettings.phoneSlowFinderKey) private var slowFinder = true
+    @AppStorage(DebugSettings.phoneBloomKey) private var phoneBloom = 0.0
+    @AppStorage(DebugSettings.screenBloomKey) private var screenBloom = 0.0
+    @AppStorage(DebugSettings.phoneGridKey) private var showsGrid = false
+    @AppStorage(DebugSettings.phoneWideKey) private var isWide = false
+    @AppStorage(DebugSettings.phoneColorKey) private var color = HallPhoneColor.custom
     @State private var backdrop: (key: BackdropKey, image: UIImage)?
 
     var body: some View {
@@ -31,11 +43,31 @@ struct RoundBackground: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .onChange(of: phoneSettings, initial: true) { _, settings in phone.settings = settings }
+        .task {
+            for isTurned in [!isPhonePortrait, isPhonePortrait] {
+                for isWide in [false, true] {
+                    for scale in HallPhone.Settings.zoomStops {
+                        let key = HallPhoneChrome.Key(isWide: isWide, scale: scale, isTurned: isTurned)
+                        if let picture = await HallPhoneChrome.picture(for: key) { phone.setChrome(picture, for: key) }
+                    }
+                }
+            }
+        }
+    }
+
+    private var phoneSettings: HallPhone.Settings {
+        HallPhone.Settings(aim: Float(phoneAim), width: Float(phoneWidth),
+                           isPortrait: isPhonePortrait, showsGrid: showsGrid,
+                           isWide: isWide, color: HallPhoneColor.vector(color),
+                           slowFinder: slowFinder, bloom: Float(phoneBloom),
+                           screenBloom: Float(screenBloom))
     }
 
     private func liveLayer(size: CGSize, origin: CGFloat) -> some View {
         LiveHallView(sample: light, scene: HallScene(), size: size,
-                     frameTop: -origin, frameBottom: frameHeight - origin)
+                     frameTop: -origin, frameBottom: frameHeight - origin, picture: picture,
+                     isWaiting: isWaiting, phone: phone)
     }
 
     private func captureLayer(size: CGSize, origin: CGFloat) -> some View {

@@ -11,6 +11,17 @@ import UIKit
 struct RoundView: View {
     @StateObject private var viewModel: RoundViewModel
     @StateObject private var frames = RoundFrames()
+    @State private var phone = HallPhone()
+    @State private var isPhoneHeld = false
+    @AppStorage(DebugSettings.phonePortraitKey) private var isPhonePortrait = false
+    @AppStorage(DebugSettings.phoneSlowFinderKey) private var phoneSlowFinder = true
+    @AppStorage(DebugSettings.phoneBloomKey) private var phoneBloom = 0.0
+    @AppStorage(DebugSettings.screenBloomKey) private var screenBloom = 0.0
+    @AppStorage(DebugSettings.phoneGridKey) private var showsPhoneGrid = false
+    @AppStorage(DebugSettings.phoneWideKey) private var isPhoneWide = false
+    @AppStorage(DebugSettings.phoneColorKey) private var phoneColor = HallPhoneColor.custom
+    @AppStorage(DebugSettings.phoneCustomColorKey) private var phoneCustomColor = HallPhoneColor.custom
+    @State private var isPickingPhoneColor = false
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var fullHeight: CGFloat = 0
     @State private var frameHeight: CGFloat = 0
@@ -51,20 +62,19 @@ struct RoundView: View {
                 Text(error.localizedDescription)
             } else {
                 VStack(spacing: 0) {
-                    FrameView(
-                        image: frames.displayedImage,
-                        isWaitingForFrame: frames.isWaiting,
-                        isProtected: isFrameProtected,
-                        hidesSpinnerFromCapture: showsCaptureBanner,
-                        onTapPrevious: { viewModel.showPreviousFrame() },
-                        onTapNext: { viewModel.showNextFrame() }
-                    )
+                    FrameView()
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
                     .layoutPriority(1)
 
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
+                .overlay {
+                    HallPhoneSurface(phone: phone, frameHeight: frameHeight,
+                                     onToggleOrientation: { isPhonePortrait.toggle() },
+                                     onTapPrevious: { viewModel.showPreviousFrame() },
+                                     onTapNext: { viewModel.showNextFrame() })
+                }
                 .background {
                     Color.clear
                         .ignoresSafeArea(.keyboard)
@@ -74,16 +84,67 @@ struct RoundView: View {
                 }
                 .overlay(alignment: .bottom) { bottomActionBar }
                 .navigationBarTitleDisplayMode(.inline)
+                #if DEBUG
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu("Телефон", systemImage: isPhonePortrait ? "iphone" : "iphone.landscape") {
+                            Toggle(isOn: $showsPhoneGrid) {
+                                Text("Сетка")
+                                Text("Линии 3×3")
+                            }
+                            Picker(selection: $isPhoneWide) {
+                                Text("4:3").tag(false)
+                                Text("16:9").tag(true)
+                            } label: {
+                                Text("Кадр камеры")
+                                Text("16:9 ближе в 1,33 раза")
+                            }
+                            .pickerStyle(.menu)
+                            Toggle(isOn: $phoneSlowFinder) {
+                                Text("Экран 30 fps")
+                                Text("Как у камеры")
+                            }
+                            levelPicker("Свет от телефона", "Ореол вокруг экрана", $phoneBloom)
+                            levelPicker("Свет от кадра", "Ореол вокруг экрана в зале", $screenBloom)
+                            ControlGroup {
+                                colorButton(HallPhoneColor.white)
+                                colorButton(HallPhoneColor.black)
+                                colorButton(phoneCustomColor)
+                                Button("Свой цвет", systemImage: "paintpalette") { isPickingPhoneColor = true }
+                            } label: {
+                                Text("Цвет корпуса")
+                            }
+                            .controlGroupStyle(.palette)
+                        }
+                    }
+                }
+                .sheet(isPresented: $isPickingPhoneColor) {
+                    ColorPicker("Цвет корпуса", selection: Binding(
+                        get: { Color(uiColor: HallPhoneColor.uiColor(phoneColor)) },
+                        set: { color in
+                            phoneCustomColor = HallPhoneColor.hex(UIColor(color))
+                            phoneColor = phoneCustomColor
+                        }
+                    ), supportsOpacity: false)
+                    .padding()
+                    .presentationDetents([.height(120)])
+                }
+                #endif
             }
         }
         .background {
             if frameHeight > 0 {
-                RoundBackground(light: frames.hallLight, frameHeight: frameHeight,
+                RoundBackground(light: frames.hallLight, frameHeight: frameHeight, picture: frames.picture,
+                                isWaiting: frames.isWaiting && frames.picture == nil, phone: phone,
                                 isProtected: isFrameProtected, showsCaptureBanner: showsCaptureBanner,
                                 coordinateSpace: Self.backgroundSpace)
             }
         }
         .coordinateSpace(.named(Self.backgroundSpace))
+        .onChange(of: viewModel.outcome) { _, outcome in phone.isLocked = outcome != nil }
+        .onChange(of: isAnswerFieldFocused) { _, focused in if focused { phone.stow() } else { phone.unstow() } }
+        .interactiveDismissDisabled(isPhoneHeld)
+        .onAppear { phone.onHeldChange = { isPhoneHeld = $0 } }
         .task { await viewModel.loadRound() }
         .task(id: FrameRequest(url: currentFrameURL, isRoundLoading: viewModel.isLoading)) {
             await frames.show(currentFrameURL, isRoundLoading: viewModel.isLoading)
@@ -128,6 +189,26 @@ struct RoundView: View {
                 }
             }
         }
+    }
+
+    private func colorButton(_ hex: Int) -> some View {
+        Button {
+            phoneColor = hex
+        } label: {
+            Image(uiImage: HallPhoneColor.swatch(hex, isSelected: phoneColor == hex))
+        }
+    }
+
+    private func levelPicker(_ title: String, _ detail: String, _ level: Binding<Double>) -> some View {
+        Picker(selection: level) {
+            Text("Выкл").tag(0.0)
+            Text("Слабо").tag(0.5)
+            Text("Сильно").tag(1.0)
+        } label: {
+            Text(title)
+            Text(detail)
+        }
+        .pickerStyle(.menu)
     }
 
     private var frameURLs: [URL] {

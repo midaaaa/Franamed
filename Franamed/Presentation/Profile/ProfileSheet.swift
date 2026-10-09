@@ -13,6 +13,10 @@ struct ProfileSheet: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
+    @AppStorage(DebugSettings.phoneAimKey) private var phoneAim = Double(HallPhone.Settings().aim)
+    @AppStorage(DebugSettings.phoneWidthKey) private var phoneWidth = Double(HallPhone.Settings().width)
+    @AppStorage(DebugSettings.phoneGridKey) private var showsPhoneGrid = false
+    @AppStorage(DebugSettings.phoneWideKey) private var isPhoneWide = false
 
     @EnvironmentObject private var session: SessionStore
     let mediaFacade: MediaFacadeProtocol
@@ -53,6 +57,15 @@ struct ProfileSheet: View {
                         set: { stubPlacement = $0 ? .clippedByForm : .behindForm }
                     ))
                     Toggle("Вырезы по краю билета", isOn: $hasScallops)
+                }
+
+                Section("Телефон в зале") {
+                    LabeledContent("Поворот к краям", value: phoneAim.formatted(.percent.precision(.fractionLength(0))))
+                    Slider(value: $phoneAim, in: 0...1, step: 0.05)
+                    LabeledContent("Размер в руке", value: phoneWidth.formatted(.percent.precision(.fractionLength(0))))
+                    Slider(value: $phoneWidth, in: 0.4...1, step: 0.05)
+                    Toggle("Сетка 3×3", isOn: $showsPhoneGrid)
+                    Toggle("Кадр камеры 16:9", isOn: $isPhoneWide)
                 }
                 #endif
 

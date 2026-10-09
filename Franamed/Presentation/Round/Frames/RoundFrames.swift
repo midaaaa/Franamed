@@ -15,17 +15,15 @@ final class RoundFrames: ObservableObject {
     @Published private(set) var isWaiting = false
     @Published private(set) var hasPresentedFrame = false
     @Published private var frameLight: HallFrameSample = .dark
+    @Published private(set) var picture: HallPicture?
 
     private var target: URL?
     private var images: [URL: UIImage] = [:]
     private var frameLights: [URL: HallFrameSample] = [:]
+    private var pictures: [URL: HallPicture] = [:]
 
     private static let spinnerDelay = Duration.milliseconds(180)
     private static let retryCap = Duration.seconds(2)
-
-    var displayedImage: UIImage? {
-        displayedURL.flatMap { images[$0] }
-    }
 
     var hallLight: HallFrameSample {
         displayedURL == nil && isWaiting ? SpinnerGlyph.hallLight : frameLight
@@ -46,6 +44,7 @@ final class RoundFrames: ObservableObject {
         }
         guard !Task.isCancelled else { return }
         await prepareLight(url)
+        await preparePicture(url)
         guard !Task.isCancelled else { return }
         present(url)
     }
@@ -54,6 +53,7 @@ final class RoundFrames: ObservableObject {
         let round = Set(urls)
         images = images.filter { round.contains($0.key) }
         frameLights = frameLights.filter { round.contains($0.key) }
+        pictures = pictures.filter { round.contains($0.key) }
         for url in urls {
             guard !Task.isCancelled else { return }
             if images[url] == nil, let image = await FrameDownloads.shared.image(for: url) {
@@ -61,13 +61,13 @@ final class RoundFrames: ObservableObject {
                 images[url] = image
             }
             await prepareLight(url)
+            await preparePicture(url)
         }
     }
 
     private func download(_ url: URL) async {
         if displayedURL != nil { isWaiting = true }
-        displayedURL = nil
-        frameLight = .dark
+        clearDisplayed()
 
         let spinner = Task {
             try? await Task.sleep(for: Self.spinnerDelay)
@@ -93,6 +93,11 @@ final class RoundFrames: ObservableObject {
         if let light = await Self.makeLight(image) { frameLights[url] = light }
     }
 
+    private func preparePicture(_ url: URL) async {
+        guard pictures[url] == nil, let image = images[url] else { return }
+        if let picture = await HallPicture.make(image) { pictures[url] = picture }
+    }
+
     @concurrent
     private nonisolated static func makeLight(_ image: UIImage) async -> HallFrameSample? {
         HallFrameSample(image: image)
@@ -101,13 +106,19 @@ final class RoundFrames: ObservableObject {
     private func present(_ url: URL) {
         displayedURL = url
         frameLight = frameLights[url] ?? .dark
+        picture = pictures[url]
         hasPresentedFrame = true
         isWaiting = false
     }
 
-    private func waitForRound(isLoading: Bool) async {
+    private func clearDisplayed() {
         displayedURL = nil
         frameLight = .dark
+        picture = nil
+    }
+
+    private func waitForRound(isLoading: Bool) async {
+        clearDisplayed()
         hasPresentedFrame = false
         guard isLoading else {
             isWaiting = false

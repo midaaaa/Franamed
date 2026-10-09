@@ -11,6 +11,7 @@ using namespace metal;
 namespace hall {
 
 constant int gridColumns = 24;
+constant int spinnerPetals = 8;
 constant int gridRows = 14;
 constant float3 luma = float3(0.2126, 0.7152, 0.0722);
 
@@ -23,6 +24,25 @@ struct HallArgs {
     float4 screen;
     float4 mean;
     float4 frame;
+    float4 picture;
+    float4 glow;
+};
+
+struct PhoneArgs {
+    float4 right;
+    float4 up;
+    float4 back;
+    float4 cameraRight;
+    float4 cameraUp;
+    float4 cameraBack;
+    float4 center;
+    float4 face;
+    float4 lens;
+    float4 view;
+    float4 chrome;
+    float4 color;
+    float4 stage;
+    float4 glow;
 };
 
 struct Hall {
@@ -634,13 +654,401 @@ constant int meshGroup [[ function_constant(0) ]];
     return float4(finish(color), 1.0);
 }
 
-[[ vertex ]] float4 hallMeshOccluder(uint vid [[ vertex_id ]],
-                                     constant hall::HallArgs &args [[ buffer(1) ]],
-                                     constant float4 &viewport [[ buffer(3) ]]) {
-    float y = (vid & 2) ? args.frame.y : args.frame.x;
-    return float4((vid & 1) ? 1.0 : -1.0, 1.0 - 2.0 * y / viewport.y, 0.0, 1.0);
+struct HallPictureOut {
+    float4 position [[ position ]];
+    float2 uv;
+};
+
+[[ vertex ]] HallPictureOut hallPictureVertex(uint vid [[ vertex_id ]],
+                                              constant hall::HallArgs &args [[ buffer(1) ]],
+                                              constant float4 &viewport [[ buffer(3) ]]) {
+    float2 corner = float2(vid & 1, (vid >> 1) & 1);
+    float x = mix(args.frame.z, args.frame.w, corner.x);
+    float y = mix(args.frame.x, args.frame.y, corner.y);
+    HallPictureOut out;
+    out.position = float4(2.0 * x / viewport.x - 1.0, 1.0 - 2.0 * y / viewport.y, 0.99999, 1.0);
+    out.uv = corner;
+    return out;
 }
 
-[[ fragment ]] float4 hallMeshBlack() {
-    return float4(0, 0, 0, 1);
+[[ fragment ]] float4 hallPictureFragment(HallPictureOut in [[ stage_in ]],
+                                          constant hall::HallArgs &args [[ buffer(0) ]],
+                                          texture2d<float> picture [[ texture(0) ]]) {
+    float boxAspect = (args.frame.w - args.frame.z) / max(args.frame.y - args.frame.x, 1.0);
+    float ratio = args.picture.x / max(boxAspect, 0.01);
+    float2 uv = in.uv;
+    if (ratio > 1.0) {
+        uv.y = (uv.y - 0.5) * ratio + 0.5;
+    } else if (ratio > 0.0) {
+        uv.x = (uv.x - 0.5) / ratio + 0.5;
+    }
+    constexpr sampler linear(filter::linear, mip_filter::linear, address::clamp_to_edge);
+    float3 color = picture.sample(linear, uv, bias(-0.5)).rgb;
+    bool inside = args.picture.y > 0.5 && all(uv >= 0.0) && all(uv <= 1.0);
+    color = inside ? color : float3(0.0);
+    if (args.picture.w >= 0.0) {
+        float2 box = float2(args.picture.z, args.picture.z / max(boxAspect, 0.01));
+        float2 p = (in.uv - 0.5) * box;
+        float pixel = max(fwidth(p.x), 1e-3);
+        float step = floor(args.picture.w * hall::spinnerPetals);
+        for (int i = 0; i < hall::spinnerPetals; i++) {
+            float angle = float(i) * 2.0 * M_PI_F / float(hall::spinnerPetals);
+            float2 axis = float2(sin(angle), -cos(angle));
+            float along = clamp(dot(p, axis), 4.2, 6.8);
+            float distance = length(p - axis * along) - 1.2;
+            float age = fract((step - float(i)) / float(hall::spinnerPetals));
+            float shade = 1.0 - 0.75 * age;
+            color = mix(color, float3(1.0), (1.0 - smoothstep(-pixel, pixel, distance)) * shade);
+        }
+    }
+    return float4(color, 1.0);
+}
+
+namespace phone {
+
+constant int perimeterSegments = 160;
+constant float nearDepth = 0.05;
+
+float4 project(float3 p, constant hall::PhoneArgs &phone, float4 viewport) {
+    float w = -p.z;
+    float f = phone.stage.z;
+    float z = 0.0002 + (w - (phone.center.z - nearDepth)) * 0.005;
+    return float4((2.0 * phone.stage.x / viewport.x - 1.0) * w + 2.0 * f / viewport.x * p.x,
+                  (1.0 - 2.0 * phone.stage.y / viewport.y) * w + 2.0 * f / viewport.y * p.y,
+                  z * w,
+                  w);
+}
+
+float3 place(float2 delta, float depth, constant hall::PhoneArgs &phone) {
+    float distance = phone.center.z;
+    float metersPerPixel = distance / phone.stage.z;
+    float2 offset = (phone.center.xy - phone.stage.xy) * float2(1.0, -1.0) * metersPerPixel;
+    float2 local = float2(delta.x, -delta.y) * metersPerPixel;
+    return float3(offset, -distance) + phone.right.xyz * local.x + phone.up.xyz * local.y + phone.back.xyz * depth;
+}
+
+bool isPortrait(constant hall::PhoneArgs &phone) {
+    return phone.chrome.x > 0.5;
+}
+
+float2 toPortrait(float2 delta, constant hall::PhoneArgs &phone) {
+    return isPortrait(phone) ? delta : float2(-delta.y, delta.x);
+}
+
+float2 fromPortrait(float2 q, constant hall::PhoneArgs &phone) {
+    return isPortrait(phone) ? q : float2(q.y, -q.x);
+}
+
+float2 portraitExtent(constant hall::PhoneArgs &phone) {
+    return (isPortrait(phone) ? phone.face.xy : phone.face.yx) * 0.5;
+}
+
+float cornerRadius(float2 extent) {
+    return 0.155 * extent.x * 2.0;
+}
+
+void perimeter(float t, float2 extent, float radius, thread float2 &point, thread float2 &normal) {
+    float lx = 2.0 * (extent.x - radius), ly = 2.0 * (extent.y - radius), arc = radius * M_PI_F * 0.5;
+    float lengths[8] = { lx, arc, ly, arc, lx, arc, ly, arc };
+    float2 corners[4] = { float2(1, -1), float2(1, 1), float2(-1, 1), float2(-1, -1) };
+    float s = fract(t) * (2.0 * lx + 2.0 * ly + 4.0 * arc);
+    int segment = 0;
+    for (; segment < 7 && s > lengths[segment]; segment++) s -= lengths[segment];
+    int side = segment / 2;
+    if (segment % 2 == 1) {
+        float angle = (float(side) - 1.0) * M_PI_F * 0.5 + s / max(radius, 1e-3);
+        normal = float2(cos(angle), sin(angle));
+        point = corners[side] * (extent - radius) + normal * radius;
+    } else {
+        float2 directions[4] = { float2(1, 0), float2(0, 1), float2(-1, 0), float2(0, -1) };
+        float2 starts[4] = { float2(-1, -1), float2(1, -1), float2(1, 1), float2(-1, 1) };
+        normal = float2(directions[side].y, -directions[side].x);
+        point = starts[side] * (extent - radius) + normal * radius + directions[side] * s;
+    }
+}
+
+float coverage(float distance) {
+    float aa = max(fwidth(distance), 1e-3);
+    return 1.0 - smoothstep(-aa, aa, distance);
+}
+
+float roundedBox(float2 p, float2 extent, float radius) {
+    float2 q = abs(p) - extent + radius;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+}
+
+struct HallPhoneOut {
+    float4 position [[ position ]];
+    float2 uv;
+};
+
+[[ vertex ]] HallPhoneOut hallPhoneVertex(uint vid [[ vertex_id ]],
+                                          constant hall::PhoneArgs &phone [[ buffer(2) ]],
+                                          constant float4 &viewport [[ buffer(3) ]]) {
+    float2 corner = float2(vid & 1, (vid >> 1) & 1);
+    float2 delta = (corner - 0.5) * phone.face.xy;
+    HallPhoneOut out;
+    out.position = phone::project(phone::place(delta, phone.view.w * 0.5, phone), phone, viewport);
+    out.uv = corner;
+    return out;
+}
+
+namespace phone {
+
+float3 titanium(float3 screenLight, float3 base) {
+    float3 light = mix(float3(dot(screenLight, hall::luma)), screenLight, 0.5);
+    return base * light * 1.3;
+}
+
+float disc(float2 q, float2 center, float radius) {
+    return coverage(length(q - center) - radius);
+}
+
+}
+
+[[ fragment ]] float4 hallPhoneFragment(HallPhoneOut in [[ stage_in ]],
+                                        constant hall::HallArgs &args [[ buffer(0) ]],
+                                        constant hall::PhoneArgs &phone [[ buffer(2) ]],
+                                        texture2d<float> lens [[ texture(0) ]],
+                                        texture2d<float> chrome [[ texture(1) ]],
+                                        texture2d<float> turnedChrome [[ texture(2) ]]) {
+    float2 size = phone.face.xy;
+    float2 delta = (in.uv - 0.5) * size;
+    float2 q = phone::toPortrait(delta, phone);
+    float2 extent = phone::portraitExtent(phone);
+    float u = extent.x * 2.0;
+    float radius = phone::cornerRadius(extent);
+    float bezel = 0.039 * u;
+    float body = phone::roundedBox(q, extent, radius);
+    float screen = phone::roundedBox(q, extent - bezel, radius - bezel);
+
+    float2 screenHalf = extent - bezel;
+    float w = screenHalf.x * 2.0;
+    float top = -screenHalf.y, bottom = screenHalf.y;
+    bool wide = phone.chrome.z > 1.5;
+    float finderTop = top + (wide ? 0.14 : 0.30) * w;
+    float2 finder = float2(screenHalf.x, min(screenHalf.x * phone.chrome.z, screenHalf.y));
+    float2 finderCenter = float2(0.0, min(finderTop + finder.y, bottom - finder.y));
+
+    float2 lensDelta = delta - phone::fromPortrait(finderCenter, phone);
+    float3 ray = float3(phone.lens.x + lensDelta.x * phone.lens.z, phone.lens.y - lensDelta.y * phone.lens.z, -1.0);
+    float3 d = phone.cameraRight.xyz * ray.x + phone.cameraUp.xyz * ray.y + phone.cameraBack.xyz * ray.z;
+    float depth = max(-d.z, 1e-4);
+    float2 hallPoint = float2(args.camera.z + args.camera.x * d.x / depth, args.camera.y - args.camera.x * d.y / depth);
+    float2 lensSize = float2(lens.get_width(), lens.get_height());
+    float2 lensUV = (phone.view.xy + phone.view.z * hallPoint) / lensSize;
+    constexpr sampler linear(filter::linear, address::clamp_to_edge);
+    float3 color = lens.sample(linear, lensUV).rgb;
+
+    float2 inner = q - finderCenter;
+    float inFinder = phone::coverage(phone::roundedBox(inner, finder, 0.0));
+    color *= mix(wide ? 0.18 : 0.38, 1.0, inFinder);
+
+    float2 cell = finder * 2.0 / 3.0;
+    float2 toLine = abs(fmod(inner + finder + cell * 0.5, cell) - cell * 0.5);
+    float gridInside = phone::coverage(phone::roundedBox(inner, finder - 0.01 * u, 0.0));
+    float gridLine = phone::coverage(min(toLine.x, toLine.y) - 0.0025 * u) * gridInside * phone.chrome.y;
+    color = mix(color, float3(1.0), gridLine * 0.35);
+
+    float2 thumb = float2(-0.352 * w, bottom - 0.148 * w);
+    color = mix(color, float3(0.0), phone::disc(q, thumb, 0.061 * w));
+
+    constexpr sampler overlaySampler(filter::linear, mip_filter::linear, address::clamp_to_zero);
+    float2 overlayUV = (q + screenHalf) / (2.0 * screenHalf);
+    float4 overlay = mix(turnedChrome.sample(overlaySampler, overlayUV), chrome.sample(overlaySampler, overlayUV),
+                         phone.stage.w);
+    color = color * (1.0 - overlay.a) + overlay.rgb;
+    color *= phone.color.w;
+
+    float island = phone::coverage(phone::roundedBox(q - float2(0.0, -extent.y + bezel + 0.075 * u),
+                                                     float2(0.16, 0.047) * u, 0.047 * u));
+    color = mix(color, float3(0.0), island);
+    float2 islandCamera = float2(0.105 * u, -extent.y + bezel + 0.075 * u);
+    color = mix(color, float3(0.05, 0.06, 0.13), phone::disc(q, islandCamera, 0.017 * u) * 0.9);
+
+    float3 glass = float3(0.0);
+    float rimWidth = 0.014 * u;
+    float rim = 1.0 - phone::coverage(body + rimWidth);
+    float3 rimColor = phone::titanium(args.mean.xyz, phone.color.rgb);
+    glass = mix(glass, rimColor, rim);
+    color = mix(glass, color, phone::coverage(screen));
+
+    float alpha = phone::coverage(body) * phone.center.w;
+    return float4(color * alpha, alpha);
+}
+
+struct HallPhoneMetalOut {
+    float4 position [[ position ]];
+};
+
+[[ vertex ]] HallPhoneMetalOut hallPhoneSideVertex(uint vid [[ vertex_id ]],
+                                                  constant hall::PhoneArgs &phone [[ buffer(2) ]],
+                                                  constant float4 &viewport [[ buffer(3) ]]) {
+    float2 extent = phone::portraitExtent(phone);
+    float radius = phone::cornerRadius(extent);
+    float t = float(vid / 2) / float(phone::perimeterSegments);
+    float across = (vid & 1) ? -1.0 : 1.0;
+    float2 q, qNormal;
+    phone::perimeter(t, extent, radius, q, qNormal);
+    float3 p = phone::place(phone::fromPortrait(q, phone), phone.view.w * 0.5 * across, phone);
+    HallPhoneMetalOut out;
+    out.position = phone::project(p, phone, viewport);
+    return out;
+}
+
+namespace phone {
+
+constant float4 buttons[4] = {
+    float4(-1.0, -0.61, -0.525, 0.0),
+    float4(-1.0, -0.427, -0.308, 0.0),
+    float4(-1.0, -0.26, -0.113, 0.0),
+    float4(1.0, -0.35, -0.113, 0.0),
+};
+
+}
+
+[[ fragment ]] float4 hallPhoneMetalFragment(HallPhoneMetalOut in [[ stage_in ]],
+                                             constant hall::HallArgs &args [[ buffer(0) ]],
+                                             constant hall::PhoneArgs &phone [[ buffer(2) ]]) {
+    float3 color = phone::titanium(args.mean.xyz, phone.color.rgb);
+    return float4(color * phone.center.w, phone.center.w);
+}
+
+
+constant int buttonSegments = 24;
+
+static HallPhoneMetalOut phoneButtonPoint(float2 profile, float lift, uint button,
+                                          constant hall::PhoneArgs &phone, float4 viewport) {
+    float2 extent = phone::portraitExtent(phone);
+    float4 b = phone::buttons[button];
+    float metersPerPixel = phone.center.z / phone.stage.z;
+    float along = (b.y + b.z) * 0.5 * extent.y + profile.y;
+    float2 q = float2(b.x * (extent.x + lift), along);
+    float2 delta = phone::fromPortrait(q, phone);
+    float3 p = phone::place(delta, profile.x * metersPerPixel, phone);
+    HallPhoneMetalOut out;
+    out.position = phone::project(p, phone, viewport);
+    return out;
+}
+
+static float2 phoneButtonExtent(uint button, constant hall::PhoneArgs &phone) {
+    float2 extent = phone::portraitExtent(phone);
+    float4 b = phone::buttons[button];
+    float halfThickness = phone.view.w * 0.5 * phone.stage.z / phone.center.z;
+    return float2(0.3 * halfThickness, (b.z - b.y) * 0.5 * extent.y);
+}
+
+[[ vertex ]] HallPhoneMetalOut hallPhoneButtonRimVertex(uint vid [[ vertex_id ]],
+                                                         uint iid [[ instance_id ]],
+                                                         constant hall::PhoneArgs &phone [[ buffer(2) ]],
+                                                         constant float4 &viewport [[ buffer(3) ]]) {
+    float2 size = phoneButtonExtent(iid, phone);
+    float2 profile, normal;
+    phone::perimeter(float(vid / 2) / float(buttonSegments), size, size.x, profile, normal);
+    float u = phone::portraitExtent(phone).x * 2.0;
+    float lift = (vid & 1) ? 0.009 * u : -0.004 * u;
+    return phoneButtonPoint(profile, lift, iid, phone, viewport);
+}
+
+[[ vertex ]] HallPhoneMetalOut hallPhoneButtonCapVertex(uint vid [[ vertex_id ]],
+                                                         uint iid [[ instance_id ]],
+                                                         constant hall::PhoneArgs &phone [[ buffer(2) ]],
+                                                         constant float4 &viewport [[ buffer(3) ]]) {
+    float2 size = phoneButtonExtent(iid, phone);
+    uint corner = vid % 3;
+    float t = float(vid / 3 + (corner == 2 ? 1 : 0)) / float(buttonSegments);
+    float2 profile = float2(0.0), normal = float2(0.0);
+    if (corner != 0) phone::perimeter(t, size, size.x, profile, normal);
+    float u = phone::portraitExtent(phone).x * 2.0;
+    return phoneButtonPoint(profile, 0.009 * u, iid, phone, viewport);
+}
+
+
+namespace glow {
+
+float cumulative(float x) {
+    x = clamp(x, -4.0, 4.0);
+    return 0.5 + 0.5 * tanh(0.7978845 * (x + 0.044715 * x * x * x));
+}
+
+float covered(float2 p, float2 low, float2 high, float sigma) {
+    float2 a = (low - p) / sigma, b = (high - p) / sigma;
+    return (cumulative(b.x) - cumulative(a.x)) * (cumulative(b.y) - cumulative(a.y));
+}
+
+}
+
+// MARK: Glow
+
+struct HallGlowOut {
+    float4 position [[ position ]];
+    float2 delta;
+};
+
+[[ vertex ]] HallGlowOut hallPhoneGlowVertex(uint vid [[ vertex_id ]],
+                                             constant hall::PhoneArgs &phone [[ buffer(2) ]],
+                                             constant float4 &viewport [[ buffer(3) ]]) {
+    float2 corner = float2(vid & 1, (vid >> 1) & 1);
+    float margin = 0.6 * min(phone.face.x, phone.face.y);
+    float2 delta = (corner - 0.5) * (phone.face.xy + 2.0 * margin);
+    HallGlowOut out;
+    out.position = phone::project(phone::place(delta, phone.view.w * 0.5, phone), phone, viewport);
+    out.delta = delta;
+    return out;
+}
+
+[[ fragment ]] float4 hallPhoneGlowFragment(HallGlowOut in [[ stage_in ]],
+                                            constant hall::PhoneArgs &phone [[ buffer(2) ]]) {
+    float2 q = phone::toPortrait(in.delta, phone);
+    float2 extent = phone::portraitExtent(phone);
+    float u = extent.x * 2.0;
+    float bezel = 0.039 * u;
+    float edge = phone::roundedBox(q, extent - bezel, phone::cornerRadius(extent) - bezel);
+    float spread = glow::cumulative(-edge / (0.04 * u));
+    float halo = glow::cumulative(-edge / (0.22 * u));
+    float haze = smoothstep(0.0, max(fwidth(edge), 1e-3), edge);
+    float glow = (0.5 * spread + 0.25 * halo) * haze;
+    return float4(phone.glow.rgb * phone.glow.w * glow, 0.0);
+}
+
+struct HallScreenGlowOut {
+    float4 position [[ position ]];
+};
+
+[[ vertex ]] HallScreenGlowOut hallScreenGlowVertex(uint vid [[ vertex_id ]]) {
+    float2 corner = float2(vid & 1, (vid >> 1) & 1);
+    HallScreenGlowOut out;
+    out.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
+    return out;
+}
+
+[[ fragment ]] float4 hallScreenGlowFragment(HallScreenGlowOut in [[ stage_in ]],
+                                             constant hall::HallArgs &args [[ buffer(0) ]],
+                                             texture2d<float> picture [[ texture(0) ]]) {
+    float2 low = float2(args.frame.z, args.frame.x), high = float2(args.frame.w, args.frame.y);
+    float2 p = in.position.xy;
+    float2 box = max(high - low, float2(1.0));
+    float ratio = args.picture.y > 0.5 ? args.picture.x / (box.x / box.y) : 0.0;
+    float2 shown = ratio > 1.0 ? float2(box.x, box.y / ratio) : ratio > 0.0 ? float2(box.x * ratio, box.y) : box;
+    low = (low + high - shown) * 0.5;
+    high = low + shown;
+    float2 size = shown;
+    float spread = glow::covered(p, low, high, 0.025 * size.x);
+    float halo = glow::covered(p, low, high, 0.12 * size.x);
+    if (0.6 * spread + 0.4 * halo < 1e-4) return float4(0.0);
+    float2 uv = (clamp(p, low + 0.15 * size, high - 0.15 * size) - low) / size;
+    constexpr sampler soft(filter::linear, mip_filter::linear, address::clamp_to_edge);
+    float3 near = args.picture.y > 0.5 ? picture.sample(soft, uv, level(7.0)).rgb : args.mean.xyz;
+    float3 whole = args.picture.y > 0.5 ? picture.sample(soft, float2(0.5), level(12.0)).rgb : args.mean.xyz;
+
+    float2 apart = max(low - p, p - high);
+    float haze = smoothstep(0.0, 1.5, max(apart.x, apart.y));
+    return float4((0.6 * spread * near + 0.4 * halo * whole) * haze * args.glow.x, 0.0);
+}
+
+[[ fragment ]] float4 hallVeilFragment(HallScreenGlowOut in [[ stage_in ]],
+                                       constant hall::HallArgs &args [[ buffer(0) ]]) {
+    return float4(0.0, 0.0, 0.0, args.glow.y);
 }
