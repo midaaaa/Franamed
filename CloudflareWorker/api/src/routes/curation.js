@@ -198,6 +198,9 @@ export async function handleCuration(request, env, segments, url) {
             if (body.difficultyTier !== null && !DIFFICULTY_TIERS.includes(body.difficultyTier)) {
                 throw badRequest(`difficultyTier must be null or one of: ${DIFFICULTY_TIERS.join(", ")}`);
             }
+            if (body.difficultyTier !== null && image.moderator_status !== "approved") {
+                throw badRequest("Only an approved frame takes a difficultyTier");
+            }
             await env.DB.prepare("UPDATE media_images SET difficulty_tier = ? WHERE id = ?")
                 .bind(body.difficultyTier, imageId)
                 .run();

@@ -1,6 +1,6 @@
-// Writing a moderator's verdicts on a title, all or just what changed since the
-// last save. A frame confirmed removed from TMDB takes no verdicts. Grouped by the change they make: 170 frames cost one statement per
-// (status, tier) pair, against D1's limit of 50 queries per invocation.
+// A moderator's verdicts on a title, all or only what changed since the last
+// save. Frames confirmed gone from TMDB take none. Grouped by the change they
+// make: one statement per (status, tier) pair keeps 170 frames under D1's 50.
 
 import { badRequest } from "./http.js";
 import { readConfig } from "./config.js";
@@ -32,11 +32,11 @@ export function parseVerdicts(raw) {
         if (tier !== undefined && tier !== null && !DIFFICULTY_TIERS.includes(tier)) {
             throw badRequest(`difficultyTier must be null or one of: ${DIFFICULTY_TIERS.join(", ")}`);
         }
-        // A taken frame is always placed by difficulty: without a tier the
-        // round could only use it as filler.
+        // A tier belongs to an approved frame only: rounds place taken frames
+        // by it, and one left on an unjudged frame would resurface on approval.
         if (verdict.status === "approved" && !tier) throw badRequest("An approved frame needs a difficultyTier");
 
-        return { imageId, status: verdict.status, difficultyTier: tier };
+        return { imageId, status: verdict.status, difficultyTier: verdict.status === "approved" ? tier : null };
     });
 }
 
@@ -50,7 +50,8 @@ export async function applyVerdicts(env, { mediaKey, verdicts, rejectRemaining, 
         statements.push(
             env.DB.prepare(
                 `UPDATE media_images
-                 SET status = 'rejected', moderator_status = 'rejected', moderator_uid = ?, moderator_at = ?
+                 SET status = 'rejected', moderator_status = 'rejected', moderator_uid = ?, moderator_at = ?,
+                     difficulty_tier = NULL
                  WHERE media_key = ? AND moderator_status IS NULL`
             ).bind(moderatorUid, now, mediaKey)
         );
@@ -58,7 +59,7 @@ export async function applyVerdicts(env, { mediaKey, verdicts, rejectRemaining, 
 
     const groups = new Map();
     for (const { imageId, status, difficultyTier } of verdicts) {
-        const groupKey = `${status}|${difficultyTier === undefined ? "keep" : difficultyTier}`;
+        const groupKey = `${status}|${difficultyTier}`;
         if (!groups.has(groupKey)) groups.set(groupKey, { status, tier: difficultyTier, ids: [] });
         groups.get(groupKey).ids.push(imageId);
     }
@@ -72,23 +73,20 @@ export async function applyVerdicts(env, { mediaKey, verdicts, rejectRemaining, 
         for (let start = 0; start < ids.length; start += VERDICT_CHUNK) {
             const chunk = ids.slice(start, start + VERDICT_CHUNK);
             const placeholders = chunk.map(() => "?").join(", ");
-            const tierClause = tier === undefined ? "" : ", difficulty_tier = ?";
-            const tierBinding = tier === undefined ? [] : [tier];
-
             // A locked frame's status is its lock, so both can be written in the
             // same statement instead of recomputed afterwards.
             const statement = status === "pending"
                 ? env.DB.prepare(
                     `UPDATE media_images
                      SET status = CASE WHEN report_weight >= ? THEN 'rejected' ELSE 'pending' END,
-                         moderator_status = NULL, moderator_uid = NULL, moderator_at = NULL${tierClause}
+                         moderator_status = NULL, moderator_uid = NULL, moderator_at = NULL, difficulty_tier = NULL
                      WHERE media_key = ? AND removed_at IS NULL AND id IN (${placeholders})`
-                ).bind(autoHide, ...tierBinding, mediaKey, ...chunk)
+                ).bind(autoHide, mediaKey, ...chunk)
                 : env.DB.prepare(
                     `UPDATE media_images
-                     SET status = ?, moderator_status = ?, moderator_uid = ?, moderator_at = ?${tierClause}
+                     SET status = ?, moderator_status = ?, moderator_uid = ?, moderator_at = ?, difficulty_tier = ?
                      WHERE media_key = ? AND removed_at IS NULL AND id IN (${placeholders})`
-                ).bind(status, status, moderatorUid, now, ...tierBinding, mediaKey, ...chunk);
+                ).bind(status, status, moderatorUid, now, tier, mediaKey, ...chunk);
 
             statements.push(statement);
         }

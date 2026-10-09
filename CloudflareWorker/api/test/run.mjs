@@ -276,6 +276,16 @@ check("but auto does not bring back a withdrawn one with unjudged frames", row("
 await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", { verdicts: [{ imageId: classic[6], status: "pending" }] });
 const undone = db.db.prepare("SELECT status, moderator_status FROM media_images WHERE id = ?").get(classic[6]);
 check("undo sends a frame back to unjudged", undone.status === "pending" && undone.moderator_status === null && row("movie_4242").unjudged_images === 2);
+const tierOf = (id) => db.db.prepare("SELECT difficulty_tier FROM media_images WHERE id = ?").get(id).difficulty_tier;
+await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", { verdicts: [{ imageId: classic[0], status: "pending" }] });
+check("undoing an approval drops its tier", tierOf(classic[0]) === null);
+res = await call("mod", "PATCH", `/v1/curation/images/${classic[0]}`, { difficultyTier: "hard" });
+check("an unjudged frame takes no tier", res.status === 400 && tierOf(classic[0]) === null);
+await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", { verdicts: [{ imageId: classic[1], status: "rejected" }] });
+check("rejecting an approved frame drops its tier", tierOf(classic[1]) === null);
+await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", {
+    verdicts: [{ imageId: classic[0], status: "approved", difficultyTier: "hard" }, { imageId: classic[1], status: "approved", difficultyTier: "medium" }]
+});
 await call("mod", "POST", "/v1/curation/titles/movie_4242/verdicts", { verdicts: [], rejectRemaining: true, close: true });
 check("finishing rejects the rest and closes", row("movie_4242").unjudged_images === 0 && row("movie_4242").worked_by === null);
 check("auto publishes the finished title", row("movie_4242").published === 1 && row("movie_4242").work_weight === 0);
@@ -293,6 +303,7 @@ await call("mod", "POST", "/v1/catalog/items/movie_4242/reject", { reason: "те
 check("rejecting unpublishes", row("movie_4242").published === 0);
 await call("mod", "POST", "/v1/catalog/items/movie_4242/reset");
 check("reset starts over and returns to the queue", row("movie_4242").work_weight > 0 && row("movie_4242").unjudged_images === 8);
+check("reset leaves no tier behind", db.db.prepare("SELECT COUNT(*) AS n FROM media_images WHERE media_key = 'movie_4242' AND difficulty_tier IS NOT NULL").get().n === 0);
 
 console.log("a 200-frame title saves in one go");
 addTitle("movie_900", { title: "Большой", popularity: 5, frames: judged(0, 0, 200) });
