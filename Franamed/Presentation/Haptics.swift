@@ -15,6 +15,7 @@ enum HapticEvent {
     case tabHeal
     case answerCorrect
     case answerWrong
+    case lastLife
 
     fileprivate var isRepeating: Bool { self == .tabBreak || self == .tabHeal }
 }
@@ -35,6 +36,7 @@ final class Haptics {
     private let selection = UISelectionFeedbackGenerator()
     private let soft = UIImpactFeedbackGenerator(style: .soft)
     private let notification = UINotificationFeedbackGenerator()
+    private let heavy = UIImpactFeedbackGenerator(style: .heavy)
     private var lastPlayed: [HapticEvent: Date] = [:]
     #endif
 
@@ -65,6 +67,8 @@ final class Haptics {
             notification.notificationOccurred(.success)
         case .answerWrong:
             notification.notificationOccurred(.error)
+        case .lastLife:
+            heavy.impactOccurred()
         }
         #endif
     }

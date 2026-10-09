@@ -118,6 +118,7 @@ private struct FlipInteractionView: UIViewRepresentable {
         private var didDisplayMenu = false
         private weak var litView: UIView?
         private var previewView: UIView?
+        private var tearPreview: (plain: UIImage, lit: UIImage?)?
         private var generation = 0
 
         // MARK: Rotation
@@ -160,7 +161,7 @@ private struct FlipInteractionView: UIViewRepresentable {
 
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-            guard !isMenuActive, !menuItems.isEmpty, engine?.isApproachingRest == true,
+            guard !isMenuActive, !menuItems.isEmpty, engine?.isApproachingRest == true, engine?.isTearHealing?() != true,
                   currentImage != nil else { return nil }
             let items = menuItems
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
@@ -177,6 +178,7 @@ private struct FlipInteractionView: UIViewRepresentable {
                                     highlightPreviewForItemWithIdentifier identifier: any NSCopying) -> UITargetedPreview? {
             if engine?.isAnimating == true { engine?.settleImmediately() }
             let lit = engine?.litSnapshot?()
+            tearPreview = engine?.tearSnapshot?()
             beginMenu()
             previewView = makePreviewView(lit: lit)
             return targetedPreview(in: interaction.view)
@@ -185,6 +187,7 @@ private struct FlipInteractionView: UIViewRepresentable {
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     configuration: UIContextMenuConfiguration,
                                     dismissalPreviewForItemWithIdentifier identifier: any NSCopying) -> UITargetedPreview? {
+            if previewView == nil { tearPreview = engine?.tearSnapshot?() }
             previewView = previewView ?? makePreviewView(lit: engine?.litSnapshot?())
             let preview = targetedPreview(in: interaction.view)
             if let litView {
@@ -245,8 +248,17 @@ private struct FlipInteractionView: UIViewRepresentable {
         }
 
         private func makePreviewView(lit: UIImage?) -> UIView? {
+            if let tearPreview {
+                let margin = FlipRenderer.Coordinator.tearMargin
+                return makePreviewView(image: tearPreview.plain, lit: tearPreview.lit,
+                                       frame: CGRect(origin: .zero, size: size).insetBy(dx: -margin, dy: -margin))
+            }
             guard let image = currentImage else { return nil }
-            let previewView = UIView(frame: CGRect(origin: .zero, size: size))
+            return makePreviewView(image: image, lit: lit, frame: CGRect(origin: .zero, size: size))
+        }
+
+        private func makePreviewView(image: UIImage, lit: UIImage?, frame: CGRect) -> UIView {
+            let previewView = UIView(frame: frame)
             previewView.addSubview(UIImageView(image: image))
             litView = lit.map { lit in
                 let view = UIImageView(image: lit)
@@ -263,9 +275,13 @@ private struct FlipInteractionView: UIViewRepresentable {
 
             let parameters = UIPreviewParameters()
             parameters.backgroundColor = .clear
-            let outline = ResultStubShape(edgeStyle: edgeStyle, mirrored: isFront)
-                .path(in: CGRect(origin: .zero, size: size))
-            parameters.visiblePath = UIBezierPath(cgPath: outline.cgPath)
+            if tearPreview != nil {
+                parameters.visiblePath = UIBezierPath(rect: previewView.bounds)
+            } else {
+                let outline = ResultStubShape(edgeStyle: edgeStyle, mirrored: isFront)
+                    .path(in: CGRect(origin: .zero, size: size))
+                parameters.visiblePath = UIBezierPath(cgPath: outline.cgPath)
+            }
 
             let target = UIPreviewTarget(container: container,
                                          center: CGPoint(x: container.bounds.midX, y: container.bounds.midY))

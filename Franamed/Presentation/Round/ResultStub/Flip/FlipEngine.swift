@@ -34,6 +34,8 @@ final class FlipEngine: ObservableObject {
 
     var onWake: (() -> Void)?
     var litSnapshot: (() -> UIImage?)?
+    var tearSnapshot: (() -> (plain: UIImage, lit: UIImage?)?)?
+    var isTearHealing: (() -> Bool)?
     var onCanvasHidden: ((Bool) -> Void)?
 
     var isApproachingRest: Bool {

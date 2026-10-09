@@ -34,6 +34,11 @@ struct FlipUniforms {
     var faceOffset: Float
     var edgeCount: Float
     var gloss: Float
+
+    var tearLine: SIMD4<Float>
+    var tearShape: SIMD4<Float>
+    var tearState: SIMD4<Float>
+    var tearHeal: SIMD4<Float>
 }
 
 enum FlipMesh {
@@ -72,6 +77,7 @@ extension EnvironmentValues {
     @Entry var flipTilt: Double = 0
     @Entry var flipLighting = FlipLighting.neutral
     @Entry var flipRecordingLighting: FlipLighting?
+    @Entry var flipTear = FlipTear.none
 }
 
 struct FlipRenderer: UIViewRepresentable {
@@ -85,6 +91,7 @@ struct FlipRenderer: UIViewRepresentable {
     let lighting: FlipLighting
     let tilt: Double
     let isProtected: Bool
+    var tear = FlipTear.none
     let providesSnapshot: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
@@ -126,6 +133,8 @@ struct FlipRenderer: UIViewRepresentable {
         box.isProtected = isProtected
         if providesSnapshot {
             engine.litSnapshot = { [weak coordinator = context.coordinator] in coordinator?.snapshot() }
+            engine.tearSnapshot = { [weak coordinator = context.coordinator] in coordinator?.tearSnapshot() }
+            engine.isTearHealing = { [weak coordinator = context.coordinator] in coordinator?.isTearHealing ?? false }
         }
         let coordinator = context.coordinator
         let needsFrame = coordinator.frontTexture !== frontTexture
@@ -138,7 +147,10 @@ struct FlipRenderer: UIViewRepresentable {
         let lightChanged = coordinator.lighting != lighting || coordinator.tilt != tilt
         coordinator.lighting = lighting
         coordinator.tilt = tilt
-        if needsFrame || coordinator.outlineChanged || lightChanged { coordinator.view?.isPaused = false }
+        let tearChanged = coordinator.setTear(tear)
+        if needsFrame || coordinator.outlineChanged || lightChanged || tearChanged {
+            coordinator.view?.isPaused = false
+        }
     }
 
     @MainActor
@@ -159,6 +171,7 @@ struct FlipRenderer: UIViewRepresentable {
         private var commandQueue: MTLCommandQueue!
         private var pipeline: MTLRenderPipelineState!
         private var edgePipeline: MTLRenderPipelineState!
+        private var tearPipeline: MTLRenderPipelineState?
         private var indexBuffer: MTLBuffer!
         private var sampler: MTLSamplerState!
         private var depthState: MTLDepthStencilState!
@@ -168,6 +181,13 @@ struct FlipRenderer: UIViewRepresentable {
         private var outlineBuffer: MTLBuffer?
         private var outlineSize: CGSize = .zero
         private var outlineStyle: TicketEdgeStyle = .scalloped
+
+        private static let tearSegments = 160
+        private var tear = FlipTearMotion()
+
+        var isTearHealing: Bool { tear.isHealing }
+
+        func setTear(_ tear: FlipTear) -> Bool { self.tear.setTarget(tear) }
 
         func setOutline(size: CGSize, edgeStyle: TicketEdgeStyle) {
             outlineChanged = size.width > 1 && (size != outlineSize || edgeStyle != outlineStyle)
@@ -193,6 +213,7 @@ struct FlipRenderer: UIViewRepresentable {
             guard let library = device.makeDefaultLibrary(),
                   let vertexFunction = library.makeFunction(name: "ticketFlipVertex"),
                   let edgeFunction = library.makeFunction(name: "ticketFlipEdgeVertex"),
+                  let tearFunction = library.makeFunction(name: "ticketFlipTearVertex"),
                   let fragmentFunction = library.makeFunction(name: "ticketFlipFragment") else {
                 print("[TicketFlip] shader library unavailable")
                 return
@@ -211,6 +232,9 @@ struct FlipRenderer: UIViewRepresentable {
 
             descriptor.vertexFunction = edgeFunction
             edgePipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
+
+            descriptor.vertexFunction = tearFunction
+            tearPipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
 
             let depthDescriptor = MTLDepthStencilDescriptor()
             depthDescriptor.depthCompareFunction = .less
@@ -232,8 +256,10 @@ struct FlipRenderer: UIViewRepresentable {
         }
 
         private func render(in view: MTKView) {
-            engine.step(now: CACurrentMediaTime())
-            let parking = frontTexture != nil && !engine.isAnimating
+            let now = CACurrentMediaTime()
+            engine.step(now: now)
+            let isTearMoving = tear.step(now: now)
+            let parking = frontTexture != nil && !engine.isAnimating && !isTearMoving
             view.isPaused = parking
             if parking { engine.park() }
 
@@ -246,7 +272,19 @@ struct FlipRenderer: UIViewRepresentable {
             commandBuffer.commit()
         }
 
-        func snapshot() -> UIImage? {
+        static let tearMargin: CGFloat = 10
+
+        func tearSnapshot() -> (plain: UIImage, lit: UIImage?)? {
+            guard tear.showsMarks else { return nil }
+            let lit = snapshot(margin: Self.tearMargin)
+            let saved = (lighting, tilt)
+            lighting = .neutral
+            tilt = 0
+            defer { (lighting, tilt) = saved }
+            return snapshot(margin: Self.tearMargin).map { ($0, lit) }
+        }
+
+        func snapshot(margin: CGFloat = 0) -> UIImage? {
             guard let view, let device, view.drawableSize.width > 0 else { return nil }
             let width = Int(view.drawableSize.width)
             let height = Int(view.drawableSize.height)
@@ -289,8 +327,9 @@ struct FlipRenderer: UIViewRepresentable {
                   let image = context.makeImage()
             else { return nil }
             let scale = view.drawableSize.width / max(view.bounds.width, 1)
-            let inset = FlipLook.canvasPadding * scale
-            let crop = CGRect(x: inset, y: inset, width: stubSize.width * scale, height: stubSize.height * scale)
+            let inset = (FlipLook.canvasPadding - margin) * scale
+            let crop = CGRect(x: inset, y: inset, width: (stubSize.width + margin * 2) * scale,
+                              height: (stubSize.height + margin * 2) * scale)
             return image.cropping(to: crop.integral).map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
         }
 
@@ -306,30 +345,42 @@ struct FlipRenderer: UIViewRepresentable {
             encoder.setFragmentSamplerState(sampler, index: 0)
             encoder.setCullMode(.none)
 
-            encoder.setRenderPipelineState(pipeline)
-            for (face, offset) in [(Float(1), Float(1)), (Float(2), Float(-1))] {
-                var uniforms = self.uniforms(viewSize: size, face: face, faceOffset: offset)
-                encoder.setVertexBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
-                encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
-                encoder.drawIndexedPrimitives(type: .triangle,
-                                              indexCount: FlipMesh.indexCount,
-                                              indexType: .uint16,
-                                              indexBuffer: indexBuffer,
-                                              indexBufferOffset: 0)
-            }
-
-            if let edgePipeline, let outlineBuffer {
-                encoder.setRenderPipelineState(edgePipeline)
-                encoder.setVertexBuffer(outlineBuffer, offset: 0, index: 0)
-                for range in outline.ranges {
-                    var uniforms = self.uniforms(viewSize: size, face: 0, faceOffset: 0,
-                                                 edgeCount: Float(range.count))
+            for half in tear.halves {
+                encoder.setRenderPipelineState(pipeline)
+                for (face, offset) in [(Float(1), Float(1)), (Float(2), Float(-1))] {
+                    var uniforms = self.uniforms(viewSize: size, face: face, faceOffset: offset, half: half)
                     encoder.setVertexBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
                     encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
-                    encoder.setVertexBufferOffset(
-                        range.lowerBound * MemoryLayout<FlipEdge.Vertex>.stride, index: 0)
+                    encoder.drawIndexedPrimitives(type: .triangle,
+                                                  indexCount: FlipMesh.indexCount,
+                                                  indexType: .uint16,
+                                                  indexBuffer: indexBuffer,
+                                                  indexBufferOffset: 0)
+                }
+
+                if let edgePipeline, let outlineBuffer {
+                    encoder.setRenderPipelineState(edgePipeline)
+                    encoder.setVertexBuffer(outlineBuffer, offset: 0, index: 0)
+                    for range in outline.ranges {
+                        var uniforms = self.uniforms(viewSize: size, face: 0, faceOffset: 0,
+                                                     edgeCount: Float(range.count), half: half)
+                        encoder.setVertexBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
+                        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
+                        encoder.setVertexBufferOffset(
+                            range.lowerBound * MemoryLayout<FlipEdge.Vertex>.stride, index: 0)
+                        encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
+                                               vertexCount: (range.count + 1) * 2)
+                    }
+                }
+
+                if half != 0, let tearPipeline {
+                    encoder.setRenderPipelineState(tearPipeline)
+                    var uniforms = self.uniforms(viewSize: size, face: 0, faceOffset: 0,
+                                                 edgeCount: Float(Self.tearSegments), half: half)
+                    encoder.setVertexBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
+                    encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlipUniforms>.stride, index: 1)
                     encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0,
-                                           vertexCount: (range.count + 1) * 2)
+                                           vertexCount: (Self.tearSegments + 1) * 2)
                 }
             }
             encoder.endEncoding()
@@ -337,8 +388,9 @@ struct FlipRenderer: UIViewRepresentable {
         }
 
         private func uniforms(viewSize: CGSize, face: Float, faceOffset: Float,
-                              edgeCount: Float = 0) -> FlipUniforms {
-            FlipUniforms(
+                              edgeCount: Float = 0, half: Float = 0) -> FlipUniforms {
+            let tear = self.tear.uniforms(width: stubSize.width, half: half)
+            return FlipUniforms(
                 projection: Self.ortho(width: Float(viewSize.width), height: Float(viewSize.height)),
                 lightDir: SIMD4(-0.42, -0.62, 0.86, 0),
                 hallTint: SIMD4(lighting.tint, lighting.amount),
@@ -358,7 +410,11 @@ struct FlipRenderer: UIViewRepresentable {
                 face: face,
                 faceOffset: faceOffset,
                 edgeCount: edgeCount,
-                gloss: FlipLook.gloss
+                gloss: FlipLook.gloss,
+                tearLine: tear.line,
+                tearShape: tear.shape,
+                tearState: tear.state,
+                tearHeal: tear.heal
             )
         }
 

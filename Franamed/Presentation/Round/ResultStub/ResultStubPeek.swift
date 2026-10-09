@@ -40,6 +40,7 @@ struct ResultStubPeek: View {
     @State private var drop: CGFloat = 0
     @State private var follow: CGFloat = 0
     @State private var webSearch: WebSearchLink?
+    @State private var lastLifeShake: CGFloat = 0
 
     private static let peekHeight: CGFloat = 33
     private static let tilt: Double = 32
@@ -104,7 +105,9 @@ struct ResultStubPeek: View {
         .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,
                                        recordingMean: recordingLight,
                                        sheenScale: hasLanded ? 1 : Self.flightSheen))
+        .environment(\.flipTear, tear)
         .modifier(ResultStubShake(animatableData: shake))
+        .modifier(ResultStubShake(animatableData: lastLifeShake))
         .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), anchor: .top,
                           perspective: Self.perspective)
         .allowsHitTesting(outcome != nil && hasLanded)
@@ -130,10 +133,22 @@ struct ResultStubPeek: View {
             if drop > 0 { followKeyboard() }
             await arrive(outcome)
         }
+        .onChange(of: attemptsMade) { _, attempts in
+            guard outcome == nil, frameCount > 1, attempts > 0,
+                  FlipTear.isLastLife(misses: attempts, frameCount: frameCount) else { return }
+            Haptics.shared.play(.lastLife)
+            lastLifeShake = 0
+            withAnimation(.linear(duration: ResultStubShake.duration)) { lastLifeShake = 1 }
+        }
         .onChange(of: keyboardLift, initial: true) { _, lift in
             guard outcome == nil else { return }
             drop = lift
         }
+    }
+
+    private var tear: FlipTear {
+        FlipTear.round(seed: FlipTear.seed(itemID: item.id, playedAt: playedAt), attemptsMade: attemptsMade,
+                       frameCount: frameCount, outcome: outcome, hasLanded: hasLanded)
     }
 
     private func followKeyboard() {
