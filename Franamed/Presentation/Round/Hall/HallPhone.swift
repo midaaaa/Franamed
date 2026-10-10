@@ -50,6 +50,7 @@ final class HallPhone: @unchecked Sendable {
         var view: SIMD2<Float>
         var origin: SIMD2<Float>
         var screen: SIMD2<Float>
+        var corner: Float
     }
 
     struct Layout: Sendable {
@@ -63,18 +64,18 @@ final class HallPhone: @unchecked Sendable {
         let room: Float
         let rangeX: Float
         let lift: Float
+        let areaRadius: Float
 
         private static let inset: Float = 16
-        private static let topInset: Float = 26
         private static let edge: Float = 0.04
         private static let fineCenter: Float = 0.6
         private static let give: Float = 8
         private static let cornerGive: Float = 3
         private static let overshoot: Float = 24
-        private static let displayRadius: Float = 64
         private static let bodyRadius: Float = 0.155
         private static let liftShare: Float = 0.2
-        static let pathRadius: Float = 56
+        private static let cornerPower: Float = 4
+        static let cornerReach: Float = 2.6
 
         init(settings: Settings, geometry: Geometry, roll: Float, zoom: Float) {
             origin = geometry.origin
@@ -86,9 +87,10 @@ final class HallPhone: @unchecked Sendable {
             travelX = max(screen.x / 2 - Self.inset - phone.x / 2, 6)
             lift = Self.liftShare * full.min()
             yHigh = screen.y - Self.inset - phone.y / 2
-            yLow = min(max(Self.topInset + phone.y / 2, origin.y + lift), yHigh)
+            yLow = min(max(Self.inset + phone.y / 2, origin.y + lift), yHigh)
+            areaRadius = max(geometry.corner - Self.inset, 0)
             let halfRoom = min(travelX, (yHigh - yLow) / 2)
-            room = min(max(Self.displayRadius - Self.inset - Self.bodyRadius * full.min(), Self.pathRadius), halfRoom)
+            room = min(max(areaRadius - Self.bodyRadius * full.min(), 0) * Self.cornerReach, halfRoom)
 
             let border = 2 * Settings.bezel * full.min()
             let upright = (full.min() - border) / 2, sideways = (full.max() - border) / 2
@@ -99,9 +101,8 @@ final class HallPhone: @unchecked Sendable {
             rangeX = max(view.x / 2 + Self.edge * view.x - finderHalf, 0)
         }
 
-        var areaLow: SIMD2<Float> { SIMD2(Self.inset, Self.topInset) }
+        var areaLow: SIMD2<Float> { SIMD2(repeating: Self.inset) }
         var areaHigh: SIMD2<Float> { screen - Self.inset }
-        var areaRadius: Float { Self.displayRadius - Self.inset }
 
         func phonePoint(_ state: SIMD2<Float>) -> SIMD2<Float> {
             let parts = phoneParts(state)
@@ -122,10 +123,15 @@ final class HallPhone: @unchecked Sendable {
             let high = SIMD2(screen.x / 2 + travelX, yHigh) - room
             let core = simd_clamp(point, low, simd_max(low, high))
             let out = point - core
-            let length = simd_length(out)
+            let length = Self.cornerLength(out)
             guard length > room else { return (point, 0) }
             let corner = smoothstep(0, 0.35, min(abs(out.x), abs(out.y)) / length)
             return (core + out * (room / length), corner)
+        }
+
+        static func cornerLength(_ v: SIMD2<Float>) -> Float {
+            let a = abs(v)
+            return pow(pow(a.x, cornerPower) + pow(a.y, cornerPower), 1 / cornerPower)
         }
 
         private func smoothstep(_ a: Float, _ b: Float, _ x: Float) -> Float {
@@ -133,12 +139,20 @@ final class HallPhone: @unchecked Sendable {
             return t * t * (3 - 2 * t)
         }
 
+        func reach(_ state: SIMD2<Float>) -> Float {
+            reach(at: phonePoint(state))
+        }
+
+        private func reach(at point: SIMD2<Float>) -> Float {
+            min(max((point.x - screen.x / 2) / travelX, -1), 1)
+        }
+
         func target(_ state: SIMD2<Float>) -> SIMD2<Float> {
-            let soft = Self.soft(state.x, -1, 1, Self.give / travelX)
-            let u = min(max(soft, -1), 1)
-            let beyond = (soft - u) * travelX
+            let point = phonePoint(state)
+            let u = reach(at: point)
+            let beyond = point.x - screen.x / 2 - u * travelX
             let x = origin.x + view.x / 2 + (Self.fineCenter * u + (1 - Self.fineCenter) * u * u * u) * rangeX + beyond
-            let y = Self.soft(state.y, yLow, yHigh, Self.give) - lift
+            let y = point.y - lift
             return SIMD2(x, min(max(y, origin.y), origin.y + view.y))
         }
 
@@ -164,12 +178,6 @@ final class HallPhone: @unchecked Sendable {
             let full = settings.size(viewWidth: view.x)
             let offset = settings.isPortrait ? SIMD2(0, 0.38 * full.y) : SIMD2(0.36 * full.x, 0.1 * full.y)
             return state(at: finger - offset)
-        }
-
-        private static func soft(_ value: Float, _ low: Float, _ high: Float, _ give: Float) -> Float {
-            if value > high { return high + give * (1 - exp(-(value - high) / give)) }
-            if value < low { return low - give * (1 - exp(-(low - value) / give)) }
-            return value
         }
     }
 

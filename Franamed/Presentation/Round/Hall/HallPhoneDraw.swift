@@ -74,10 +74,10 @@ struct HallPhoneDraw {
         let give = parts.give * s
         let point = settled + give
         let lensPoint = toView(layout.phonePoint(pose.lensPoint))
-        let bodyAim = Aim(point: point, target: toView(layout.target(pose.point)), reach: pose.point.x,
-                          camera: camera, aim: settings.aim)
-        let lensAim = Aim(point: lensPoint, target: toView(layout.target(pose.lensPoint)), reach: pose.lensPoint.x,
-                          camera: camera, aim: settings.aim)
+        let bodyAim = Aim(point: point, target: toView(layout.target(pose.point)),
+                          reach: layout.reach(pose.point), camera: camera, aim: settings.aim)
+        let lensAim = Aim(point: lensPoint, target: toView(layout.target(pose.lensPoint)),
+                          reach: layout.reach(pose.lensPoint), camera: camera, aim: settings.aim)
         let lensBasis = lensAim.basis.rolled(pose.roll)
 
         let shift = camera.slope(at: lensPoint) * Self.distance
@@ -100,7 +100,7 @@ struct HallPhoneDraw {
                           focal: simd_mix(camera.focal, viewSize.y * s * Self.stageFocal, t),
                           distance: simd_mix(Self.armDepth, Self.distance, t))
         let area = Area(low: (layout.areaLow - layout.origin) * s, high: (layout.areaHigh - layout.origin) * s,
-                        radius: layout.areaRadius * s, path: HallPhone.Layout.pathRadius * s)
+                        radius: layout.areaRadius * s)
         var place = simd_mix(rest, settled, SIMD2(repeating: t))
         var push = SIMD2<Float>.zero
         for _ in 0..<Self.pushSteps {
@@ -198,7 +198,6 @@ struct HallPhoneDraw {
         let low: SIMD2<Float>
         let high: SIMD2<Float>
         let radius: Float
-        let path: Float
     }
 
     private struct Aim {
@@ -264,11 +263,11 @@ struct HallPhoneDraw {
                 let p = SIMD3(offset, -stage.distance) + body.right * local.x + body.up * local.y + body.back * side
                 let shown = stage.center + stage.focal * SIMD2(p.x, -p.y) / max(-p.z, 1e-4)
                 let curve = rounding * stage.distance / max(-p.z, 1e-4)
-                let room = max(area.radius - curve, area.path)
+                let room = max(area.radius - curve, 0) * HallPhone.Layout.cornerReach
                 let inner = area.low + curve + room, outer = simd_max(inner, area.high - curve - room)
                 let core = simd_clamp(shown, inner, outer)
                 let out = shown - core
-                let length = simd_length(out)
+                let length = HallPhone.Layout.cornerLength(out)
                 let inside = length > room ? core + out * (room / max(length, 1e-4)) : shown
                 let move = inside - shown
                 if simd_length_squared(move) > simd_length_squared(push) { push = move }

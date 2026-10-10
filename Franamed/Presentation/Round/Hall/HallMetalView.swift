@@ -78,6 +78,7 @@ final class HallLayerView: UIView {
         let pixelScale: CGFloat
         let origin: CGPoint
         let screen: CGSize
+        let corner: CGFloat
         let motion: HallMotion?
         let phone: HallPhone?
     }
@@ -89,6 +90,9 @@ final class HallLayerView: UIView {
     nonisolated(unsafe) private var lastFinder: (time: CFTimeInterval, draw: HallPhoneDraw)?
 
     private static let slowFinderInterval: CFTimeInterval = 1.0 / 30 - 0.002
+    private static let fallbackCorner: CGFloat = 55
+
+    private let displayProbe = UIView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -96,6 +100,9 @@ final class HallLayerView: UIView {
         backgroundColor = .black
         metalLayer.device = HallRenderer.shared?.device
         metalLayer.pixelFormat = .bgra8Unorm
+        displayProbe.isHidden = true
+        displayProbe.cornerConfiguration = .corners(radius: .containerConcentric())
+        addSubview(displayProbe)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -116,6 +123,7 @@ final class HallLayerView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if let window { displayProbe.frame = convert(window.bounds, from: window) }
         let scale = traitCollection.displayScale
         let drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         if metalLayer.drawableSize != drawableSize {
@@ -132,9 +140,15 @@ final class HallLayerView: UIView {
         let prepared = Prepared(key: key, meshes: meshes,
                                 pixelScale: metalLayer.drawableSize.height / max(bounds.height, 1),
                                 origin: convert(CGPoint.zero, to: nil), screen: window?.bounds.size ?? bounds.size,
+                                corner: displayCorner(),
                                 motion: motion, phone: phone)
         lock.withLock { self.prepared = prepared }
         requestFrame()
+    }
+
+    private func displayCorner() -> CGFloat {
+        let radius = displayProbe.effectiveRadius(corner: .topLeft)
+        return radius > 0 ? radius : Self.fallbackCorner
     }
 
     private nonisolated func requestFrame() {
@@ -151,7 +165,8 @@ final class HallLayerView: UIView {
         prepared.phone?.setGeometry(HallPhone.Geometry(
             view: SIMD2(Float(key.size.width), Float(key.size.height)),
             origin: SIMD2(Float(prepared.origin.x), Float(prepared.origin.y)),
-            screen: SIMD2(Float(prepared.screen.width), Float(prepared.screen.height))))
+            screen: SIMD2(Float(prepared.screen.width), Float(prepared.screen.height)),
+            corner: Float(prepared.corner)))
         let state = prepared.phone?.pose(at: time)
         var phone = state?.pose.map { pose in
             HallPhoneDraw(pose: pose, hall: args,
