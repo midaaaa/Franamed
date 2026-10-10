@@ -111,7 +111,7 @@ struct HallPhoneChrome: View {
                 .frame(width: 0.122 * w, height: 0.122 * w)
                 .offset(x: -0.352 * w)
             sideButton {
-                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 0.045 * w, weight: .medium))
+                Image(systemName: "rectangle.portrait.rotate").font(.system(size: 0.045 * w, weight: .medium))
                     .rotationEffect(turn)
             }
             .offset(x: 0.352 * w)

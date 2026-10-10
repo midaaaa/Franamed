@@ -143,6 +143,7 @@ final class HallLayerView: UIView {
                                 corner: displayCorner(),
                                 motion: motion, phone: phone)
         lock.withLock { self.prepared = prepared }
+        phone?.see(key.picture)
         requestFrame()
     }
 

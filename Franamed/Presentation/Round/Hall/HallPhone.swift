@@ -27,6 +27,14 @@ final class HallPhone: @unchecked Sendable {
         static let zoomStops: [Float] = [1, 2, 3]
         static let startZoom: Float = 2
 
+        var finderRatio: Float { isWide ? 16.0 / 9 : 4.0 / 3 }
+
+        func finder(screenHalf: SIMD2<Float>) -> (center: SIMD2<Float>, half: SIMD2<Float>) {
+            let half = SIMD2(screenHalf.x, min(screenHalf.x * finderRatio, screenHalf.y))
+            let top = -screenHalf.y + (isWide ? 0.14 : 0.30) * 2 * screenHalf.x
+            return (SIMD2(0, min(top + half.y, screenHalf.y - half.y)), half)
+        }
+
         func size(viewWidth: Float) -> SIMD2<Float> {
             let long = viewWidth * width
             return isPortrait ? SIMD2(long / Self.aspect, long) : SIMD2(long, long / Self.aspect)
@@ -42,6 +50,7 @@ final class HallPhone: @unchecked Sendable {
         let settings: Settings
         let chrome: HallPicture?
         let turnedChrome: HallPicture?
+        let thumbnail: HallPicture?
         let isTurning: Bool
         let layout: Layout
     }
@@ -218,11 +227,14 @@ final class HallPhone: @unchecked Sendable {
     private static let zoomResponse: Float = 0.25
     private static let rollResponse: Float = 0.4
     private static let flingSpeed: CGFloat = 900
+    private static let seenLock = NSLock()
+    nonisolated(unsafe) private static var lastSeen: HallPicture?
 
     private let lock = NSLock()
     private var _settings = Settings()
     private var _onChange: (() -> Void)?
     private var chromes: [HallPhoneChrome.Key: HallPicture] = [:]
+    private var thumbnail: HallPicture?
     private var point = Spring(SIMD2<Float>.zero, response: followResponse)
     private var lens = Spring(SIMD2<Float>.zero, response: lensResponse)
     private var raise = Spring(SIMD2<Float>.zero, response: raiseResponse)
@@ -281,6 +293,17 @@ final class HallPhone: @unchecked Sendable {
         notify()
     }
 
+    func see(_ picture: HallPicture?) {
+        guard let picture else { return }
+        let previous = Self.seenLock.withLock {
+            defer { Self.lastSeen = picture }
+            return Self.lastSeen
+        }
+        guard previous != picture else { return }
+        lock.withLock { thumbnail = previous }
+        notify()
+    }
+
     func setGeometry(_ next: Geometry) {
         lock.withLock { if geometry != next { geometry = next } }
     }
@@ -308,9 +331,39 @@ final class HallPhone: @unchecked Sendable {
                 return all(abs(p - shown) .<= layout.phone / 2 + 12)
             }
             guard let rest else { return false }
-            return all(abs(p - rest) .<= SIMD2(44, 44))
+            return all(abs(p - rest) .<= Self.restReach)
         }
     }
+
+    enum Spot {
+        case finder
+        case turn
+        case body
+    }
+
+    func spot(at location: CGPoint) -> Spot? {
+        lock.withLock {
+            guard isRaised, let shown, let layout = shownLayout else { return nil }
+            let delta = SIMD2(location) - shown
+            guard all(abs(delta) .<= layout.phone / 2) else { return nil }
+            let full = _settings.size(viewWidth: layout.view.x)
+            let q = _settings.isPortrait ? delta : SIMD2(-delta.y, delta.x)
+            let extent = SIMD2(full.min(), full.max()) / 2
+            let screenHalf = extent - Settings.bezel * full.min()
+            let w = 2 * screenHalf.x
+            let turn = SIMD2(0.352 * w, screenHalf.y - 0.148 * w)
+            if simd_distance(q, turn) <= max(0.061 * w, Self.turnReach) { return .turn }
+            let finder = _settings.finder(screenHalf: screenHalf)
+            return all(abs(q - finder.center) .<= finder.half) ? .finder : .body
+        }
+    }
+
+    func isOnRest(_ location: CGPoint) -> Bool {
+        lock.withLock { rest.map { all(abs(SIMD2(location) - $0) .<= Self.restReach) } ?? false }
+    }
+
+    private static let turnReach: Float = 22
+    private static let restReach = SIMD2<Float>(44, 44)
 
     func raise(to home: CGPoint) {
         raise { $0.state(at: SIMD2(home)) }
@@ -481,7 +534,7 @@ final class HallPhone: @unchecked Sendable {
                                                            isTurned: _settings.isPortrait)]
             let pose = Pose(point: point.value, lensPoint: lens.value,
                             raise: min(max(raise.value.x, 0), 1), zoom: zoom.value.x, roll: roll.value.x,
-                            settings: _settings, chrome: chrome, turnedChrome: turnedChrome,
+                            settings: _settings, chrome: chrome, turnedChrome: turnedChrome, thumbnail: thumbnail,
                             isTurning: isTurning, layout: layout)
             return (pose, isAnimating)
         }

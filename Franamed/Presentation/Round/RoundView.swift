@@ -21,6 +21,7 @@ struct RoundView: View {
     @AppStorage(DebugSettings.phoneWideKey) private var isPhoneWide = false
     @AppStorage(DebugSettings.phoneColorKey) private var phoneColor = HallPhoneColor.custom
     @AppStorage(DebugSettings.phoneCustomColorKey) private var phoneCustomColor = HallPhoneColor.custom
+    @AppStorage(DebugSettings.phoneNewGesturesKey) private var isNewPhoneGestures = true
     @State private var isPickingPhoneColor = false
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var fullHeight: CGFloat = 0
@@ -70,7 +71,7 @@ struct RoundView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .overlay {
-                    HallPhoneSurface(phone: phone, frameHeight: frameHeight,
+                    HallPhoneSurface(phone: phone, frameHeight: frameHeight, isNewGestures: isNewPhoneGestures,
                                      onToggleOrientation: { isPhonePortrait.toggle() },
                                      onTapPrevious: { viewModel.showPreviousFrame() },
                                      onTapNext: { viewModel.showNextFrame() })
@@ -88,6 +89,14 @@ struct RoundView: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu("Телефон", systemImage: isPhonePortrait ? "iphone" : "iphone.landscape") {
+                            Picker(selection: $isNewPhoneGestures) {
+                                Text("Старые").tag(false)
+                                Text("Новые").tag(true)
+                            } label: {
+                                Text("Жесты")
+                                Text(phoneGesturesNote)
+                            }
+                            .pickerStyle(.menu)
                             Toggle(isOn: $showsPhoneGrid) {
                                 Text("Сетка")
                                 Text("Линии 3×3")
@@ -189,6 +198,10 @@ struct RoundView: View {
                 }
             }
         }
+    }
+
+    private var phoneGesturesNote: String {
+        isNewPhoneGestures ? "Тап без задержки, поворот или зум" : "Двойной тап, всё сразу"
     }
 
     private func colorButton(_ hex: Int) -> some View {

@@ -43,6 +43,7 @@ struct PhoneArgs {
     float4 color;
     float4 stage;
     float4 glow;
+    float4 thumb;
 };
 
 struct Hall {
@@ -813,7 +814,8 @@ float disc(float2 q, float2 center, float radius) {
                                         constant hall::PhoneArgs &phone [[ buffer(2) ]],
                                         texture2d<float> lens [[ texture(0) ]],
                                         texture2d<float> chrome [[ texture(1) ]],
-                                        texture2d<float> turnedChrome [[ texture(2) ]]) {
+                                        texture2d<float> turnedChrome [[ texture(2) ]],
+                                        texture2d<float> thumbnail [[ texture(3) ]]) {
     float2 size = phone.face.xy;
     float2 delta = (in.uv - 0.5) * size;
     float2 q = phone::toPortrait(delta, phone);
@@ -853,9 +855,13 @@ float disc(float2 q, float2 center, float radius) {
     color = mix(color, float3(1.0), gridLine * 0.35);
 
     float2 thumb = float2(-0.352 * w, bottom - 0.148 * w);
-    color = mix(color, float3(0.0), phone::disc(q, thumb, 0.061 * w));
-
     constexpr sampler overlaySampler(filter::linear, mip_filter::linear, address::clamp_to_zero);
+    float thumbRadius = 0.061 * w;
+    float2 thumbUV = (delta - phone::fromPortrait(thumb, phone)) / (2.0 * thumbRadius);
+    thumbUV = float2(thumbUV.x / max(phone.thumb.y, 1.0), thumbUV.y * min(phone.thumb.y, 1.0)) + 0.5;
+    float3 thumbColor = thumbnail.sample(overlaySampler, thumbUV).rgb * phone.thumb.x;
+    color = mix(color, thumbColor, phone::disc(q, thumb, thumbRadius));
+
     float2 overlayUV = (q + screenHalf) / (2.0 * screenHalf);
     float4 overlay = mix(turnedChrome.sample(overlaySampler, overlayUV), chrome.sample(overlaySampler, overlayUV),
                          phone.stage.w);

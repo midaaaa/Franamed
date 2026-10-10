@@ -228,6 +228,7 @@ final class HallRenderer: @unchecked Sendable {
             encoder.setFragmentTexture(screen ?? clearPicture, index: 0)
             encoder.setFragmentTexture(phone.chrome?.texture ?? clearPicture, index: 1)
             encoder.setFragmentTexture(phone.turnedChrome?.texture ?? phone.chrome?.texture ?? clearPicture, index: 2)
+            encoder.setFragmentTexture(phone.thumbnail?.texture ?? clearPicture, index: 3)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             if phone.args.glow.w > 0 {
                 encoder.setDepthStencilState(screenGlowDepth)

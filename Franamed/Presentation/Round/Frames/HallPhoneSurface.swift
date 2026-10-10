@@ -12,6 +12,7 @@ struct HallPhoneSurface: UIViewRepresentable {
     let phone: HallPhone
     var frameTop: CGFloat = 0
     let frameHeight: CGFloat
+    var isNewGestures = false
     let onToggleOrientation: () -> Void
     let onTapPrevious: () -> Void
     let onTapNext: () -> Void
@@ -31,6 +32,8 @@ struct HallPhoneSurface: UIViewRepresentable {
         coordinator.frameTap = frameTap
         coordinator.phoneTap = phoneTap
         coordinator.doubleTap = doubleTap
+        coordinator.pinch = pinch
+        coordinator.rotation = rotation
         for gesture in [frameTap, phoneTap, doubleTap, pan, pinch, rotation] as [UIGestureRecognizer] {
             gesture.delegate = coordinator
             view.addGestureRecognizer(gesture)
@@ -40,6 +43,7 @@ struct HallPhoneSurface: UIViewRepresentable {
 
     func updateUIView(_ view: UIView, context: Context) {
         context.coordinator.surface = self
+        context.coordinator.doubleTap?.isEnabled = !isNewGestures
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(surface: self) }
@@ -49,6 +53,15 @@ struct HallPhoneSurface: UIViewRepresentable {
         weak var frameTap: UITapGestureRecognizer?
         weak var phoneTap: UITapGestureRecognizer?
         weak var doubleTap: UITapGestureRecognizer?
+        weak var pinch: UIPinchGestureRecognizer?
+        weak var rotation: UIRotationGestureRecognizer?
+        private var twoFingers = TwoFingers.undecided
+        private var lastScale: CGFloat = 1
+        private var lastRotation: CGFloat = 0
+
+        private enum TwoFingers { case undecided, zoom, twist }
+        private static let twistStart: CGFloat = 0.2
+        private static let zoomStart: CGFloat = 0.08
 
         init(surface: HallPhoneSurface) {
             self.surface = surface
@@ -67,8 +80,11 @@ struct HallPhoneSurface: UIViewRepresentable {
                 let y = touch.location(in: view).y
                 return (surface.frameTop..<surface.frameTop + surface.frameHeight).contains(y)
             }
-            if gesture === phoneTap { return onPhone }
+            if gesture === phoneTap {
+                return onPhone || (surface.isNewGestures && phone.isHeld && phone.isOnRest(touch.location(in: nil)))
+            }
             if gesture is UIPanGestureRecognizer { return onPhone }
+            if surface.isNewGestures, gesture === pinch || gesture === rotation { return phone.isHeld }
             return onPhone && phone.isHeld
         }
 
@@ -87,7 +103,20 @@ struct HallPhoneSurface: UIViewRepresentable {
 
         @objc func phoneTapped(_ gesture: UITapGestureRecognizer) {
             guard let view = gesture.view else { return }
-            if phone.isHeld { phone.cycleZoom() } else { phone.raise(to: home(in: view)) }
+            let location = gesture.location(in: nil)
+            if !phone.isHeld {
+                phone.raise(to: home(in: view))
+            } else if !surface.isNewGestures {
+                phone.cycleZoom()
+            } else if !phone.contains(location), phone.isOnRest(location) {
+                phone.lower()
+            } else {
+                switch phone.spot(at: location) {
+                case .finder: phone.cycleZoom()
+                case .turn: surface.onToggleOrientation()
+                case .body, nil: break
+                }
+            }
         }
 
         @objc func phoneDoubleTapped(_ gesture: UITapGestureRecognizer) {
@@ -107,19 +136,49 @@ struct HallPhoneSurface: UIViewRepresentable {
         }
 
         @objc func pinched(_ gesture: UIPinchGestureRecognizer) {
-            switch gesture.state {
-            case .began, .changed: phone.pinch(gesture.scale, ended: false)
-            default: phone.pinch(gesture.scale, ended: true)
+            lastScale = gesture.scale
+            let isActive = gesture.state == .began || gesture.state == .changed
+            if surface.isNewGestures {
+                decide()
+                if twoFingers == .zoom { phone.pinch(gesture.scale, ended: !isActive) }
+                if !isActive { finishTwoFingers() }
+            } else {
+                phone.pinch(gesture.scale, ended: !isActive)
             }
         }
 
         @objc func rotated(_ gesture: UIRotationGestureRecognizer) {
-            switch gesture.state {
-            case .began, .changed:
+            lastRotation = gesture.rotation
+            let isActive = gesture.state == .began || gesture.state == .changed
+            if surface.isNewGestures {
+                decide()
+                if isActive, twoFingers == .twist { phone.twist(gesture.rotation) }
+                if !isActive {
+                    if twoFingers == .twist, phone.endTwist() { surface.onToggleOrientation() }
+                    finishTwoFingers()
+                }
+            } else if isActive {
                 phone.twist(gesture.rotation)
-            default:
-                if phone.endTwist() { surface.onToggleOrientation() }
+            } else if phone.endTwist() {
+                surface.onToggleOrientation()
             }
+        }
+
+        private func decide() {
+            guard twoFingers == .undecided else { return }
+            if abs(lastRotation) > Self.twistStart {
+                twoFingers = .twist
+            } else if abs(log(max(lastScale, 0.01))) > Self.zoomStart {
+                twoFingers = .zoom
+            }
+        }
+
+        private func finishTwoFingers() {
+            let active: (UIGestureRecognizer?) -> Bool = { $0?.state == .began || $0?.state == .changed }
+            guard !active(pinch), !active(rotation) else { return }
+            twoFingers = .undecided
+            lastScale = 1
+            lastRotation = 0
         }
     }
 }

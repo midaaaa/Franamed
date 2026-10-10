@@ -23,6 +23,7 @@ struct HallPhoneArgs {
     var color: SIMD4<Float>
     var stage: SIMD4<Float>
     var glow: SIMD4<Float>
+    var thumb: SIMD4<Float>
 }
 
 struct HallPhoneDraw {
@@ -33,6 +34,7 @@ struct HallPhoneDraw {
     var reusesLens = false
     let chrome: HallPicture?
     let turnedChrome: HallPicture?
+    let thumbnail: HallPicture?
     let screenOn: Float
     let veil: Float
     let shownPoint: SIMD2<Float>
@@ -137,16 +139,18 @@ struct HallPhoneDraw {
             face: SIMD4(size.x, size.y, size.x * metersPerPixel / 2, size.y * metersPerPixel / 2),
             lens: SIMD4(aimed.x, aimed.y, 1 / (k * camera.focal), camera.focal),
             view: SIMD4(lens.offset.x, lens.offset.y, k, size.min() * metersPerPixel * Self.thickness),
-            chrome: SIMD4(settings.isPortrait ? 1 : 0, settings.showsGrid ? 1 : 0, Self.finderRatio(settings),
+            chrome: SIMD4(settings.isPortrait ? 1 : 0, settings.showsGrid ? 1 : 0, settings.finderRatio,
                           pose.zoom),
             color: SIMD4(settings.color, screenOn),
             stage: SIMD4(stage.center.x, stage.center.y, stage.focal, max(1 - abs(pose.roll) / (.pi / 2), 0)),
-            glow: SIMD4(screenColor, lit)
+            glow: SIMD4(screenColor, lit),
+            thumb: SIMD4(pose.thumbnail == nil ? 0 : 1, pose.thumbnail?.aspect ?? 1, 0, 0)
         )
         let brightness = simd_dot(screenColor, SIMD3(0.2126, 0.7152, 0.0722))
         veil = min(lit * (0.12 + 0.5 * brightness), Self.veilLimit)
         chrome = pose.chrome
         turnedChrome = pose.turnedChrome
+        thumbnail = pose.thumbnail
     }
 
     func reusingLens(of previous: HallPhoneDraw) -> HallPhoneDraw {
@@ -278,10 +282,6 @@ struct HallPhoneDraw {
 
     // MARK: Screen
 
-    private static func finderRatio(_ settings: HallPhone.Settings) -> Float {
-        settings.isWide ? 16.0 / 9.0 : 4.0 / 3.0
-    }
-
     private static func lens(full: SIMD2<Float>, k: Float, aimed: SIMD2<Float>, basis: Basis, camera: Projection,
                              settings: HallPhone.Settings) -> (size: SIMD2<Float>, offset: SIMD2<Float>) {
         let toLens = { (ray: SIMD3<Float>) in
@@ -310,16 +310,13 @@ struct HallPhoneDraw {
     private static func finderCenter(size: SIMD2<Float>, settings: HallPhone.Settings) -> SIMD2<Float> {
         let extent = (settings.isPortrait ? size : SIMD2(size.y, size.x)) / 2
         let screenHalf = extent - 2 * HallPhone.Settings.bezel * extent.x
-        let width = screenHalf.x * 2
-        let half = min(screenHalf.x * finderRatio(settings), screenHalf.y)
-        let top = -screenHalf.y + (settings.isWide ? 0.14 : 0.30) * width
-        let center = min(top + half, screenHalf.y - half)
+        let center = settings.finder(screenHalf: screenHalf).center.y
         return settings.isPortrait ? SIMD2(0, center) : SIMD2(center, 0)
     }
 
     private static func screenColor(sight: SIMD2<Float>, full: SIMD2<Float>, k: Float, hall: HallShaderArgs,
                                     settings: HallPhone.Settings) -> SIMD3<Float> {
-        let finderHalf = SIMD2(full.min(), full.min() * finderRatio(settings)) / (2 * k)
+        let finderHalf = SIMD2(full.min(), full.min() * settings.finderRatio) / (2 * k)
         let low = simd_max(sight - finderHalf, SIMD2(hall.frame.z, hall.frame.x))
         let high = simd_min(sight + finderHalf, SIMD2(hall.frame.w, hall.frame.y))
         let overlap = simd_max(high - low, .zero)
