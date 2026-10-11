@@ -41,6 +41,7 @@ struct ResultStubPeek: View {
     @State private var follow: CGFloat = 0
     @State private var webSearch: WebSearchLink?
     @State private var lastLifeShake: CGFloat = 0
+    @State private var lastLifeStrength: CGFloat = 1
 
     private static let peekHeight: CGFloat = 33
     private static let tilt: Double = 32
@@ -49,6 +50,7 @@ struct ResultStubPeek: View {
     private static let screenEdgeGap: CGFloat = 48
     private static let entryDelay = Duration.milliseconds(30)
     private static let keyboardAnimation = Animation.spring(response: 0.3, dampingFraction: 1)
+    private static let lastLifeFadeDuration = 0.15
     static let tuckAnimation = Animation.snappy
     static let keyboardSettleAnimation = Animation.smooth
     static let exitAnimation = Animation.easeIn(duration: 0.3)
@@ -106,8 +108,8 @@ struct ResultStubPeek: View {
                                        recordingMean: recordingLight,
                                        sheenScale: hasLanded ? 1 : Self.flightSheen))
         .environment(\.flipTear, tear)
-        .modifier(ResultStubShake(animatableData: shake))
-        .modifier(ResultStubShake(animatableData: lastLifeShake))
+        .modifier(ResultStubShake(progress: shake))
+        .modifier(ResultStubShake(progress: lastLifeShake, strength: lastLifeStrength))
         .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), anchor: .top,
                           perspective: Self.perspective)
         .allowsHitTesting(outcome != nil && hasLanded)
@@ -131,6 +133,7 @@ struct ResultStubPeek: View {
                 return
             }
             if drop > 0 { followKeyboard() }
+            withAnimation(.easeOut(duration: Self.lastLifeFadeDuration)) { lastLifeStrength = 0 }
             await arrive(outcome)
         }
         .onChange(of: attemptsMade) { _, attempts in
@@ -138,6 +141,7 @@ struct ResultStubPeek: View {
                   FlipTear.isLastLife(misses: attempts, frameCount: frameCount) else { return }
             Haptics.shared.play(.lastLife)
             lastLifeShake = 0
+            lastLifeStrength = 1
             withAnimation(.linear(duration: ResultStubShake.duration)) { lastLifeShake = 1 }
         }
         .onChange(of: keyboardLift, initial: true) { _, lift in
