@@ -17,12 +17,10 @@ final class RoundFrames: ObservableObject {
     @Published private var frameLight: HallFrameSample = .dark
     @Published private(set) var picture: HallPicture?
 
-    private var target: URL?
     private var images: [URL: UIImage] = [:]
     private var frameLights: [URL: HallFrameSample] = [:]
     private var pictures: [URL: HallPicture] = [:]
 
-    private static let spinnerDelay = Duration.milliseconds(180)
     private static let retryCap = Duration.seconds(2)
 
     var hallLight: HallFrameSample {
@@ -30,9 +28,8 @@ final class RoundFrames: ObservableObject {
     }
 
     func show(_ url: URL?, isRoundLoading: Bool) async {
-        target = url
         guard let url else {
-            await waitForRound(isLoading: isRoundLoading)
+            waitForRound(isLoading: isRoundLoading)
             return
         }
         guard url != displayedURL else { return }
@@ -66,15 +63,8 @@ final class RoundFrames: ObservableObject {
     }
 
     private func download(_ url: URL) async {
-        if displayedURL != nil { isWaiting = true }
+        isWaiting = true
         clearDisplayed()
-
-        let spinner = Task {
-            try? await Task.sleep(for: Self.spinnerDelay)
-            guard !Task.isCancelled, target == url else { return }
-            isWaiting = true
-        }
-        defer { spinner.cancel() }
 
         var attempt = 0
         while !Task.isCancelled {
@@ -82,7 +72,6 @@ final class RoundFrames: ObservableObject {
                 if !Task.isCancelled { images[url] = image }
                 return
             }
-            isWaiting = true
             attempt += 1
             try? await Task.sleep(for: min(.milliseconds(400 * attempt), Self.retryCap))
         }
@@ -117,16 +106,9 @@ final class RoundFrames: ObservableObject {
         picture = nil
     }
 
-    private func waitForRound(isLoading: Bool) async {
+    private func waitForRound(isLoading: Bool) {
         clearDisplayed()
         hasPresentedFrame = false
-        guard isLoading else {
-            isWaiting = false
-            return
-        }
-        guard !isWaiting else { return }
-        try? await Task.sleep(for: Self.spinnerDelay)
-        guard !Task.isCancelled else { return }
-        isWaiting = true
+        isWaiting = isLoading
     }
 }
