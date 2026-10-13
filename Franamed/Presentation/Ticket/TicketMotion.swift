@@ -8,7 +8,7 @@
 import SwiftUI
 
 enum TicketMotion {
-    static let minimumDragDistance: CGFloat = 0
+    static let flingProjection: CGFloat = 0.2
     static let commitDistance: CGFloat = 110
     static let flingThreshold: CGFloat = 80
     static let fallbackFlightDistance: CGFloat = 700

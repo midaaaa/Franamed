@@ -30,7 +30,7 @@ struct TicketView: View {
     @State private var hidesStub = false
     @State private var isTransitioning = false
     @State private var isRasterized = false
-    @GestureState private var isDraggingCard = false
+    @State private var isDraggingCard = false
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
@@ -117,13 +117,6 @@ struct TicketView: View {
                 .frame(width: width)
                 .position(x: pixelGrid.snapped(geo.size.width / 2), y: pixelGrid.snapped(centerY))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
-                .onChange(of: isDraggingCard) { _, isDragging in
-                    if isDragging {
-                        isRasterized = true
-                    } else {
-                        settleAfterInterruptedDrag()
-                    }
-                }
         }
         .task { await viewModel.loadGenreNames() }
     }
@@ -155,7 +148,9 @@ struct TicketView: View {
         .offset(cardOffset)
         .rotationEffect(.degrees(cardTilt), anchor: .bottom)
         .scaleEffect(cardScale)
-        .gesture(swipeGesture(posterHeight: posterHeight), including: isInteractive ? .all : .subviews)
+        .gesture(TicketPanGesture(posterHeight: posterHeight, isEnabled: isInteractive,
+                                  onChange: { dragChanged($0) },
+                                  onEnd: { dragEnded(translation: $0, velocity: $1) }))
     }
 
     // MARK: Content
@@ -202,32 +197,18 @@ struct TicketView: View {
     
     // MARK: Swipe
 
-    private func swipeGesture(posterHeight: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: TicketMotion.minimumDragDistance)
-            .updating($isDraggingCard) { value, state, _ in
-                state = value.startLocation.y < posterHeight
-            }
-            .onChanged { value in
-                guard value.startLocation.y < posterHeight else { return }
-                cardOffset = pixelGrid.snapped(value.translation)
-                cardTilt = TicketSwipe.tiltDegrees(for: value.translation)
-            }
-            .onEnded { value in
-                guard value.startLocation.y < posterHeight else { return }
-                commit(value)
-            }
-    }
-
-    private func settleAfterInterruptedDrag() {
-        guard !isTransitioning, cardOffset != .zero else { return }
-        withAnimation(TicketMotion.snapBack) {
-            cardOffset = .zero
-            cardTilt = 0
+    private func dragChanged(_ translation: CGSize) {
+        if !isDraggingCard {
+            isDraggingCard = true
+            isRasterized = true
         }
+        cardOffset = pixelGrid.snapped(translation)
+        cardTilt = TicketSwipe.tiltDegrees(for: translation)
     }
 
-    private func commit(_ value: DragGesture.Value) {
-        guard let thrown = TicketSwipe.makeThrow(for: value) else {
+    private func dragEnded(translation: CGSize, velocity: CGSize) {
+        isDraggingCard = false
+        guard let thrown = TicketSwipe.makeThrow(translation: translation, velocity: velocity) else {
             withAnimation(TicketMotion.snapBack) {
                 cardOffset = .zero
                 cardTilt = 0

@@ -15,11 +15,9 @@ enum TicketSwipe {
         let step: Int
     }
 
-    static func makeThrow(for value: DragGesture.Value) -> Throw? {
-        let translation = value.translation
-        let predicted = value.predictedEndTranslation
-        let flingVector = CGSize(width: predicted.width - translation.width,
-                                 height: predicted.height - translation.height)
+    static func makeThrow(translation: CGSize, velocity: CGSize) -> Throw? {
+        let flingVector = CGSize(width: velocity.width * TicketMotion.flingProjection,
+                                 height: velocity.height * TicketMotion.flingProjection)
         let dragged = hypot(translation.width, translation.height)
         let isFlung = hypot(flingVector.width, flingVector.height) >= TicketMotion.flingThreshold
 
