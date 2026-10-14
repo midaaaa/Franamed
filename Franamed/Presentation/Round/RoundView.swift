@@ -26,6 +26,7 @@ struct RoundView: View {
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var fullHeight: CGFloat = 0
     @State private var frameHeight: CGFloat = 0
+    @State private var frameTop: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
     @State private var morphProgress: Double = 0
@@ -37,6 +38,7 @@ struct RoundView: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
+    @State private var isShareLifted = false
     private let mode: TicketGameMode
 
     private static let backgroundSpace = "roundBackground"
@@ -65,6 +67,7 @@ struct RoundView: View {
                 VStack(spacing: 0) {
                     FrameView()
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { frameTop = $0 }
                     .layoutPriority(1)
 
                     Spacer(minLength: 0)
@@ -147,12 +150,13 @@ struct RoundView: View {
                                 isWaiting: frames.isWaiting && frames.picture == nil, phone: phone,
                                 isProtected: isFrameProtected, showsCaptureBanner: showsCaptureBanner,
                                 coordinateSpace: Self.backgroundSpace)
+                    .environment(\.isHallCovered, isShareLifted)
             }
         }
         .coordinateSpace(.named(Self.backgroundSpace))
         .onChange(of: viewModel.outcome) { _, outcome in phone.isLocked = outcome != nil }
         .onChange(of: isAnswerFieldFocused) { _, focused in if focused { phone.stow() } else { phone.unstow() } }
-        .interactiveDismissDisabled(isPhoneHeld)
+        .interactiveDismissDisabled(isPhoneHeld || isShareLifted)
         .onAppear { phone.onHeldChange = { isPhoneHeld = $0 } }
         .task { await viewModel.loadRound() }
         .task(id: FrameRequest(url: currentFrameURL, isRoundLoading: viewModel.isLoading)) {
@@ -229,6 +233,26 @@ struct RoundView: View {
         return media.backdrops.prefix(viewModel.frameCount).compactMap { URL(string: $0.filePath) }
     }
 
+    // MARK: Share
+
+    private func startShare(_ content: ResultStubContent, launch: ShareLaunch) {
+        guard !isShareLifted, let outcome = viewModel.outcome, let media = viewModel.mediaItemWithBackdrops,
+              let presenter = launch.presenter() else { return }
+        let answerIndex = outcome == .correct ? viewModel.attemptsMade - 1 : viewModel.currentFrameIndex
+        let first = frameURLs.first, answer = frameURLs[safe: answerIndex]
+        var material = ShareMaterial(content: content, solvedAtFrame: outcome == .correct ? viewModel.attemptsMade : nil,
+                                     firstFrame: first.flatMap { frames.image(for: $0) },
+                                     answerFrame: answer.flatMap { frames.image(for: $0) },
+                                     firstLight: first.flatMap { frames.light(for: $0) } ?? frames.hallLight,
+                                     answerLight: answer.flatMap { frames.light(for: $0) } ?? frames.hallLight,
+                                     roundSize: WindowMetrics.size, roundFrameTop: frameTop)
+        material.stubs[content] = launch.currentStub().map { ShareStubImage(face: $0) }
+        let model = ShareSheetModel(material: material, launch: launch,
+                                    posterPath: media.posterPath ?? viewModel.details?.posterPath)
+        ShareSheetController.present(model: model, from: presenter, onLift: { isShareLifted = true },
+                                     onFinish: { isShareLifted = false })
+    }
+
     private var currentFrameURL: URL? {
         frameURLs[safe: viewModel.currentFrameIndex]
     }
@@ -299,7 +323,9 @@ struct RoundView: View {
                            isTucked: isStubTucked,
                            keyboardLift: keyboardLift,
                            restOffset: stubRestOffset,
-                           formWidth: WindowMetrics.size.width - barInset * 2)
+                           formWidth: WindowMetrics.size.width - barInset * 2,
+                           isLifted: isShareLifted,
+                           onShare: startShare)
                 .id(StubIdentity(itemID: media.item.id, round: roundNumber))
                 .transition(.asymmetric(insertion: .identity,
                                         removal: .offset(x: WindowMetrics.size.width)))

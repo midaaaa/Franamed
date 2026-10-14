@@ -22,7 +22,8 @@ struct RoundPayload: Codable, Sendable {
     func asMediaItemWithBackdrops(imageBaseURL: String) -> MediaItemWithBackdrops {
         MediaItemWithBackdrops(
             item: item.asMediaItem,
-            backdrops: frames.map { $0.backdrop(imageBaseURL: imageBaseURL) }
+            backdrops: frames.map { $0.backdrop(imageBaseURL: imageBaseURL) },
+            posterPath: item.posterURL
         )
     }
 

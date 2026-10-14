@@ -16,4 +16,5 @@ struct MediaDetails: Equatable, Sendable {
     var isCanceled = false
     var certification: String?
     var authors: [String] = []
+    var posterPath: String?
 }

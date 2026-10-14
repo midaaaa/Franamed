@@ -10,4 +10,5 @@ import Foundation
 struct MediaItemWithBackdrops {
     let item: MediaItem
     let backdrops: [Backdrop]
+    var posterPath: String?
 }

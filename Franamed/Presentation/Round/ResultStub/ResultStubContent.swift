@@ -9,9 +9,9 @@ import Foundation
 import UIKit
 
 struct ResultStubContent: Hashable {
-    let title: String
-    let credits: [String]
-    let meta: String
+    private(set) var title: String
+    private(set) var credits: [String]
+    private(set) var meta: String
     let verdict: String
     let session: String
     let searchQuery: String
@@ -110,8 +110,16 @@ struct ResultStubContent: Hashable {
 }
 
 extension ResultStubContent {
-    func menuItems(onWebSearch: @escaping (String) -> Void) -> [FlipMenuItem] {
-        [
+    func concealed() -> ResultStubContent {
+        var copy = self
+        copy.title = "???"
+        copy.credits = [" "]
+        copy.meta = "????  ·  ? ч ?? мин"
+        return copy
+    }
+
+    func menuItems(onWebSearch: @escaping (String) -> Void, onShare: (() -> Void)? = nil) -> [FlipMenuItem] {
+        var items = [
             FlipMenuItem(title: "Скопировать название", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = title
             },
@@ -119,5 +127,9 @@ extension ResultStubContent {
                 onWebSearch(searchQuery)
             }
         ]
+        if let onShare {
+            items.append(FlipMenuItem(title: "Поделиться", systemImage: "square.and.arrow.up", action: onShare))
+        }
+        return items
     }
 }

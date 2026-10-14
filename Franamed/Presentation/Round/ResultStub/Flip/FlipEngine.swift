@@ -36,6 +36,9 @@ final class FlipEngine: ObservableObject {
     var litSnapshot: (() -> UIImage?)?
     var tearSnapshot: (() -> (plain: UIImage, lit: UIImage?)?)?
     var isTearHealing: (() -> Bool)?
+    var plainSnapshot: ((CGImage?) -> UIImage?)?
+    var hostController: (() -> UIViewController?)?
+    var flightRenderer: (() -> FlipFlight?)?
     var onCanvasHidden: ((Bool) -> Void)?
 
     var isApproachingRest: Bool {

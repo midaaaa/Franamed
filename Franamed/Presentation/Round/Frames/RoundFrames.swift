@@ -46,6 +46,14 @@ final class RoundFrames: ObservableObject {
         present(url)
     }
 
+    func image(for url: URL) -> UIImage? {
+        images[url]
+    }
+
+    func light(for url: URL) -> HallFrameSample? {
+        frameLights[url]
+    }
+
     func preload(_ urls: [URL]) async {
         let round = Set(urls)
         images = images.filter { round.contains($0.key) }

@@ -38,6 +38,7 @@ struct FlipUniforms {
     float4 tearShape;
     float4 tearState;
     float4 tearHeal;
+    float4 faceBlend;
 };
 
 constant float3 toScreen = float3(0.0, -0.866, -0.5);
@@ -252,6 +253,7 @@ vertex FlipVertex ticketFlipTearVertex(uint vid [[vertex_id]],
 fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
                                   texture2d<half> frontTexture [[texture(0)]],
                                   texture2d<half> backTexture  [[texture(1)]],
+                                  texture2d<half> blendTexture [[texture(2)]],
                                   sampler textureSampler [[sampler(0)]],
                                   constant FlipUniforms &u [[buffer(1)]]) {
     bool isEdge = u.face < 0.5;
@@ -274,6 +276,9 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
 
         half4 tex = isBack ? backTexture.sample(textureSampler, uv)
                            : frontTexture.sample(textureSampler, uv);
+        if (!isBack && u.faceBlend.x > 0.0) {
+            tex = mix(tex, blendTexture.sample(textureSampler, uv), half(u.faceBlend.x));
+        }
         if (tex.a <= 0.004h) { discard_fragment(); }
 
         alpha = tex.a;

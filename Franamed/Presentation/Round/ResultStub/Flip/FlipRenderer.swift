@@ -39,6 +39,12 @@ struct FlipUniforms {
     var tearShape: SIMD4<Float>
     var tearState: SIMD4<Float>
     var tearHeal: SIMD4<Float>
+    var faceBlend: SIMD4<Float>
+}
+
+struct FlipFlight {
+    let coordinator: FlipRenderer.Coordinator
+    let view: MTKView
 }
 
 enum FlipMesh {
@@ -96,20 +102,32 @@ struct FlipRenderer: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
 
-    func makeUIView(context: Context) -> ProtectedBox {
+    static func makeMetalView(coordinator: Coordinator, sharing source: Coordinator? = nil) -> MTKView {
         let view = MTKView()
-        view.device = MTLCreateSystemDefaultDevice()
+        view.device = source?.view?.device ?? MTLCreateSystemDefaultDevice()
         view.isOpaque = false
         view.backgroundColor = .clear
         (view.layer as? CAMetalLayer)?.isOpaque = false
         view.colorPixelFormat = .bgra8Unorm
         view.depthStencilPixelFormat = .depth32Float
-        view.sampleCount = Self.sampleCount
+        view.sampleCount = sampleCount
         view.clearColor = MTLClearColorMake(0, 0, 0, 0)
         view.isUserInteractionEnabled = false
         view.enableSetNeedsDisplay = false
         view.isPaused = false
-        view.delegate = context.coordinator
+        view.delegate = coordinator
+        coordinator.view = view
+        if let source {
+            coordinator.adopt(source)
+        } else if let device = view.device {
+            coordinator.configure(device: device, colorFormat: view.colorPixelFormat,
+                                  depthFormat: view.depthStencilPixelFormat)
+        }
+        return view
+    }
+
+    func makeUIView(context: Context) -> ProtectedBox {
+        let view = Self.makeMetalView(coordinator: context.coordinator)
         let hideOthers = engine.onCanvasHidden
         engine.onCanvasHidden = { [weak view] isHidden in
             hideOthers?(isHidden)
@@ -120,12 +138,6 @@ struct FlipRenderer: UIViewRepresentable {
             wakeOthers?()
             view?.isPaused = false
         }
-        context.coordinator.view = view
-        if let device = view.device {
-            context.coordinator.configure(device: device,
-                                          colorFormat: view.colorPixelFormat,
-                                          depthFormat: view.depthStencilPixelFormat)
-        }
         return ProtectedBox(child: view)
     }
 
@@ -135,6 +147,9 @@ struct FlipRenderer: UIViewRepresentable {
             engine.litSnapshot = { [weak coordinator = context.coordinator] in coordinator?.snapshot() }
             engine.tearSnapshot = { [weak coordinator = context.coordinator] in coordinator?.tearSnapshot() }
             engine.isTearHealing = { [weak coordinator = context.coordinator] in coordinator?.isTearHealing ?? false }
+            engine.plainSnapshot = { [weak coordinator = context.coordinator] in coordinator?.plainSnapshot(front: $0) }
+            engine.hostController = { [weak coordinator = context.coordinator] in coordinator?.hostController() }
+            engine.flightRenderer = { [weak coordinator = context.coordinator] in coordinator?.makeFlight() }
         }
         let coordinator = context.coordinator
         let needsFrame = coordinator.frontTexture !== frontTexture
@@ -163,6 +178,9 @@ struct FlipRenderer: UIViewRepresentable {
         var tilt: Double = 0
         weak var view: MTKView?
         private(set) var outlineChanged = false
+        var angleOverride: Double?
+        var blendTexture: MTLTexture?
+        var faceBlend: Float = 0
 
         init(engine: FlipEngine) {
             self.engine = engine
@@ -199,6 +217,17 @@ struct FlipRenderer: UIViewRepresentable {
                 bytes: outline.vertices,
                 length: outline.vertices.count * MemoryLayout<FlipEdge.Vertex>.stride,
                 options: .storageModeShared)
+        }
+
+        func adopt(_ source: Coordinator) {
+            device = source.device
+            commandQueue = source.commandQueue
+            pipeline = source.pipeline
+            edgePipeline = source.edgePipeline
+            tearPipeline = source.tearPipeline
+            indexBuffer = source.indexBuffer
+            sampler = source.sampler
+            depthState = source.depthState
         }
 
         func configure(device: MTLDevice, colorFormat: MTLPixelFormat, depthFormat: MTLPixelFormat) {
@@ -268,8 +297,14 @@ struct FlipRenderer: UIViewRepresentable {
                   let commandBuffer = commandQueue.makeCommandBuffer(),
                   encode(into: commandBuffer, descriptor: descriptor, size: view.bounds.size)
             else { return }
-            commandBuffer.present(drawable)
-            commandBuffer.commit()
+            if (view.layer as? CAMetalLayer)?.presentsWithTransaction == true {
+                commandBuffer.commit()
+                commandBuffer.waitUntilScheduled()
+                drawable.present()
+            } else {
+                commandBuffer.present(drawable)
+                commandBuffer.commit()
+            }
         }
 
         static let tearMargin: CGFloat = 10
@@ -282,6 +317,42 @@ struct FlipRenderer: UIViewRepresentable {
             tilt = 0
             defer { (lighting, tilt) = saved }
             return snapshot(margin: Self.tearMargin).map { ($0, lit) }
+        }
+
+        func plainSnapshot(front: CGImage?) -> UIImage? {
+            let saved = (frontTexture, lighting, tilt)
+            if let front, let texture = TicketSnapshot.texture(from: front) { frontTexture = texture }
+            angleOverride = 0
+            lighting = .neutral
+            tilt = 0
+            defer {
+                (frontTexture, lighting, tilt) = saved
+                angleOverride = nil
+            }
+            return snapshot(margin: Self.tearMargin)
+        }
+
+        func makeFlight() -> FlipFlight {
+            let flight = Coordinator(engine: FlipEngine())
+            flight.frontTexture = frontTexture
+            flight.backTexture = backTexture
+            flight.stubSize = stubSize
+            flight.lighting = lighting
+            flight.tilt = tilt
+            flight.tear = tear
+            let view = FlipRenderer.makeMetalView(coordinator: flight, sharing: self)
+            view.isPaused = true
+            (view.layer as? CAMetalLayer)?.presentsWithTransaction = true
+            flight.setOutline(size: stubSize, edgeStyle: outlineStyle)
+            return FlipFlight(coordinator: flight, view: view)
+        }
+
+        func hostController() -> UIViewController? {
+            var responder: UIResponder? = view
+            while let next = responder, !(next is UIViewController) { responder = next.next }
+            guard var controller = responder as? UIViewController else { return nil }
+            while let parent = controller.parent { controller = parent }
+            return controller
         }
 
         func snapshot(margin: CGFloat = 0) -> UIImage? {
@@ -342,6 +413,7 @@ struct FlipRenderer: UIViewRepresentable {
             encoder.setDepthStencilState(depthState)
             encoder.setFragmentTexture(frontTexture, index: 0)
             encoder.setFragmentTexture(backTexture ?? frontTexture, index: 1)
+            encoder.setFragmentTexture(blendTexture ?? frontTexture, index: 2)
             encoder.setFragmentSamplerState(sampler, index: 0)
             encoder.setCullMode(.none)
 
@@ -397,8 +469,8 @@ struct FlipRenderer: UIViewRepresentable {
                 hallShape: SIMD4(Float(tilt * .pi / 180), lighting.exposure, 0, lighting.sheenScale),
                 width: Float(stubSize.width),
                 height: Float(stubSize.height),
-                angle: Float(engine.angle),
-                bend: Float(engine.bend),
+                angle: Float(angleOverride ?? engine.angle),
+                bend: angleOverride == nil ? Float(engine.bend) : 0,
                 perspective: FlipLook.perspective,
                 sheen: FlipLook.sheen,
                 cols: Float(FlipMesh.columns),
@@ -414,7 +486,8 @@ struct FlipRenderer: UIViewRepresentable {
                 tearLine: tear.line,
                 tearShape: tear.shape,
                 tearState: tear.state,
-                tearHeal: tear.heal
+                tearHeal: tear.heal,
+                faceBlend: SIMD4(faceBlend, 0, 0, 0)
             )
         }
 

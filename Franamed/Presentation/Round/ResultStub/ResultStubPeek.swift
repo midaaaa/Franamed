@@ -30,6 +30,8 @@ struct ResultStubPeek: View {
     let keyboardLift: CGFloat
     let restOffset: CGFloat
     let formWidth: CGFloat
+    var isLifted = false
+    var onShare: ((ResultStubContent, ShareLaunch) -> Void)?
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @State private var playedAt = Date.now
@@ -42,6 +44,9 @@ struct ResultStubPeek: View {
     @State private var webSearch: WebSearchLink?
     @State private var lastLifeShake: CGFloat = 0
     @State private var lastLifeStrength: CGFloat = 1
+    @State private var isFrontVisible = true
+    @State private var globalFrame = CGRect.zero
+    @State private var snapshotter = FlipSnapshotter()
 
     private static let peekHeight: CGFloat = 33
     private static let tilt: Double = 32
@@ -97,13 +102,16 @@ struct ResultStubPeek: View {
 
         FlipView(size: size,
                  contentID: FacesID(content: content, genreNames: genreNames, hidesDetails: hidesDetails),
-                 menuItems: content.menuItems { webSearch = WebSearchLink(query: $0) }) {
+                 menuItems: content.menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) },
+                                              onShare: shareAction(content)),
+                 snapshotter: snapshotter) {
             ResultStubFront(content: content, hidesDetails: hidesDetails)
         } back: {
             ResultStubSetupBack(card: TicketCard(mediaType: mediaType, posterPath: nil, mode: mode),
                                 setup: RoundSetup(filters: filters, frameCount: frameCount),
                                 genreNames: genreNames)
-        }
+        } onFrontVisibleChange: { isFrontVisible = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { globalFrame = $0 }
         .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,
                                        recordingMean: recordingLight,
                                        sheenScale: hasLanded ? 1 : Self.flightSheen))
@@ -115,6 +123,7 @@ struct ResultStubPeek: View {
         .allowsHitTesting(outcome != nil && hasLanded)
         .offset(y: offset)
         .modifier(FormClip(isActive: placement == .clippedByForm, formWidth: formWidth))
+        .opacity(isLifted ? 0 : 1)
         .animation(Self.tuckAnimation, value: isHidden)
         .sheet(item: $webSearch) { link in
             SafariSheet(url: link.url).ignoresSafeArea()
@@ -147,6 +156,13 @@ struct ResultStubPeek: View {
         .onChange(of: keyboardLift, initial: true) { _, lift in
             guard outcome == nil else { return }
             drop = lift
+        }
+    }
+
+    private func shareAction(_ content: ResultStubContent) -> (() -> Void)? {
+        guard let onShare, outcome != nil else { return nil }
+        return {
+            onShare(content, ShareLaunch(snapshotter: snapshotter, source: globalFrame, startsOnBack: !isFrontVisible))
         }
     }
 

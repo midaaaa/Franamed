@@ -8,6 +8,10 @@
 import Combine
 import SwiftUI
 
+extension EnvironmentValues {
+    @Entry var isHallCovered = false
+}
+
 struct LiveHallView: View {
     let sample: HallFrameSample
     let scene: HallScene
@@ -20,6 +24,7 @@ struct LiveHallView: View {
 
     @State private var motion = HallMotion()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isHallCovered) private var isCovered
     @Environment(\.displayScale) private var displayScale
 
     private static let redrawPixels: Float = 2
@@ -32,6 +37,7 @@ struct LiveHallView: View {
             .onAppear { updateMotion() }
             .onDisappear { motion.stop() }
             .onChange(of: reduceMotion) { _, _ in updateMotion() }
+            .onChange(of: isCovered) { _, _ in updateMotion() }
             .onReceive(Self.energyChanges) { _ in updateMotion() }
             .onChange(of: motionThreshold, initial: true) { _, threshold in motion.threshold = threshold }
             .onChange(of: phoneRest, initial: true) { _, rest in
@@ -56,7 +62,7 @@ struct LiveHallView: View {
     }
 
     private func updateMotion() {
-        if reduceMotion || Self.savesEnergy { motion.stop() } else { motion.start() }
+        if reduceMotion || isCovered || Self.savesEnergy { motion.stop() } else { motion.start() }
     }
 
     private static var savesEnergy: Bool {

@@ -5,6 +5,7 @@
 //  Created by Дмитрий Филимонов on 22.09.2026.
 //
 
+import Metal
 import SwiftUI
 import UIKit
 
@@ -12,8 +13,10 @@ struct FlipView<Front: View, Back: View>: View {
     let size: CGSize
     let contentID: AnyHashable
     let menuItems: [FlipMenuItem]
+    var snapshotter: FlipSnapshotter?
     @ViewBuilder let front: () -> Front
     @ViewBuilder let back: () -> Back
+    var onFrontVisibleChange: (Bool) -> Void = { _ in }
 
     @StateObject private var engine = FlipEngine()
     @StateObject private var faces = FlipFaces()
@@ -56,9 +59,41 @@ struct FlipView<Front: View, Back: View>: View {
             }
         }
         .onChange(of: reduceMotion, initial: true) { _, new in engine.settlesInstantly = new }
+        .onChange(of: engine.isFrontVisible) { _, isFront in onFrontVisibleChange(isFront) }
+        .onAppear {
+            snapshotter?.engine = engine
+            snapshotter?.scale = displayScale
+        }
         .task(id: contentID) {
             faces.capture(front: front(), back: back(), scale: displayScale)
         }
+    }
+}
+
+@MainActor
+final class FlipSnapshotter {
+    weak var engine: FlipEngine?
+    var scale: CGFloat = 3
+
+    func current() -> UIImage? {
+        engine?.plainSnapshot?(nil)
+    }
+
+    func render(front: some View) -> UIImage? {
+        guard let image = TicketSnapshot.image(of: front, scale: scale) else { return nil }
+        return engine?.plainSnapshot?(image)
+    }
+
+    func hostController() -> UIViewController? {
+        engine?.hostController?()
+    }
+
+    func flightRenderer() -> FlipFlight? {
+        engine?.flightRenderer?()
+    }
+
+    func faceTexture(front: some View) -> MTLTexture? {
+        TicketSnapshot.texture(of: front, scale: scale)
     }
 }
 

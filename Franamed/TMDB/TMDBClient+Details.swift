@@ -16,6 +16,8 @@ private struct DetailsResponse: Decodable {
     struct ReleaseDates: Decodable { let results: [CountryReleases] }
     struct ContentRating: Decodable { let iso31661: String; let rating: String? }
     struct ContentRatings: Decodable { let results: [ContentRating] }
+    struct Poster: Decodable { let filePath: String; let voteAverage: Double?; let voteCount: Int? }
+    struct Images: Decodable { let posters: [Poster]? }
 
     let runtime: Int?
     let releaseDate: String?
@@ -29,19 +31,22 @@ private struct DetailsResponse: Decodable {
     let releaseDates: ReleaseDates?
     let contentRatings: ContentRatings?
     let originCountry: [String]?
+    let posterPath: String?
+    let images: Images?
 }
 
 extension TMDBClient {
     func fetchDetails(mediaType: MediaType, id: Int) async throws -> MediaDetails {
         let appended = mediaType == .movie
-            ? "credits,release_dates"
-            : "content_ratings"
+            ? "credits,release_dates,images"
+            : "content_ratings,images"
 
         let response: DetailsResponse = try await get(
             path: "/3/\(mediaType.rawValue)/\(id)",
             query: [
                 URLQueryItem(name: "language", value: "ru-RU"),
-                URLQueryItem(name: "append_to_response", value: appended)
+                URLQueryItem(name: "append_to_response", value: appended),
+                URLQueryItem(name: "include_image_language", value: "null")
             ]
         )
 
@@ -56,6 +61,7 @@ extension TMDBClient {
         details.authors = mediaType == .movie
             ? (response.credits?.crew ?? []).filter { $0.job == "Director" }.map(\.name)
             : (response.createdBy ?? []).map(\.name)
+        details.posterPath = Self.cleanPoster(from: response) ?? response.posterPath
 
         return details
     }
@@ -82,5 +88,11 @@ extension TMDBClient {
     private static func normalized(_ value: String?) -> String? {
         guard let value, !value.isEmpty, value != "NR" else { return nil }
         return value
+    }
+
+    private static func cleanPoster(from response: DetailsResponse) -> String? {
+        response.images?.posters?.max {
+            ($0.voteAverage ?? 0, $0.voteCount ?? 0) < ($1.voteAverage ?? 0, $1.voteCount ?? 0)
+        }?.filePath
     }
 }

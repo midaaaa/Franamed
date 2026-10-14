@@ -10,12 +10,14 @@ import simd
 
 final class HallMotion: @unchecked Sendable {
     private let manager = CMMotionManager()
-    private let queue: OperationQueue = {
+    private let serial = DispatchQueue(label: "hall.motion", qos: .userInteractive)
+    private lazy var queue: OperationQueue = {
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
-        queue.qualityOfService = .userInteractive
+        queue.underlyingQueue = serial
         return queue
     }()
+    private var settle: DispatchSourceTimer?
     private let lock = NSLock()
     private var _threshold: Float = 0.0004
     private var _sway: SIMD2<Float> = .zero
@@ -27,6 +29,7 @@ final class HallMotion: @unchecked Sendable {
     private static let restDrift = 0.006
     private static let smoothing = 0.2
     private static let reach = SIMD2<Float>(0.05, 0.03)
+    private static let settleDuration = 0.4
 
     var threshold: Float {
         get { lock.withLock { _threshold } }
@@ -42,6 +45,13 @@ final class HallMotion: @unchecked Sendable {
 
     func start() {
         guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
+        serial.async { [weak self] in
+            guard let self else { return }
+            settle?.cancel()
+            settle = nil
+            rest = nil
+            smoothed = SIMD2<Double>(sway / Self.reach)
+        }
         manager.deviceMotionUpdateInterval = 1.0 / 60
         manager.startDeviceMotionUpdates(to: queue) { [weak self] motion, _ in
             guard let q = motion?.attitude.quaternion else { return }
@@ -51,12 +61,31 @@ final class HallMotion: @unchecked Sendable {
 
     func stop() {
         manager.stopDeviceMotionUpdates()
-        queue.addOperation { [weak self] in
+        serial.async { [weak self] in self?.settleToCenter() }
+    }
+
+    private func settleToCenter() {
+        rest = nil
+        smoothed = .zero
+        settle?.cancel()
+        let from = sway
+        guard from != .zero else { return }
+        let start = DispatchTime.now()
+        let timer = DispatchSource.makeTimerSource(queue: serial)
+        timer.schedule(deadline: .now(), repeating: 1.0 / 60)
+        timer.setEventHandler { [weak self, weak timer] in
             guard let self else { return }
-            rest = nil
-            smoothed = .zero
-            deliver(.zero)
+            let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
+            let t = min(elapsed / Self.settleDuration, 1)
+            let eased = 1 - pow(1 - t, 3)
+            deliver(from * Float(1 - eased))
+            if t >= 1 {
+                timer?.cancel()
+                settle = nil
+            }
         }
+        settle = timer
+        timer.resume()
     }
 
     private func deliver(_ next: SIMD2<Float>) {
