@@ -6,15 +6,10 @@
 //
 
 import SwiftUI
-import MetalKit
+import Metal
 import QuartzCore
 
 enum TicketSnapshot {
-
-    @MainActor
-    private static let textureLoader: MTKTextureLoader? =
-        MTLCreateSystemDefaultDevice().map(MTKTextureLoader.init(device:))
-
     @MainActor
     static func texture(of content: some View, scale: CGFloat) -> MTLTexture? {
         #if DEBUG
@@ -37,11 +32,7 @@ enum TicketSnapshot {
 
     @MainActor
     static func texture(from image: CGImage) -> MTLTexture? {
-        try? textureLoader?.newTexture(cgImage: image, options: [
-            .SRGB: false,
-            .origin: MTKTextureLoader.Origin.topLeft,
-            .generateMipmaps: true
-        ])
+        TextureUpload.texture(from: image)
     }
 
     private static func normalized(_ image: CGImage) -> CGImage? {
