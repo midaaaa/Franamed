@@ -50,11 +50,18 @@ private struct ShareCardFrame: View, Animatable {
 
     var body: some View {
         let scale = canvas.width / ShareFormat.baseWidth
-        ShareCard(material: model.material, mode: model.mode, background: model.shownBackground, format: model.format,
-                  showsStub: model.showsStub, cornerRadius: ShareSheetLayout.cardCornerRadius / scale,
-                  height: canvas.height / scale, stickerness: stickerness)
-            .scaleEffect(scale, anchor: .topLeading)
-            .offset(x: canvas.minX, y: canvas.minY)
+        ZStack(alignment: .topLeading) {
+            ShareCard(material: model.material, mode: model.mode, background: model.shownBackground, format: model.format,
+                      showsStub: false, height: canvas.height / scale, stickerness: stickerness, clipsBackdrop: false)
+                .scaleEffect(scale, anchor: .topLeading)
+                .frame(width: canvas.width, height: canvas.height, alignment: .topLeading)
+                .clipShape(.rect(cornerRadius: ShareSheetLayout.cardCornerRadius, style: .continuous))
+            ShareCard(material: model.material, mode: model.mode, background: model.shownBackground, format: model.format,
+                      showsStub: model.showsStub, height: canvas.height / scale, stickerness: stickerness,
+                      showsBackdrop: false)
+                .scaleEffect(scale, anchor: .topLeading)
+        }
+        .offset(x: canvas.minX, y: canvas.minY)
     }
 }
 

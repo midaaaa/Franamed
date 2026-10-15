@@ -18,6 +18,8 @@ struct ShareCard: View {
     var cornerRadius: CGFloat = 0
     var height: CGFloat?
     var stickerness: CGFloat?
+    var showsBackdrop = true
+    var clipsBackdrop = true
 
     private var size: CGSize { CGSize(width: format.canvas.width, height: height ?? format.canvas.height) }
     private var sticker: CGFloat { stickerness ?? (format == .sticker ? 1 : 0) }
@@ -29,19 +31,21 @@ struct ShareCard: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                backdrop
-                    .frame(width: size.width, height: size.height)
-                if background == .hall {
-                    hallPicture
-                }
-                if showsOverlays {
-                    overlays
+            if showsBackdrop {
+                ZStack(alignment: .topLeading) {
+                    backdrop
                         .frame(width: size.width, height: size.height)
+                    if background == .hall {
+                        hallPicture
+                    }
+                    if showsOverlays {
+                        overlays
+                            .frame(width: size.width, height: size.height)
+                    }
                 }
+                .modifier(BackdropClip(cornerRadius: cornerRadius, isActive: clipsBackdrop))
+                .opacity(Double(1 - sticker))
             }
-            .clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
-            .opacity(Double(1 - sticker))
             if showsStub {
                 ForEach(ShareMode.allCases, id: \.self) { layer in
                     let content = layer.stub(of: material.content)
@@ -65,24 +69,31 @@ struct ShareCard: View {
             filled(material.poster)
         case .black:
             Color.black
+                .padding(-Self.bleed)
         }
     }
 
+    private static let bleed: CGFloat = 4
+
     private func filled(_ image: UIImage?) -> some View {
-        Color.black.overlay {
+        ZStack {
+            Color.black
             if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
             }
         }
+        .frame(width: size.width + 2 * Self.bleed, height: size.height + 2 * Self.bleed)
         .clipped()
+        .frame(width: size.width, height: size.height)
     }
 
     private var hall: some View {
-        let rect = material.hallRect
+        let rect = material.hallRect.insetBy(dx: -Self.bleed, dy: -Self.bleed)
         return ZStack(alignment: .topLeading) {
             Color.black
+                .padding(-Self.bleed)
             ForEach(ShareMode.allCases, id: \.self) { layer in
                 if let image = material.halls[layer] {
                     Image(uiImage: image)
@@ -94,11 +105,12 @@ struct ShareCard: View {
             }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .clipped()
     }
 
     private var hallPicture: some View {
-        let frame = ShareMaterial.cardFrame
+        let card = ShareMaterial.cardFrame
+        let frame = CGRect(x: card.minX - Self.bleed, y: card.minY - Self.bleed,
+                           width: card.width + 2 * Self.bleed, height: card.height + Self.bleed)
         return ForEach(ShareMode.allCases, id: \.self) { layer in
             if let picture = material.picture(for: layer) {
                 Image(uiImage: picture)
@@ -166,6 +178,19 @@ struct ShareCard: View {
         renderer.scale = scale
         renderer.isOpaque = format != .sticker
         return renderer.uiImage
+    }
+}
+
+private struct BackdropClip: ViewModifier {
+    let cornerRadius: CGFloat
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content.clipShape(.rect(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            content
+        }
     }
 }
 
