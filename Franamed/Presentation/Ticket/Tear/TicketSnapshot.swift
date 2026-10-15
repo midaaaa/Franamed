@@ -27,22 +27,11 @@ enum TicketSnapshot {
     static func image(of content: some View, scale: CGFloat) -> CGImage? {
         let renderer = ImageRenderer(content: content)
         renderer.scale = scale
-        return renderer.cgImage.flatMap(normalized)
+        return renderer.cgImage
     }
 
     @MainActor
     static func texture(from image: CGImage) -> MTLTexture? {
         TextureUpload.texture(from: image)
-    }
-
-    private static func normalized(_ image: CGImage) -> CGImage? {
-        let width = image.width, height = image.height
-        guard width > 0, height > 0 else { return nil }
-        guard let ctx = CGContext(data: nil, width: width, height: height,
-                                  bitsPerComponent: 8, bytesPerRow: width * 4,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-        return ctx.makeImage()
     }
 }
