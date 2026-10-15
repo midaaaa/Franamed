@@ -14,14 +14,17 @@ final class ShareSheetModel: ObservableObject {
     @Published var material: ShareMaterial
     @Published var mode = ShareMode.answer
     @Published var background = ShareBackground.hall
-    @Published var format = ShareFormat.story
+    @Published var format = ShareFormat.story {
+        didSet { if format != oldValue { onFormatChange(format) } }
+    }
     @Published var showsStub = false
     @Published var isFlying = false
 
     let launch: ShareLaunch
     private let panelHeights: [ShareFormat: CGFloat]
-    var maxSheetHeight: CGFloat?
+    @Published var sheetHeight: CGFloat?
     var presentActivity: ([Any]) -> Void = { _ in }
+    var onFormatChange: (ShareFormat) -> Void = { _ in }
 
     private let posterURL: URL?
     private var faceTextures: [ResultStubContent: MTLTexture] = [:]
@@ -54,8 +57,7 @@ final class ShareSheetModel: ObservableObject {
     }
 
     func layout(in size: CGSize) -> ShareSheetLayout {
-        let fitted = ShareSheetLayout.fittedHeight(width: size.width, panelHeight: panelHeight, format: format)
-        let target = max(size.height, min(fitted, maxSheetHeight ?? fitted))
+        let target = min(size.height, sheetHeight ?? size.height)
         return ShareSheetLayout(size: CGSize(width: size.width, height: target), panelHeight: panelHeight, format: format)
             .offsetBy(dy: size.height - target)
     }

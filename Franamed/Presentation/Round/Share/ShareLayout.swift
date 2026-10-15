@@ -68,22 +68,26 @@ struct ShareSheetLayout {
         height - panelHeight - bottomInset
     }
 
-    private static func topInset(for format: ShareFormat) -> CGFloat {
+    static func cardLift(panelHeight: CGFloat) -> CGFloat {
+        panelHeight + bottomInset + gap
+    }
+
+    static func topInset(for format: ShareFormat) -> CGFloat {
         format == .sticker ? stickerTopInset : regularTopInset
+    }
+
+    static func canvas(width: CGFloat, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> CGRect {
+        let height = max(bottom - top, 80)
+        let cardWidth = min(width - 2 * sideInset, height / aspect)
+        return CGRect(x: (width - cardWidth) / 2, y: bottom - height, width: cardWidth, height: height)
     }
 
     @MainActor
     init(size: CGSize, panelHeight: CGFloat, format: ShareFormat) {
-        let top = Self.topInset(for: format)
-        let bottom = Self.panelTop(height: size.height, panelHeight: panelHeight) - Self.gap
-        let room = bottom - top
-        let area = CGSize(width: size.width - 2 * Self.sideInset, height: max(room, 80))
-        let card = format.canvas
-        let scale = min(area.width / card.width, area.height / card.height)
-        let fitted = CGSize(width: card.width * scale, height: card.height * scale)
-        canvas = CGRect(x: (size.width - fitted.width) / 2, y: bottom - fitted.height,
-                        width: fitted.width, height: fitted.height)
-        let placement = ShareStubPlacement.of(format, in: card)
+        canvas = Self.canvas(width: size.width, top: Self.topInset(for: format),
+                             bottom: size.height - Self.cardLift(panelHeight: panelHeight), aspect: format.aspect)
+        let scale = canvas.width / ShareFormat.baseWidth
+        let placement = ShareStubPlacement.of(format, in: CGSize(width: ShareFormat.baseWidth, height: canvas.height / scale))
         let width = placement.width * scale
         let height = width * ShareStubPlacement.stubAspect
         stub = CGRect(x: canvas.minX + placement.center.x * scale - width / 2,

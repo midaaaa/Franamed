@@ -15,12 +15,18 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     private let onFinish: () -> Void
     private var flight: ShareFlightView?
     private var link: CADisplayLink?
+    private var sizeLink: CADisplayLink?
+    private var detent: CGFloat?
+    private var maximumDetent: CGFloat?
+    private var resize: (from: CGFloat, to: CGFloat, start: CFTimeInterval)?
     private var restTop: CGFloat?
+    private var sheetFormat = ShareFormat.story
     private var hasLanded = false
     private var subscriptions: Set<AnyCancellable> = []
 
     private static let topClearance: CGFloat = 10
     private static let landingFade: TimeInterval = 0.2
+    private static let sheetSpring = Spring.snappy
 
     init(model: ShareSheetModel, onLift: @escaping () -> Void, onFinish: @escaping () -> Void) {
         self.model = model
@@ -62,6 +68,9 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         super.viewDidAppear(animated)
         if !hasLanded { restTop = sheetTop() }
         hasLanded = true
+        if resize == nil, let maximum = maximumDetent {
+            model.sheetHeight = targetDetent(for: sheetFormat, maximum: maximum) + Self.safeBottom
+        }
         land()
     }
 
@@ -76,6 +85,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         super.viewDidDisappear(animated)
         guard isBeingDismissed else { return }
         stopLink()
+        stopSizeLink()
         onFinish()
         removeFlight()
     }
@@ -95,28 +105,55 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
 
     private func configureDetent() {
         guard let sheet = sheetPresentationController else { return }
-        let safeArea = WindowMetrics.safeAreaInsets
-        let clearance = safeArea.top + Self.topClearance
-        sheet.detents = [.custom(identifier: .init("share")) { [weak model] context in
+        let clearance = WindowMetrics.safeAreaInsets.top + Self.topClearance
+        sheetFormat = model.format
+        sheet.detents = [.custom(identifier: .init("share")) { [weak self] context in
             let maximum = context.maximumDetentValue - clearance
-            guard let model else { return maximum }
-            model.maxSheetHeight = maximum + safeArea.bottom
-            let fitted = ShareSheetLayout.fittedHeight(width: WindowMetrics.size.width, panelHeight: model.panelHeight,
-                                                       format: model.format)
-            return min(maximum, fitted - safeArea.bottom)
+            guard let self else { return maximum }
+            maximumDetent = maximum
+            return min(maximum, detent ?? targetDetent(for: sheetFormat, maximum: maximum))
         }]
-        model.$format.dropFirst().removeDuplicates()
-            .sink { [weak self] _ in DispatchQueue.main.async { self?.resizeSheet() } }
-            .store(in: &subscriptions)
+        model.onFormatChange = { [weak self] in self?.resizeSheet(to: $0) }
     }
 
-    private func resizeSheet() {
-        guard let sheet = sheetPresentationController, hasLanded, !isBeingDismissed else { return }
-        sheet.animateChanges { sheet.invalidateDetents() }
-        DispatchQueue.main.async { [weak self] in
-            guard let self, !self.isBeingDismissed, let window = self.view.window else { return }
-            self.restTop = self.view.convert(CGPoint.zero, to: window).y
-        }
+    private static var safeBottom: CGFloat { WindowMetrics.safeAreaInsets.bottom }
+
+    private func targetDetent(for format: ShareFormat, maximum: CGFloat) -> CGFloat {
+        let fitted = ShareSheetLayout.fittedHeight(width: WindowMetrics.size.width, panelHeight: model.panelHeight(for: format),
+                                                   format: format)
+        return min(maximum, fitted - Self.safeBottom)
+    }
+
+    private func resizeSheet(to format: ShareFormat) {
+        sheetFormat = format
+        guard hasLanded, !isBeingDismissed, let maximum = maximumDetent else { return }
+        let from = detent ?? view.bounds.height - Self.safeBottom
+        resize = (from, targetDetent(for: format, maximum: maximum), CACurrentMediaTime())
+        guard sizeLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(sizeTick))
+        link.add(to: .main, forMode: .common)
+        sizeLink = link
+        sizeTick()
+    }
+
+    @objc private func sizeTick() {
+        guard let resize, let sheet = sheetPresentationController else { return stopSizeLink() }
+        let time = CACurrentMediaTime() - resize.start
+        let isDone = time >= Self.sheetSpring.settlingDuration
+        let progress = isDone ? 1 : Self.sheetSpring.value(target: 1.0, time: time)
+        let height = resize.from + (resize.to - resize.from) * progress
+        detent = isDone ? nil : height
+        model.sheetHeight = height + Self.safeBottom
+        sheet.invalidateDetents()
+        guard isDone else { return }
+        self.resize = nil
+        stopSizeLink()
+        if let window = view.window { restTop = view.convert(CGPoint.zero, to: window).y }
+    }
+
+    private func stopSizeLink() {
+        sizeLink?.invalidate()
+        sizeLink = nil
     }
 
     // MARK: Flight

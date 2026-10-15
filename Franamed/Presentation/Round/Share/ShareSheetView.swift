@@ -12,10 +12,14 @@ struct ShareSheetView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let cardHeight = min(proxy.size.height, model.sheetHeight ?? proxy.size.height)
             ZStack(alignment: .topLeading) {
-                ShareCardFrame(canvas: model.layout(in: proxy.size).canvas, stickerness: model.format == .sticker ? 1 : 0,
-                               model: model)
+                ShareCardFrame(lift: ShareSheetLayout.cardLift(panelHeight: model.panelHeight),
+                               aspect: model.format.aspect, inset: ShareSheetLayout.topInset(for: model.format),
+                               stickerness: model.format == .sticker ? 1 : 0, height: cardHeight,
+                               width: proxy.size.width, model: model)
                     .animation(.snappy, value: model.format)
+                    .offset(y: proxy.size.height - cardHeight)
 
                 SharePanel(material: model.material, mode: $model.mode, background: $model.background,
                            format: $model.format, onShare: model.send)
@@ -31,24 +35,26 @@ struct ShareSheetView: View {
 }
 
 private struct ShareCardFrame: View, Animatable {
-    var canvas: CGRect
+    var lift: CGFloat
+    var aspect: CGFloat
+    var inset: CGFloat
     var stickerness: CGFloat
+    let height: CGFloat
+    let width: CGFloat
     @ObservedObject var model: ShareSheetModel
 
-    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>>, CGFloat> {
-        get {
-            AnimatablePair(AnimatablePair(AnimatablePair(canvas.minX, canvas.minY),
-                                          AnimatablePair(canvas.width, canvas.height)), stickerness)
-        }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(lift, aspect), AnimatablePair(inset, stickerness)) }
         set {
-            let rect = newValue.first
-            canvas = CGRect(x: rect.first.first, y: rect.first.second,
-                            width: rect.second.first, height: rect.second.second)
-            stickerness = newValue.second
+            lift = newValue.first.first
+            aspect = newValue.first.second
+            inset = newValue.second.first
+            stickerness = newValue.second.second
         }
     }
 
     var body: some View {
+        let canvas = ShareSheetLayout.canvas(width: width, top: inset, bottom: height - lift, aspect: aspect)
         let scale = canvas.width / ShareFormat.baseWidth
         ZStack(alignment: .topLeading) {
             ShareCard(material: model.material, mode: model.mode, background: model.shownBackground, format: model.format,

@@ -47,6 +47,9 @@ enum ShareFormat: CaseIterable, Identifiable {
     static let baseWidth: CGFloat = 360
 
     @MainActor
+    var aspect: CGFloat { canvas.height / canvas.width }
+
+    @MainActor
     var canvas: CGSize {
         switch self {
         case .story: CGSize(width: Self.baseWidth, height: Self.baseWidth * 16 / 9)

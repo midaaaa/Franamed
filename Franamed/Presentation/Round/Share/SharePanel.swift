@@ -18,6 +18,7 @@ struct SharePanel: View {
     private static let swatchFade: CGFloat = 20
     private static let swatchFocus = CGPoint(x: ShareFormat.baseWidth / 2, y: ShareMaterial.cardFrame.maxY - 12)
     private static let swatchSpan: CGFloat = 200
+    private static let swatchRowHeight = swatchSize + 8 + swatchFade
 
     static func height(for material: ShareMaterial, format: ShareFormat, width: CGFloat) -> CGFloat {
         let panel = SharePanel(material: material, mode: .constant(.answer), background: .constant(.hall),
@@ -28,21 +29,10 @@ struct SharePanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                if format != .sticker {
-                    swatches
-                        .padding(.bottom, Self.swatchFade)
-                        .transition(.move(edge: .bottom))
-                }
-            }
-            .mask {
-                VStack(spacing: 0) {
-                    Rectangle()
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: Self.swatchFade)
-                }
-            }
-            .clipped()
+            swatches
+                .padding(.bottom, Self.swatchFade)
+                .modifier(SwatchReveal(progress: format == .sticker ? 0 : 1, height: Self.swatchRowHeight,
+                                       fade: Self.swatchFade))
 
             formats
                 .padding(.bottom, 16)
@@ -127,6 +117,40 @@ struct SharePanel: View {
             .offset(x: Self.swatchSize / 2 - Self.swatchFocus.x * scale,
                     y: Self.swatchSize / 2 - Self.swatchFocus.y * scale)
             .frame(width: Self.swatchSize, height: Self.swatchSize, alignment: .topLeading)
+    }
+}
+
+private struct SwatchReveal: ViewModifier, Animatable {
+    var progress: CGFloat
+    let height: CGFloat
+    let fade: CGFloat
+
+    private static let fadeCurve: [(location: CGFloat, opacity: Double)] = [
+        (0, 1), (0.25, 0.85), (0.5, 0.5), (0.75, 0.15), (1, 0),
+    ]
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let shown = height * progress
+        content
+            .opacity(Double(progress * progress))
+            .frame(height: shown, alignment: .top)
+            .mask {
+                LinearGradient(stops: stops(for: shown), startPoint: .top, endPoint: .bottom)
+            }
+            .clipped()
+    }
+
+    private func stops(for shown: CGFloat) -> [Gradient.Stop] {
+        guard shown > 0 else { return [.init(color: .clear, location: 0)] }
+        let start = max(shown - fade, 0) / shown
+        return [.init(color: .black, location: 0)] + Self.fadeCurve.map {
+            .init(color: .black.opacity($0.opacity), location: start + (1 - start) * $0.location)
+        }
     }
 }
 
