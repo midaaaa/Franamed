@@ -68,6 +68,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         super.viewDidAppear(animated)
         if !hasLanded { restTop = sheetTop() }
         hasLanded = true
+        if detent != nil, resize == nil { resizeSheet(to: sheetFormat) }
         if resize == nil, let maximum = maximumDetent {
             model.sheetHeight = targetDetent(for: sheetFormat, maximum: maximum) + Self.safeBottom
         }
@@ -77,6 +78,9 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         guard isBeingDismissed else { return }
+        stopSizeLink()
+        resize = nil
+        restTop = sheetTop() ?? restTop
         startFlight(entering: false)
         model.showsStub = false
     }
