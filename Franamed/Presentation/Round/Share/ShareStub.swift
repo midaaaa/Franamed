@@ -34,10 +34,10 @@ struct ShareStubPose: ViewModifier {
 }
 
 enum ShareStubShadow {
-    private static let padding: CGFloat = 24
     private static let radius: CGFloat = 12
     private static let opacity = 0.32
     private static let drop: CGFloat = 7
+    static let padding: CGFloat = 2 * radius + drop
 
     @MainActor
     static func apply(_ image: UIImage) -> UIImage {

@@ -174,7 +174,8 @@ struct ShareCard: View {
 
     @MainActor
     func image(scale: CGFloat = 3) -> UIImage? {
-        let renderer = ImageRenderer(content: self.environment(\.colorScheme, .dark))
+        let bleed = format == .sticker ? ShareStubShadow.padding : 0
+        let renderer = ImageRenderer(content: self.padding(bleed).environment(\.colorScheme, .dark))
         renderer.scale = scale
         renderer.isOpaque = format != .sticker
         return renderer.uiImage
