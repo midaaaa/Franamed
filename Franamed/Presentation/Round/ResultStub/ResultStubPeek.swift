@@ -148,7 +148,6 @@ struct ResultStubPeek: View {
         .onChange(of: attemptsMade) { _, attempts in
             guard outcome == nil, frameCount > 1, attempts > 0,
                   FlipTear.isLastLife(misses: attempts, frameCount: frameCount) else { return }
-            Haptics.shared.play(.lastLife)
             lastLifeShake = 0
             lastLifeStrength = 1
             withAnimation(.linear(duration: ResultStubShake.duration)) { lastLifeShake = 1 }

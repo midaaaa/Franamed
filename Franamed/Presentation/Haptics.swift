@@ -15,7 +15,6 @@ enum HapticEvent {
     case tabHeal
     case answerCorrect
     case answerWrong
-    case lastLife
 
     fileprivate var isRepeating: Bool { self == .tabBreak || self == .tabHeal }
 }
@@ -35,8 +34,8 @@ final class Haptics {
     #if canImport(UIKit)
     private let selection = UISelectionFeedbackGenerator()
     private let soft = UIImpactFeedbackGenerator(style: .soft)
-    private let notification = UINotificationFeedbackGenerator()
     private let heavy = UIImpactFeedbackGenerator(style: .heavy)
+    private let rigid = UIImpactFeedbackGenerator(style: .rigid)
     private var lastPlayed: [HapticEvent: Date] = [:]
     #endif
 
@@ -64,12 +63,21 @@ final class Haptics {
             soft.impactOccurred(intensity: 0.45)
             soft.prepare()
         case .answerCorrect:
-            notification.notificationOccurred(.success)
+            pair(rigid, first: 0.5, second: 0.85, gap: .milliseconds(90))
         case .answerWrong:
-            notification.notificationOccurred(.error)
-        case .lastLife:
-            heavy.impactOccurred()
+            pair(heavy, first: 0.8, second: 0.45, gap: .milliseconds(120))
         }
         #endif
     }
+
+    #if canImport(UIKit)
+    private func pair(_ generator: UIImpactFeedbackGenerator, first: CGFloat, second: CGFloat, gap: Duration) {
+        generator.impactOccurred(intensity: first)
+        generator.prepare()
+        Task { @MainActor in
+            try? await Task.sleep(for: gap)
+            generator.impactOccurred(intensity: second)
+        }
+    }
+    #endif
 }
