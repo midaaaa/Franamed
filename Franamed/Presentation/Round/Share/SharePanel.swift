@@ -15,6 +15,7 @@ struct SharePanel: View {
     let onShare: () -> Void
 
     private static let swatchSize: CGFloat = 36
+    private static let swatchSlot = swatchSize + 8 + 20
     private static let swatchFade: CGFloat = 20
     private static let swatchFocus = CGPoint(x: ShareFormat.baseWidth / 2, y: ShareMaterial.cardFrame.maxY - 12)
     private static let swatchSpan: CGFloat = 200
@@ -80,8 +81,9 @@ struct SharePanel: View {
     }
 
     private var swatches: some View {
-        HStack(spacing: 20) {
-            ForEach(ShareBackground.allCases.filter { $0.isAvailable(in: mode, material: material) }) { option in
+        HStack(spacing: 0) {
+            ForEach(ShareBackground.allCases) { option in
+                let isAvailable = option.isAvailable(in: mode, material: material)
                 Button {
                     background = option
                 } label: {
@@ -99,7 +101,10 @@ struct SharePanel: View {
                 .buttonStyle(.plain)
                 .contentShape(.circle)
                 .geometryGroup()
-                .transition(.scale.combined(with: .opacity))
+                .scaleEffect(isAvailable ? 1 : 0.001)
+                .opacity(isAvailable ? 1 : 0)
+                .frame(width: isAvailable ? Self.swatchSlot : 0)
+                .allowsHitTesting(isAvailable)
             }
         }
         .frame(maxWidth: .infinity)
