@@ -18,11 +18,19 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     private var sizeLink: CADisplayLink?
     private var detent: CGFloat?
     private var maximumDetent: CGFloat?
-    private var resize: (from: CGFloat, to: CGFloat, start: CFTimeInterval)?
+    private var resize: Resize?
     private var restTop: CGFloat?
     private var sheetFormat = ShareFormat.story
     private var hasLanded = false
     private var subscriptions: Set<AnyCancellable> = []
+
+    private struct Resize {
+        let from: CGFloat
+        let to: CGFloat
+        let fromShape: ShareCardShape
+        let toShape: ShareCardShape
+        let start: CFTimeInterval
+    }
 
     private static let topClearance: CGFloat = 10
     private static let landingFade: TimeInterval = 0.2
@@ -68,7 +76,6 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         super.viewDidAppear(animated)
         if !hasLanded { restTop = sheetTop() }
         hasLanded = true
-        if detent != nil, resize == nil { resizeSheet(to: sheetFormat) }
         if resize == nil, let maximum = maximumDetent {
             model.sheetHeight = targetDetent(for: sheetFormat, maximum: maximum) + Self.safeBottom
         }
@@ -78,9 +85,6 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         guard isBeingDismissed else { return }
-        stopSizeLink()
-        resize = nil
-        restTop = sheetTop() ?? restTop
         startFlight(entering: false)
         model.showsStub = false
     }
@@ -130,9 +134,14 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
 
     private func resizeSheet(to format: ShareFormat) {
         sheetFormat = format
-        guard hasLanded, !isBeingDismissed, let maximum = maximumDetent else { return }
+        guard hasLanded, !isBeingDismissed, let maximum = maximumDetent else {
+            model.cardShape = model.cardShape(for: format)
+            return
+        }
         let from = detent ?? view.bounds.height - Self.safeBottom
-        resize = (from, targetDetent(for: format, maximum: maximum), CACurrentMediaTime())
+        resize = Resize(from: from, to: targetDetent(for: format, maximum: maximum), fromShape: model.cardShape,
+                        toShape: model.cardShape(for: format), start: CACurrentMediaTime())
+        isModalInPresentation = true
         guard sizeLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(sizeTick))
         link.add(to: .main, forMode: .common)
@@ -145,14 +154,16 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         let time = CACurrentMediaTime() - resize.start
         let isDone = time >= Self.sheetSpring.settlingDuration
         let progress = isDone ? 1 : Self.sheetSpring.value(target: 1.0, time: time)
-        let height = resize.from + (resize.to - resize.from) * progress
+        let grid = PixelGrid(displayScale: traitCollection.displayScale)
+        let height = grid.snapped(resize.from + (resize.to - resize.from) * progress)
         detent = isDone ? nil : height
+        model.cardShape = resize.fromShape.mixed(with: resize.toShape, by: progress)
         model.sheetHeight = height + Self.safeBottom
         sheet.invalidateDetents()
         guard isDone else { return }
         self.resize = nil
         stopSizeLink()
-        if let window = view.window { restTop = view.convert(CGPoint.zero, to: window).y }
+        isModalInPresentation = false
     }
 
     private func stopSizeLink() {
@@ -189,6 +200,9 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     @objc private func tick() {
         if isBeingPresented, !hasLanded, view.layer.presentation() != nil {
             restTop = view.convert(CGPoint.zero, to: nil).y
+        }
+        if hasLanded, let sheetHeight = model.sheetHeight, let window {
+            restTop = window.bounds.height - sheetHeight
         }
         guard let window, let flight, let restTop else { return }
         let top = sheetTop() ?? window.bounds.height

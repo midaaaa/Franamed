@@ -26,7 +26,7 @@ struct ShareCard: View {
     private var tallness: CGFloat { ShareStubPlacement.tallness(of: size) }
 
     private var placement: ShareStubPlacement {
-        ShareStubPlacement.of(.story, in: size).mixed(with: .of(.sticker, in: size), by: sticker)
+        ShareStubPlacement.of(stickerness: sticker, in: size)
     }
 
     var body: some View {

@@ -23,6 +23,7 @@ final class ShareSheetModel: ObservableObject {
     let launch: ShareLaunch
     private let panelHeights: [ShareFormat: CGFloat]
     @Published var sheetHeight: CGFloat?
+    @Published var cardShape: ShareCardShape
     var presentActivity: ([Any]) -> Void = { _ in }
     var onFormatChange: (ShareFormat) -> Void = { _ in }
 
@@ -42,14 +43,17 @@ final class ShareSheetModel: ObservableObject {
         panelHeights = Dictionary(uniqueKeysWithValues: ShareFormat.allCases.map {
             ($0, SharePanel.height(for: material, format: $0, width: WindowMetrics.size.width))
         })
+        cardShape = ShareCardShape(format: .story, panelHeight: panelHeights[.story] ?? 0)
     }
-
-    var panelHeight: CGFloat { panelHeight(for: format) }
 
     var tallestPanel: CGFloat { panelHeights.values.max() ?? 0 }
 
     func panelHeight(for format: ShareFormat) -> CGFloat {
         panelHeights[format] ?? 0
+    }
+
+    func cardShape(for format: ShareFormat) -> ShareCardShape {
+        ShareCardShape(format: format, panelHeight: panelHeight(for: format))
     }
 
     var stubContent: ResultStubContent {
@@ -58,7 +62,7 @@ final class ShareSheetModel: ObservableObject {
 
     func layout(in size: CGSize) -> ShareSheetLayout {
         let target = min(size.height, sheetHeight ?? size.height)
-        return ShareSheetLayout(size: CGSize(width: size.width, height: target), panelHeight: panelHeight, format: format)
+        return ShareSheetLayout(size: CGSize(width: size.width, height: target), shape: cardShape)
             .offsetBy(dy: size.height - target)
     }
 
