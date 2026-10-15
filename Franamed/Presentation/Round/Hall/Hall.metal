@@ -44,6 +44,7 @@ struct PhoneArgs {
     float4 stage;
     float4 glow;
     float4 thumb;
+    float4 app;
 };
 
 struct Hall {
@@ -815,7 +816,10 @@ float disc(float2 q, float2 center, float radius) {
                                         texture2d<float> lens [[ texture(0) ]],
                                         texture2d<float> chrome [[ texture(1) ]],
                                         texture2d<float> turnedChrome [[ texture(2) ]],
-                                        texture2d<float> thumbnail [[ texture(3) ]]) {
+                                        texture2d<float> thumbnail [[ texture(3) ]],
+                                        texture2d<float> app [[ texture(4) ]],
+                                        texture2d<float> turnedApp [[ texture(5) ]],
+                                        texture2d<float> notice [[ texture(6) ]]) {
     float2 size = phone.face.xy;
     float2 delta = (in.uv - 0.5) * size;
     float2 q = phone::toPortrait(delta, phone);
@@ -866,6 +870,19 @@ float disc(float2 q, float2 center, float radius) {
     float4 overlay = mix(turnedChrome.sample(overlaySampler, overlayUV), chrome.sample(overlaySampler, overlayUV),
                          phone.stage.w);
     color = color * (1.0 - overlay.a) + overlay.rgb;
+
+    float open = phone.app.x;
+    if (open > 0.001) {
+        float screenRadius = radius - bezel;
+        float3 base = color * (1.0 - 0.7 * saturate(open));
+        float scale = mix(0.18, 1.0, open);
+        float2 appUV = (q / scale + screenHalf) / (2.0 * screenHalf);
+        float3 page = mix(turnedApp.sample(overlaySampler, appUV), app.sample(overlaySampler, appUV), phone.stage.w).rgb;
+        float mask = phone::coverage(phone::roundedBox(q, screenHalf * scale, screenRadius * scale))
+            * smoothstep(0.0, 0.3, open);
+        color = mix(base, page, mask);
+    }
+    color = mix(color, notice.sample(overlaySampler, overlayUV).rgb, phone.app.w);
     color *= phone.color.w;
 
     float island = phone::coverage(phone::roundedBox(q - float2(0.0, -extent.y + bezel + 0.075 * u),

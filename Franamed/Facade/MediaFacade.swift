@@ -76,13 +76,14 @@ final class MediaFacade: MediaFacadeProtocol {
         throw CuratedRoundError.noMatches
     }
 
-    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async {
-        await backend.playedTitles.record(PendingFinish(
+    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async -> RoundStats? {
+        let finish = await backend.playedTitles.record(PendingFinish(
             mediaKey: "\(mediaType.rawValue)_\(tmdbId)",
             frameCount: frameCount,
             solvedAtFrame: solvedAtFrame,
             playedAt: .now
         ))
+        return finish?.stats.map { RoundStats(players: $0.players, solvedAtFrame: $0.solvedAtFrame) }
     }
 
     func resetPlayedTitles() async throws {

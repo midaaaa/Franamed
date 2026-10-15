@@ -17,6 +17,7 @@ struct ProfileSheet: View {
     @AppStorage(DebugSettings.phoneWidthKey) private var phoneWidth = Double(HallPhone.Settings().width)
     @AppStorage(DebugSettings.phoneGridKey) private var showsPhoneGrid = false
     @AppStorage(DebugSettings.phoneWideKey) private var isPhoneWide = false
+    @AppStorage(DebugSettings.statsMocksKey) private var isStatsMocked = false
 
     @EnvironmentObject private var session: SessionStore
     let mediaFacade: MediaFacadeProtocol
@@ -66,6 +67,7 @@ struct ProfileSheet: View {
                     Slider(value: $phoneWidth, in: 0.4...1, step: 0.05)
                     Toggle("Сетка 3×3", isOn: $showsPhoneGrid)
                     Toggle("Кадр камеры 16:9", isOn: $isPhoneWide)
+                    Toggle("Моки статистики", isOn: $isStatsMocked)
                 }
                 #endif
 

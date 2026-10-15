@@ -32,6 +32,7 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var currentFrameIndex = 0
     @Published private(set) var details: MediaDetails?
     @Published private(set) var genreNames: [String] = []
+    @Published private(set) var stats: RoundStats?
     private var detailsTask: Task<Void, Never>?
     private let mediaFacade: MediaFacadeProtocol
 
@@ -53,6 +54,7 @@ final class RoundViewModel: ObservableObject {
         isLoading = true
         error = nil
         outcome = nil
+        stats = nil
         closeSearch()
         attemptsRemaining = frameCount
         answerText = ""
@@ -119,8 +121,10 @@ final class RoundViewModel: ObservableObject {
 
     private func reportFinish(of item: MediaItem, solvedAtFrame: Int?) {
         guard source == .curated else { return }
-        Task { [mediaFacade, mediaType, frameCount] in
-            await mediaFacade.finishCuratedRound(mediaType: mediaType, tmdbId: item.id, frameCount: frameCount, solvedAtFrame: solvedAtFrame)
+        Task { [weak self, mediaFacade, mediaType, frameCount] in
+            let stats = await mediaFacade.finishCuratedRound(mediaType: mediaType, tmdbId: item.id, frameCount: frameCount, solvedAtFrame: solvedAtFrame)
+            guard let self, mediaItemWithBackdrops?.item.id == item.id else { return }
+            self.stats = stats
         }
     }
 

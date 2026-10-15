@@ -24,6 +24,7 @@ struct HallPhoneArgs {
     var stage: SIMD4<Float>
     var glow: SIMD4<Float>
     var thumb: SIMD4<Float>
+    var app: SIMD4<Float>
 }
 
 struct HallPhoneDraw {
@@ -35,7 +36,9 @@ struct HallPhoneDraw {
     let chrome: HallPicture?
     let turnedChrome: HallPicture?
     let thumbnail: HallPicture?
+    let screen: HallPhoneScreen.Frame
     let screenOn: Float
+    let needsLens: Bool
     let veil: Float
     let shownPoint: SIMD2<Float>
     let layout: HallPhone.Layout
@@ -110,7 +113,10 @@ struct HallPhoneDraw {
         }
         place += (push + give) * t
 
-        screenOn = min(max((pose.raise - 0.55) / 0.45, 0), 1)
+        let raisedOn = min(max((pose.raise - 0.55) / 0.45, 0), 1)
+        screenOn = max(raisedOn, pose.screen.glow)
+        needsLens = raisedOn > 0.001 && pose.screen.open < 0.999
+        let noticeShare = pose.screen.glow * (1 - raisedOn) / max(screenOn, 1e-3)
         shownPoint = (point + push) / s + layout.origin
         self.layout = layout
 
@@ -144,13 +150,15 @@ struct HallPhoneDraw {
             color: SIMD4(settings.color, screenOn),
             stage: SIMD4(stage.center.x, stage.center.y, stage.focal, max(1 - abs(pose.roll) / (.pi / 2), 0)),
             glow: SIMD4(screenColor, lit),
-            thumb: SIMD4(pose.thumbnail == nil ? 0 : 1, pose.thumbnail?.aspect ?? 1, 0, 0)
+            thumb: SIMD4(pose.thumbnail == nil ? 0 : 1, pose.thumbnail?.aspect ?? 1, 0, 0),
+            app: SIMD4(pose.screen.app == nil ? 0 : pose.screen.open, 0, 0, pose.screen.notice == nil ? 0 : noticeShare)
         )
         let brightness = simd_dot(screenColor, SIMD3(0.2126, 0.7152, 0.0722))
-        veil = min(lit * (0.12 + 0.5 * brightness), Self.veilLimit)
+        veil = min(settings.bloom * raisedOn * raisedOn * (0.12 + 0.5 * brightness), Self.veilLimit)
         chrome = pose.chrome
         turnedChrome = pose.turnedChrome
         thumbnail = pose.thumbnail
+        screen = pose.screen
     }
 
     func reusingLens(of previous: HallPhoneDraw) -> HallPhoneDraw {

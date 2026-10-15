@@ -106,10 +106,12 @@ struct HallPhoneSurface: UIViewRepresentable {
             let location = gesture.location(in: nil)
             if !phone.isHeld {
                 phone.raise(to: home(in: view))
+            } else if surface.isNewGestures, !phone.contains(location), phone.isOnRest(location) {
+                phone.lower()
+            } else if phone.isShowingApp {
+                if phone.contains(location) { phone.dismissApp() }
             } else if !surface.isNewGestures {
                 phone.cycleZoom()
-            } else if !phone.contains(location), phone.isOnRest(location) {
-                phone.lower()
             } else {
                 switch phone.spot(at: location) {
                 case .finder: phone.cycleZoom()

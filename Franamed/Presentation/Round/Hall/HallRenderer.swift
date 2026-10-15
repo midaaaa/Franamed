@@ -184,7 +184,7 @@ final class HallRenderer: @unchecked Sendable {
     private func encode(_ frame: Frame, target: MTLTexture, commandBuffer: MTLCommandBuffer) -> Bool {
         guard let grid = gridBuffer(for: frame.sample) else { return false }
         var screen: MTLTexture?
-        if let draw = frame.phone, draw.screenOn > 0.001 {
+        if let draw = frame.phone, draw.needsLens {
             if draw.reusesLens, let lens, lens.width == draw.lensWidth, lens.height == draw.lensHeight {
                 screen = lens
             } else if let lens = lensTexture(width: draw.lensWidth, height: draw.lensHeight),
@@ -229,6 +229,9 @@ final class HallRenderer: @unchecked Sendable {
             encoder.setFragmentTexture(phone.chrome?.texture ?? clearPicture, index: 1)
             encoder.setFragmentTexture(phone.turnedChrome?.texture ?? phone.chrome?.texture ?? clearPicture, index: 2)
             encoder.setFragmentTexture(phone.thumbnail?.texture ?? clearPicture, index: 3)
+            encoder.setFragmentTexture(phone.screen.app?.texture ?? clearPicture, index: 4)
+            encoder.setFragmentTexture(phone.screen.otherApp?.texture ?? phone.screen.app?.texture ?? clearPicture, index: 5)
+            encoder.setFragmentTexture(phone.screen.notice?.texture ?? clearPicture, index: 6)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             if phone.args.glow.w > 0 {
                 encoder.setDepthStencilState(screenGlowDepth)

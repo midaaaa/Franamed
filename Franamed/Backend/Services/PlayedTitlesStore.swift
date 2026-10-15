@@ -29,29 +29,37 @@ actor PlayedTitlesStore {
         return result
     }
 
-    func record(_ finish: PendingFinish) async {
+    func record(_ finish: PendingFinish) async -> RoundFinish? {
         pending.append(finish)
         pendingCache.save(pending)
         if titles != nil {
             update(finish.mediaKey, to: PlayedTitle(isHidden: false, lastPlayedAt: finish.playedAt))
         }
-        await sendPending()
+        return await sendPending()[Self.key(of: finish)]
     }
 
-    func sendPending() async {
-        guard !isSending else { return }
+    @discardableResult
+    func sendPending() async -> [String: RoundFinish] {
+        guard !isSending else { return [:] }
         isSending = true
         defer { isSending = false }
 
+        var results: [String: RoundFinish] = [:]
         while let finish = pending.first {
-            guard let result = try? await round.finishCuratedRound(finish) else { return }
+            guard let result = try? await round.finishCuratedRound(finish) else { return results }
 
+            results[Self.key(of: finish)] = result
             pending.removeFirst()
             pendingCache.save(pending)
             if titles != nil, let played = result.watched.playedTitle {
                 update(finish.mediaKey, to: played)
             }
         }
+        return results
+    }
+
+    private static func key(of finish: PendingFinish) -> String {
+        "\(finish.mediaKey)@\(finish.playedAt.timeIntervalSinceReferenceDate)"
     }
 
     func reset() async throws {

@@ -188,10 +188,10 @@ final class HallLayerView: UIView {
 
     private nonisolated func finder(_ draw: HallPhoneDraw, at time: CFTimeInterval, slow: Bool) -> HallPhoneDraw {
         lock.withLock {
-            if slow, draw.screenOn > 0.001, let last = lastFinder, time - last.time < Self.slowFinderInterval {
+            if slow, draw.needsLens, let last = lastFinder, time - last.time < Self.slowFinderInterval {
                 return draw.reusingLens(of: last.draw)
             }
-            lastFinder = draw.screenOn > 0.001 ? (time, draw) : nil
+            lastFinder = draw.needsLens ? (time, draw) : nil
             return draw
         }
     }

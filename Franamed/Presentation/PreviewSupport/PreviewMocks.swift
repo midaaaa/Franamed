@@ -42,7 +42,7 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
         124
     }
 
-    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async {}
+    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async -> RoundStats? { nil }
 
     func resetPlayedTitles() async throws {}
 

@@ -53,6 +53,7 @@ final class HallPhone: @unchecked Sendable {
         let thumbnail: HallPicture?
         let isTurning: Bool
         let layout: Layout
+        let screen: HallPhoneScreen.Frame
     }
 
     struct Geometry: Equatable, Sendable {
@@ -190,7 +191,7 @@ final class HallPhone: @unchecked Sendable {
         }
     }
 
-    private struct Spring<Value: SIMD> where Value.Scalar == Float {
+    struct Spring<Value: SIMD> where Value.Scalar == Float {
         var value: Value
         var velocity: Value = .zero
         var target: Value
@@ -240,6 +241,7 @@ final class HallPhone: @unchecked Sendable {
     private var raise = Spring(SIMD2<Float>.zero, response: raiseResponse)
     private var zoom = Spring(SIMD2<Float>(2, 0), response: zoomResponse)
     private var roll = Spring(SIMD2<Float>.zero, response: rollResponse)
+    private var screen = HallPhoneScreen()
     private var rest: SIMD2<Float>?
     private var geometry: Geometry?
     private var isRaised = false
@@ -287,6 +289,7 @@ final class HallPhone: @unchecked Sendable {
     }
 
     nonisolated(unsafe) var onHeldChange: (@MainActor (Bool) -> Void)?
+    nonisolated(unsafe) var onNoticeRewake: (@MainActor () -> Void)?
 
     func setChrome(_ picture: HallPicture, for key: HallPhoneChrome.Key) {
         lock.withLock { chromes[key] = picture }
@@ -301,6 +304,31 @@ final class HallPhone: @unchecked Sendable {
         }
         guard previous != picture else { return }
         lock.withLock { thumbnail = previous }
+        notify()
+    }
+
+    var isShowingApp: Bool { lock.withLock { screen.isAppOn } }
+
+    func setNotice(_ picture: HallPicture?) {
+        lock.withLock { screen.setNotice(picture) }
+        notify()
+    }
+
+    func showApp(_ pictures: HallPhoneScreen.Pictures) {
+        lock.withLock {
+            screen.setPictures(pictures)
+            screen.openApp(isRaised: isRaised)
+        }
+        notify()
+    }
+
+    func dismissApp() {
+        lock.withLock { screen.dismissApp() }
+        notify()
+    }
+
+    func closeApp() {
+        lock.withLock { screen.closeApp(isRaised: isRaised) }
         notify()
     }
 
@@ -388,6 +416,7 @@ final class HallPhone: @unchecked Sendable {
             }
             point.target = layout.clamped(destination(layout))
             raise.target = SIMD2(1, 0)
+            screen.phoneRaised()
             isRaised = true
             return true
         }
@@ -397,16 +426,20 @@ final class HallPhone: @unchecked Sendable {
     }
 
     func lower(animated: Bool = true) {
-        lock.withLock {
+        let rewakes = lock.withLock {
             stowed = nil
             if !animated { raise = Spring(.zero, response: Self.raiseResponse) }
             isRaised = false
             dragStart = nil
             pinchStart = nil
             raise.target = .zero
+            return screen.phoneLowered()
         }
         notify()
-        MainActor.assumeIsolated { onHeldChange?(false) }
+        MainActor.assumeIsolated {
+            onHeldChange?(false)
+            if rewakes { onNoticeRewake?() }
+        }
     }
 
     func show(_ point: SIMD2<Float>, layout: Layout) {
@@ -490,6 +523,7 @@ final class HallPhone: @unchecked Sendable {
 
     func pinch(_ scale: CGFloat, ended: Bool) {
         lock.withLock {
+            guard !screen.isAppOn else { return }
             let start = pinchStart ?? zoom.target.x
             pinchStart = ended ? nil : start
             var next = min(max(start * Float(scale), 1), 3)
@@ -520,13 +554,14 @@ final class HallPhone: @unchecked Sendable {
             raise.step(dt)
             zoom.step(dt)
             roll.step(dt)
+            screen.step(dt, at: time, raise: raise.value.x)
             lens.target = point.value
             lens.step(dt)
             let layout = Layout(settings: _settings, geometry: geometry, roll: roll.value.x, zoom: zoom.value.x)
             let still = SIMD2(Self.stillPoints / layout.travelX, Self.stillPoints)
             let isTurning = !roll.isSettled(within: 0.002) || !zoom.isSettled(within: 0.002)
             let isAnimating = isTurning || !point.isSettled(within: still) || !lens.isSettled(within: still)
-                || !raise.isSettled(within: 0.001)
+                || !raise.isSettled(within: 0.001) || !screen.isSettled
             if !isAnimating { lastTime = nil }
             let stop = Settings.zoomStops.min { abs($0 - zoom.value.x) < abs($1 - zoom.value.x) } ?? 1
             let chrome = chromes[HallPhoneChrome.Key(isWide: _settings.isWide, scale: stop, isTurned: !_settings.isPortrait)]
@@ -535,7 +570,7 @@ final class HallPhone: @unchecked Sendable {
             let pose = Pose(point: point.value, lensPoint: lens.value,
                             raise: min(max(raise.value.x, 0), 1), zoom: zoom.value.x, roll: roll.value.x,
                             settings: _settings, chrome: chrome, turnedChrome: turnedChrome, thumbnail: thumbnail,
-                            isTurning: isTurning, layout: layout)
+                            isTurning: isTurning, layout: layout, screen: screen.frame(isTurned: !_settings.isPortrait))
             return (pose, isAnimating)
         }
     }

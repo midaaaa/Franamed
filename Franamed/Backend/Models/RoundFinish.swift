@@ -8,5 +8,11 @@
 import Foundation
 
 struct RoundFinish: Decodable, Sendable {
+    struct Stats: Decodable, Sendable {
+        let players: Int
+        let solvedAtFrame: [Int]
+    }
+
     let watched: WatchedEntry
+    let stats: Stats?
 }

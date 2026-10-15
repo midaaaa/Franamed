@@ -22,6 +22,8 @@ struct RoundView: View {
     @AppStorage(DebugSettings.phoneColorKey) private var phoneColor = HallPhoneColor.custom
     @AppStorage(DebugSettings.phoneCustomColorKey) private var phoneCustomColor = HallPhoneColor.custom
     @AppStorage(DebugSettings.phoneNewGesturesKey) private var isNewPhoneGestures = true
+    @AppStorage(DebugSettings.statsMocksKey) private var isStatsMocked = false
+    @State private var mockStats: RoundStats?
     @State private var isPickingPhoneColor = false
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var fullHeight: CGFloat = 0
@@ -154,10 +156,23 @@ struct RoundView: View {
             }
         }
         .coordinateSpace(.named(Self.backgroundSpace))
-        .onChange(of: viewModel.outcome) { _, outcome in phone.isLocked = outcome != nil }
+        .onChange(of: viewModel.outcome) { _, outcome in
+            if outcome == nil { phone.closeApp() }
+            mockStats = outcome == nil || !isStatsMocked ? nil
+                : viewModel.mediaItemWithBackdrops.map { RoundStatsMock.next(itemID: $0.item.id) }
+        }
+        .task(id: roundStatsToShow) {
+            guard let outcome = viewModel.outcome, let stats = roundStatsToShow else { return }
+            await showPhoneStats(stats, for: outcome)
+        }
         .onChange(of: isAnswerFieldFocused) { _, focused in if focused { phone.stow() } else { phone.unstow() } }
         .interactiveDismissDisabled(isPhoneHeld || isShareLifted)
-        .onAppear { phone.onHeldChange = { isPhoneHeld = $0 } }
+        .onAppear {
+            phone.onHeldChange = { isPhoneHeld = $0 }
+            phone.onNoticeRewake = { [phone] in
+                Task { phone.setNotice(await HallPhoneAppRender.lockScreen(time: .now)) }
+            }
+        }
         .task { await viewModel.loadRound() }
         .task(id: FrameRequest(url: currentFrameURL, isRoundLoading: viewModel.isLoading)) {
             await frames.show(currentFrameURL, isRoundLoading: viewModel.isLoading)
@@ -231,6 +246,24 @@ struct RoundView: View {
     private var frameURLs: [URL] {
         guard !viewModel.isLoading, let media = viewModel.mediaItemWithBackdrops else { return [] }
         return media.backdrops.prefix(viewModel.frameCount).compactMap { URL(string: $0.filePath) }
+    }
+
+    // MARK: Phone stats
+
+    private static let phoneStatsDelay = Duration.milliseconds(900)
+
+    private var roundStatsToShow: RoundStats? {
+        isStatsMocked ? mockStats : viewModel.stats
+    }
+
+    private func showPhoneStats(_ stats: RoundStats, for outcome: RoundOutcome) async {
+        try? await Task.sleep(for: Self.phoneStatsDelay)
+        guard !Task.isCancelled, viewModel.outcome == outcome else { return }
+        let phoneStats = PhoneStats(stats: stats, solvedAtFrame: outcome == .correct ? viewModel.attemptsMade : nil,
+                                    frameCount: viewModel.frameCount)
+        let pictures = await HallPhoneAppRender.pictures(phoneStats)
+        guard !Task.isCancelled, viewModel.outcome == outcome else { return }
+        phone.showApp(pictures)
     }
 
     // MARK: Share
