@@ -916,6 +916,44 @@ console.log("playlist folder and order");
     check("the curator's order wins when asked", await firstFor("mod") === playable[0]);
 }
 
+console.log("playlist replay");
+{
+    const pl = await call("mod", "POST", "/v1/playlists", { title: "Повтор", mediaType: "movie" });
+    const id = pl.body.id;
+    const keys = playable.slice(0, 4);
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: keys });
+    const finish = (key, result, solvedAtFrame) => call("mod", "POST", "/v1/round/finish",
+        { mediaKey: key, mode: "playlist", playlistId: id, result, solvedAtFrame, frameCount: 6 });
+    const row = (key) => db.db.prepare("SELECT * FROM playlist_progress WHERE uid = 'mod' AND playlist_id = ? AND media_key = ?").get(id, key);
+    const next = async () => (await call("mod", "GET", `/v1/round/next?playlistId=${id}&pick=shuffle`)).body.item?.key;
+
+    await finish(keys[0], "correct", 3);
+    await finish(keys[0], "wrong");
+    check("a wrong replay keeps a guessed title guessed", row(keys[0]).was_correct === 1 && row(keys[0]).attempts_used === 3);
+    await finish(keys[0], "correct", 1);
+    check("a replay never moves the first correct frame", row(keys[0]).attempts_used === 3);
+    await finish(keys[3], "wrong");
+    await finish(keys[3], "correct", 2);
+    check("a miss turns into a guess on replay", row(keys[3]).was_correct === 1 && row(keys[3]).attempts_used === 2);
+
+    await finish(keys[1], "wrong");
+    await finish(keys[2], "wrong");
+    await finish(keys[3], "correct", 2);
+    db.db.prepare("UPDATE playlist_progress SET updated_at = ? WHERE playlist_id = ? AND media_key = ?").run(1, id, keys[2]);
+    db.db.prepare("UPDATE playlist_progress SET updated_at = ? WHERE playlist_id = ? AND media_key = ?").run(2, id, keys[1]);
+    check("missed titles come back, longest unplayed first", await next() === keys[2]);
+    await finish(keys[2], "wrong");
+    check("and rotate instead of repeating", await next() === keys[1]);
+
+    await finish(keys[1], "correct", 4);
+    await finish(keys[2], "correct", 4);
+    const order = keys.map((key) => ({ key, at: row(key).updated_at })).sort((a, b) => a.at - b.at || (a.key < b.key ? -1 : 1));
+    const rested = new Set(order.slice(0, 2).map((item) => item.key));
+    const picks = new Set();
+    for (let i = 0; i < 20; i += 1) picks.add(await next());
+    check("a finished playlist shuffles among the longest rested half", [...picks].every((key) => rested.has(key)), JSON.stringify([...picks]));
+}
+
 console.log("admin deletes users");
 check("a moderator cannot delete accounts", (await call("mod", "DELETE", "/v1/admin/users/cur")).status === 403);
 check("an admin cannot delete themselves here", (await call("me", "DELETE", "/v1/admin/users/me")).status === 400);

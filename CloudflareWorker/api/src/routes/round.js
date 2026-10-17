@@ -159,12 +159,6 @@ export async function handleRound(request, env, segments, url) {
             WHERE pr.uid = ?3 AND pr.playlist_id = ?1 AND pr.media_key = m.key AND pr.state = 'completed'
         )`;
 
-        const answeredWrong = `EXISTS (
-            SELECT 1 FROM playlist_progress pr
-            WHERE pr.uid = ?3 AND pr.playlist_id = ?1 AND pr.media_key = m.key
-              AND pr.state = 'completed' AND pr.was_correct = 0
-        )`;
-
         const from = `FROM media_items m
                       JOIN playlist_items p ON p.media_key = m.key
                       WHERE p.playlist_id = ?1 AND m.published = 1 AND m.approved_images >= ?2`;
@@ -179,10 +173,9 @@ export async function handleRound(request, env, segments, url) {
 
             if (!row) throw notFound("That title is not in this playlist, or has too few approved frames");
         } else {
-            // A ladder rather than one query: unplayed entries in the order the
-            // curator arranged them, then the ones answered wrong, and only
-            // once everything is answered correctly does it become a genuine
-            // shuffle for open-ended replay.
+            // A ladder rather than one query: unplayed entries first, then the
+            // ones answered wrong, longest unplayed first, and once everything
+            // is guessed a shuffle that keeps the recent half resting.
             //
             // Unless the curator fixed the order, "the order" is the player's
             // own: every candidate is read and the lowest stable rank wins.
@@ -193,20 +186,26 @@ export async function handleRound(request, env, segments, url) {
                 : { sql: `SELECT m.key, p.position ${from} AND ${condition}`, bindings: [playlistId, frameCount, user.uid], rank: true };
 
             const unplayed = ordered(notCompleted);
+            const played = `FROM media_items m
+                            JOIN playlist_items p ON p.media_key = m.key
+                            JOIN playlist_progress pr ON pr.uid = ?3 AND pr.playlist_id = p.playlist_id
+                                                     AND pr.media_key = m.key AND pr.state = 'completed'
+                            WHERE p.playlist_id = ?1 AND m.published = 1 AND m.approved_images >= ?2`;
 
             const stages = pick === "shuffle"
                 ? [
                     unplayed,
-                    ordered(answeredWrong),
-                    {
-                        sql: `SELECT m.key, p.position ${from} ORDER BY RANDOM() LIMIT 1`,
-                        bindings: [playlistId, frameCount]
-                    }
+                    { sql: `SELECT m.key, p.position ${played} AND pr.was_correct = 0 ORDER BY pr.updated_at, m.key LIMIT 1`, bindings: [playlistId, frameCount, user.uid] },
+                    { sql: `SELECT m.key, p.position ${played} ORDER BY pr.updated_at, m.key`, bindings: [playlistId, frameCount, user.uid], rested: true }
                 ]
                 : [unplayed];
 
             for (const stage of stages) {
-                if (stage.rank) {
+                if (stage.rested) {
+                    const rows = (await env.DB.prepare(stage.sql).bind(...stage.bindings).all()).results;
+                    const pool = rows.slice(0, Math.ceil(rows.length / 2));
+                    row = pool[Math.floor(Math.random() * pool.length)] ?? null;
+                } else if (stage.rank) {
                     const rows = (await env.DB.prepare(stage.sql).bind(...stage.bindings).all()).results;
                     row = rows.reduce((best, item) => !best
                         || playerOrderRank(user.uid, playlistId, item.key) < playerOrderRank(user.uid, playlistId, best.key)

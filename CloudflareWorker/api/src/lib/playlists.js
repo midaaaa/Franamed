@@ -42,13 +42,20 @@ export async function progressSummary(env, uid, playlistId) {
 
 // Retrying overwrites the single record for that title; no history is kept,
 // which is what makes "replay the ones I got wrong" simple.
+// The first correct answer is the one that stays: a replay can turn a miss into
+// a guess but never moves the frame, or anyone who knows the answer would clear
+// a playlist "from the first frame". The time moves on every play — replays
+// rotate by it.
 export async function recordPlaylistAnswer(env, user, playlistId, { mediaKey, attemptsUsed, wasCorrect }) {
     await env.DB.prepare(
         `INSERT INTO playlist_progress (uid, playlist_id, media_key, state, attempts_used, was_correct, updated_at)
          VALUES (?, ?, ?, 'completed', ?, ?, ?)
          ON CONFLICT (uid, playlist_id, media_key) DO UPDATE SET
-            state = 'completed', attempts_used = excluded.attempts_used,
-            was_correct = excluded.was_correct, updated_at = excluded.updated_at`
+            state = 'completed',
+            attempts_used = CASE WHEN playlist_progress.was_correct = 1
+                THEN playlist_progress.attempts_used ELSE excluded.attempts_used END,
+            was_correct = MAX(COALESCE(playlist_progress.was_correct, 0), excluded.was_correct),
+            updated_at = excluded.updated_at`
     ).bind(user.uid, playlistId, mediaKey, attemptsUsed, wasCorrect ? 1 : 0, Date.now()).run();
 
     const summary = await progressSummary(env, user.uid, playlistId);
