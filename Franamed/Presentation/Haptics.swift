@@ -15,6 +15,9 @@ enum HapticEvent {
     case tabHeal
     case answerCorrect
     case answerWrong
+    case stamp
+    case menu
+    case menuSelect
 
     fileprivate var isRepeating: Bool { self == .tabBreak || self == .tabHeal }
 }
@@ -66,6 +69,11 @@ final class Haptics {
             pair(rigid, first: 0.5, second: 0.85, gap: .milliseconds(90))
         case .answerWrong:
             pair(heavy, first: 0.8, second: 0.45, gap: .milliseconds(120))
+        case .stamp, .menu:
+            rigid.impactOccurred(intensity: 0.7)
+        case .menuSelect:
+            selection.selectionChanged()
+            selection.prepare()
         }
         #endif
     }
