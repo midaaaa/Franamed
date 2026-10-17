@@ -47,7 +47,7 @@ struct AnswerBarActionShape: View, Animatable {
         let shapeCenterX = collapsedCenterX + (expandedCenterX - collapsedCenterX) * progress
 
         let glassShape = RoundedRectangle(cornerRadius: cornerRadius)
-        let glassStyle = Glass.regular.tint(isBlocked ? .gray : .accentColor).interactive()
+        let glassStyle = Glass.regular.tint(isBlocked ? .gray : Accent.action).interactive()
 
         Button(action: progress < 0.5 ? onSubmit : onNewGame) {
             ZStack {
@@ -58,7 +58,7 @@ struct AnswerBarActionShape: View, Animatable {
                     .font(.headline)
                     .opacity(textOpacity)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(isBlocked ? .white : Accent.actionForeground)
             .frame(width: shapeWidth, height: shapeHeight)
             .contentShape(glassShape)
         }

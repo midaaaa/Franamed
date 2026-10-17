@@ -145,7 +145,8 @@ struct RoundFiltersView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.glassProminent)
-        .tint(viewModel.isApplyDisabled ? .gray : .accentColor)
+        .tint(viewModel.isApplyDisabled ? .gray : Accent.action)
+        .foregroundStyle(viewModel.isApplyDisabled ? .white : Accent.actionForeground)
         .disabled(viewModel.isApplyDisabled)
         .padding(.horizontal, 32)
         .padding(.top, 8)
