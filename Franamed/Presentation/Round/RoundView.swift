@@ -47,6 +47,7 @@ struct RoundView: View {
 
     private static let focusedBarInset: CGFloat = 6
     private static let restingBarInset: CGFloat = 24
+    private static let stubBarGap: CGFloat = 32
 
     private var barInset: CGFloat { isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset }
 
@@ -380,7 +381,7 @@ struct RoundView: View {
         let restingBarTop = fullHeight - (Self.restingBarInset - homeIndicatorInset) - suggestionRowHeight
         let gap = restingBarTop - frameHeight
         let stubHeight = ResultStubMetrics.height(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops))
-        let restingStubTop = frameHeight + max(0, (gap - stubHeight) / 2)
+        let restingStubTop = frameHeight + max(0, gap - stubHeight - Self.stubBarGap)
         return restingStubTop + stubHeight - restingBarTop - suggestionRowHeight
     }
 
