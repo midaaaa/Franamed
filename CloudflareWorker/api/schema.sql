@@ -202,13 +202,17 @@ CREATE TABLE IF NOT EXISTS playlists (
     allow_uncurated INTEGER NOT NULL DEFAULT 0,
     published       INTEGER NOT NULL DEFAULT 0,
     created_by      TEXT,
-    created_at      INTEGER NOT NULL
+    created_at      INTEGER NOT NULL,
+    folder_keys     TEXT,                                        -- JSON array of 1-3 media keys, cover first
+    folder_auto     INTEGER NOT NULL DEFAULT 1,                  -- picked by the server, not the curator
+    curator_order   INTEGER NOT NULL DEFAULT 0                   -- 0: every player gets their own order
 );
 
 CREATE TABLE IF NOT EXISTS playlist_items (
     playlist_id TEXT    NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
     media_key   TEXT    NOT NULL,
     position    INTEGER NOT NULL,
+    added_at    INTEGER,                                         -- NULL for titles that predate the column
     PRIMARY KEY (playlist_id, media_key)
 );
 

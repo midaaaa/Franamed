@@ -7,7 +7,7 @@
 import { badRequest, json, noContent, notFound, readJSON, requireEnum, requireString, optionalString } from "../lib/http.js";
 import { authenticate, requireRole } from "../lib/auth.js";
 import { MEDIA_TYPES } from "../lib/media.js";
-import { progressSummary } from "../lib/playlists.js";
+import { MAX_FOLDER_POSTERS, folderPosters, parseFolderKeys, playerOrderRank, progressSummary, refreshFolder } from "../lib/playlists.js";
 
 function serializePlaylist(row) {
     return {
@@ -19,8 +19,26 @@ function serializePlaylist(row) {
         source: row.source,
         allowUncurated: row.allow_uncurated === 1,
         published: row.published === 1,
-        createdAt: row.created_at
+        createdAt: row.created_at,
+        folderKeys: parseFolderKeys(row),
+        folderAuto: row.folder_auto === 1,
+        orderByCurator: row.curator_order === 1
     };
+}
+
+async function serializeWithFolder(env, row) {
+    return { ...serializePlaylist(row), folderPosters: await folderPosters(env, row) };
+}
+
+// When each playable title joined the list, so the shelf can say "+2 new since
+// you last looked" without the server keeping track of who looked when.
+async function addedTimes(env, playlistId) {
+    const rows = await env.DB.prepare(
+        `SELECT pi.added_at FROM playlist_items pi
+         JOIN media_items m ON m.key = pi.media_key
+         WHERE pi.playlist_id = ? AND m.published = 1`
+    ).bind(playlistId).all();
+    return rows.results.map((row) => row.added_at ?? 0);
 }
 
 // A playlist is a curated 1-to-100 walk, so this only bounds the write.
@@ -43,7 +61,11 @@ export async function handlePlaylists(request, env, segments, url) {
 
         const playlists = [];
         for (const row of rows.results) {
-            playlists.push({ ...serializePlaylist(row), progress: await progressSummary(env, user.uid, row.id) });
+            playlists.push({
+                ...(await serializeWithFolder(env, row)),
+                itemsAddedAt: await addedTimes(env, row.id),
+                progress: await progressSummary(env, user.uid, row.id)
+            });
         }
         return json({ playlists });
     }
@@ -61,7 +83,7 @@ export async function handlePlaylists(request, env, segments, url) {
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
             id,
-            requireString(body, "title", { maxLength: 120 }),
+            requireString(body, "title", { maxLength: 50 }),
             optionalString(body, "description", { maxLength: 1000 }),
             optionalString(body, "coverImageURL", { maxLength: 500 }),
             requireEnum(body, "mediaType", MEDIA_TYPES),
@@ -86,7 +108,7 @@ export async function handlePlaylists(request, env, segments, url) {
         const user = await authenticate(request, env);
 
         const items = await env.DB.prepare(
-            `SELECT m.key, m.title, m.release_year, m.poster_url, m.approved_images, m.published,
+            `SELECT m.key, m.title, m.release_year, m.poster_url, m.approved_images, m.published, pi.added_at,
                     pr.state, pr.attempts_used, pr.was_correct
              FROM playlist_items pi
              JOIN media_items m ON m.key = pi.media_key
@@ -96,16 +118,23 @@ export async function handlePlaylists(request, env, segments, url) {
              ORDER BY pi.position`
         ).bind(user.uid, playlistId).all();
 
+        // ?order=player lists the titles in the order this player is dealt them,
+        // so "next" on the grid is the round they get. Curation keeps its own order.
+        const rows = url.searchParams.get("order") === "player" && playlist.curator_order !== 1
+            ? [...items.results].sort((a, b) => playerOrderRank(user.uid, playlistId, a.key) - playerOrderRank(user.uid, playlistId, b.key))
+            : items.results;
+
         return json({
-            ...serializePlaylist(playlist),
+            ...(await serializeWithFolder(env, playlist)),
             progress: await progressSummary(env, user.uid, playlistId),
-            items: items.results.map((row) => ({
+            items: rows.map((row) => ({
                 key: row.key,
                 title: row.title,
                 releaseYear: row.release_year,
                 posterURL: row.poster_url,
                 approvedImages: row.approved_images,
                 playable: row.published === 1,
+                addedAt: row.added_at ?? 0,
                 state: row.state || "notStarted",
                 attemptsUsed: row.attempts_used ?? 0,
                 wasCorrect: row.was_correct === null || row.was_correct === undefined ? null : row.was_correct === 1
@@ -149,25 +178,56 @@ export async function handlePlaylists(request, env, segments, url) {
             }
         }
 
+        // folderKeys: 1-3 titles of this list that have posters, cover first —
+        // the curator's pick, kept as is. null hands the folder back to the server.
+        let folderKeys;
+        if (Array.isArray(body.folderKeys)) {
+            const keys = [...new Set(body.folderKeys.filter((key) => typeof key === "string"))];
+            if (keys.length === 0 || keys.length > MAX_FOLDER_POSTERS) {
+                throw badRequest(`A folder shows 1 to ${MAX_FOLDER_POSTERS} posters`);
+            }
+            const members = await env.DB.prepare(
+                `SELECT pi.media_key FROM playlist_items pi JOIN media_items m ON m.key = pi.media_key
+                 WHERE pi.playlist_id = ? AND m.poster_url IS NOT NULL`
+            ).bind(playlistId).all();
+            const allowed = new Set(members.results.map((row) => row.media_key));
+            const stranger = keys.find((key) => !allowed.has(key));
+            if (stranger) throw badRequest(`"${stranger}" is not a title with a poster in this playlist`);
+            folderKeys = keys;
+        }
+
         await env.DB.prepare(
             `UPDATE playlists SET
                 title = COALESCE(?, title),
                 description = COALESCE(?, description),
                 cover_image_url = COALESCE(?, cover_image_url),
                 allow_uncurated = COALESCE(?, allow_uncurated),
-                published = COALESCE(?, published)
+                published = COALESCE(?, published),
+                curator_order = COALESCE(?, curator_order),
+                folder_keys = CASE WHEN ? THEN ? ELSE folder_keys END,
+                folder_auto = CASE WHEN ? THEN 0 ELSE folder_auto END
              WHERE id = ?`
         ).bind(
-            optionalString(body, "title", { maxLength: 120 }),
+            optionalString(body, "title", { maxLength: 50 }),
             optionalString(body, "description", { maxLength: 1000 }),
             optionalString(body, "coverImageURL", { maxLength: 500 }),
             typeof body.allowUncurated === "boolean" ? (body.allowUncurated ? 1 : 0) : null,
             typeof body.published === "boolean" ? (body.published ? 1 : 0) : null,
+            typeof body.orderByCurator === "boolean" ? (body.orderByCurator ? 1 : 0) : null,
+            folderKeys ? 1 : 0,
+            folderKeys ? JSON.stringify(folderKeys) : null,
+            folderKeys ? 1 : 0,
             playlistId
         ).run();
 
+        if (body.folderKeys === null) {
+            await refreshFolder(env, playlistId, { force: true });
+        } else if (body.published === true) {
+            await refreshFolder(env, playlistId);
+        }
+
         const row = await env.DB.prepare("SELECT * FROM playlists WHERE id = ?").bind(playlistId).first();
-        return json(serializePlaylist(row));
+        return json(await serializeWithFolder(env, row));
     }
 
     // PUT /v1/playlists/{id}/items — replace the contents wholesale
@@ -195,15 +255,23 @@ export async function handlePlaylists(request, env, segments, url) {
         const wrongType = keys.find((key) => !key.startsWith(`${playlist.media_type}_`));
         if (wrongType) throw badRequest(`"${wrongType}" is not a ${playlist.media_type}; playlists hold a single media type`);
 
+        // A title keeps the moment it first joined, so reordering or re-saving
+        // the list does not make old titles look new to players.
+        const existing = await env.DB.prepare("SELECT media_key, added_at FROM playlist_items WHERE playlist_id = ?")
+            .bind(playlistId).all();
+        const joined = new Map(existing.results.map((row) => [row.media_key, row.added_at]));
+        const savedAt = Date.now();
+
         // One batch, which D1 runs as a transaction: run separately, any failed
         // insert leaves the playlist emptied by a DELETE that already committed.
         await env.DB.batch([
             env.DB.prepare("DELETE FROM playlist_items WHERE playlist_id = ?").bind(playlistId),
             ...keys.map((key, index) =>
-                env.DB.prepare("INSERT INTO playlist_items (playlist_id, media_key, position) VALUES (?, ?, ?)")
-                    .bind(playlistId, key, index)
+                env.DB.prepare("INSERT INTO playlist_items (playlist_id, media_key, position, added_at) VALUES (?, ?, ?, ?)")
+                    .bind(playlistId, key, index, joined.has(key) ? joined.get(key) : savedAt)
             )
         ]);
+        await refreshFolder(env, playlistId);
 
         return json({ id: playlistId, count: keys.length, duplicatesDropped: submitted.length - keys.length });
     }

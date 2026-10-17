@@ -748,6 +748,7 @@ console.log("playlists count what can be played");
 {
     const pl = await call("mod", "POST", "/v1/playlists", { title: "Пропуски", mediaType: "movie" });
     await call("mod", "PUT", `/v1/playlists/${pl.body.id}/items`, { mediaKeys: ["movie_101", "movie_102", "movie_7777"] });
+    await call("mod", "PATCH", `/v1/playlists/${pl.body.id}`, { orderByCurator: true });
     res = await call("mod", "GET", `/v1/round/next?playlistId=${pl.body.id}`);
     check("an unplayable entry is skipped and not counted", res.status === 200 && res.body.item.key === "movie_102"
         && res.body.position === 1 && res.body.playlistTotal === 2, JSON.stringify(res.body).slice(0, 200));
@@ -860,6 +861,60 @@ check("a published one is admin-only", (await call("mod", "DELETE", `/v1/playlis
 res = await call("me", "DELETE", `/v1/playlists/${live.body.id}`);
 check("the admin deletes it with players' progress", res.status === 204
     && db.db.prepare("SELECT COUNT(*) AS n FROM playlist_progress WHERE playlist_id = ?").get(live.body.id).n === 0);
+
+console.log("playlist folder and order");
+{
+    for (const key of playable) db.db.prepare("UPDATE media_items SET poster_url = ? WHERE key = ?").run(`/p/${key}.jpg`, key);
+    const pl = await call("mod", "POST", "/v1/playlists", { title: "Папка", mediaType: "movie" });
+    const id = pl.body.id;
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: playable });
+    res = await call("mod", "GET", `/v1/playlists/${id}`);
+    check("a draft has no folder yet", res.body.folderKeys.length === 0 && res.body.folderAuto === true);
+    const firstAdded = res.body.items[0].addedAt;
+    check("titles carry when they joined", firstAdded > 0);
+
+    res = await call("mod", "PATCH", `/v1/playlists/${id}`, { published: true });
+    const auto = res.body.folderKeys;
+    check("publishing picks up to three folder posters", auto.length === Math.min(3, playable.length)
+        && res.body.folderPosters.length === auto.length && res.body.folderAuto === true, JSON.stringify(res.body));
+
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: [...playable].reverse() });
+    res = await call("mod", "GET", `/v1/playlists/${id}`);
+    check("re-saving keeps the folder and the join times", JSON.stringify(res.body.folderKeys) === JSON.stringify(auto)
+        && res.body.items.find((item) => item.key === playable[0]).addedAt === firstAdded);
+
+    res = await call("mod", "PATCH", `/v1/playlists/${id}`, { folderKeys: [playable[1]] });
+    check("a curator's folder is kept as given", JSON.stringify(res.body.folderKeys) === JSON.stringify([playable[1]])
+        && res.body.folderAuto === false);
+    check("a stranger in the folder is refused",
+        (await call("mod", "PATCH", `/v1/playlists/${id}`, { folderKeys: ["movie_nope"] })).status === 400);
+    check("more than three is refused",
+        (await call("mod", "PATCH", `/v1/playlists/${id}`, { folderKeys: playable.slice(0, 4).concat("x", "y", "z").slice(0, 4) })).status === 400);
+
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: playable.filter((key) => key !== playable[1]) });
+    res = await call("mod", "GET", `/v1/playlists/${id}`);
+    check("losing the curator's only poster hands the folder back to the server",
+        res.body.folderAuto === true && res.body.folderKeys.length > 0 && !res.body.folderKeys.includes(playable[1]));
+
+    res = await call("mod", "GET", "/v1/playlists?mediaType=movie");
+    const listed = res.body.playlists.find((item) => item.id === id);
+    check("the shelf gets posters and join times", listed.folderPosters.length > 0
+        && listed.itemsAddedAt.length === playable.length - 1);
+
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: playable });
+    const firstFor = async (uid) => (await call(uid, "GET", `/v1/round/next?playlistId=${id}`)).body.item?.key;
+    const modFirst = await firstFor("mod");
+    check("a player's own order is stable", modFirst === await firstFor("mod"));
+    const { playerOrderRank } = await import(`${API}src/lib/playlists.js`);
+    const expected = [...playable].sort((a, b) => playerOrderRank("mod", id, a) - playerOrderRank("mod", id, b))[0];
+    check("and follows their rank, not the list", modFirst === expected, `${modFirst} vs ${expected}`);
+    res = await call("mod", "GET", `/v1/playlists/${id}?order=player`);
+    check("the player's grid starts with the round they get", res.body.items[0].key === modFirst);
+    res = await call("mod", "GET", `/v1/playlists/${id}`);
+    check("curation still sees the curator's order", res.body.items.map((i) => i.key).join() === playable.join());
+    await call("mod", "PATCH", `/v1/playlists/${id}`, { orderByCurator: true });
+    check("the curator's order wins when asked", await firstFor("mod") === playable[0]);
+}
 
 console.log("admin deletes users");
 check("a moderator cannot delete accounts", (await call("mod", "DELETE", "/v1/admin/users/cur")).status === 403);

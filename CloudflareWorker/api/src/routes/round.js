@@ -10,6 +10,7 @@ import { authenticate } from "../lib/auth.js";
 import { buildCatalogQuery, loadGenreIds, parseFilters, serializeImage, serializeMediaItem } from "../lib/media.js";
 import { ROUND_LAYOUT_SIZE, selectRoundFrames, selectSpareFrames } from "../lib/frames.js";
 import { finishRound } from "../lib/plays.js";
+import { playerOrderRank } from "../lib/playlists.js";
 import { dailyNumber, ensureFrozen, isValidDateString, loadDailyPlan, utcDateString } from "../lib/daily.js";
 
 const SPARE_FRAME_COUNT = 3;
@@ -182,18 +183,21 @@ export async function handleRound(request, env, segments, url) {
             // curator arranged them, then the ones answered wrong, and only
             // once everything is answered correctly does it become a genuine
             // shuffle for open-ended replay.
-            const unplayed = {
-                sql: `SELECT m.key, p.position ${from} AND ${notCompleted} ORDER BY p.position LIMIT 1`,
-                bindings: [playlistId, frameCount, user.uid]
-            };
+            //
+            // Unless the curator fixed the order, "the order" is the player's
+            // own: every candidate is read and the lowest stable rank wins.
+            const meta = await env.DB.prepare("SELECT curator_order FROM playlists WHERE id = ?").bind(playlistId).first();
+            const byCurator = meta?.curator_order === 1;
+            const ordered = (condition) => byCurator
+                ? { sql: `SELECT m.key, p.position ${from} AND ${condition} ORDER BY p.position LIMIT 1`, bindings: [playlistId, frameCount, user.uid] }
+                : { sql: `SELECT m.key, p.position ${from} AND ${condition}`, bindings: [playlistId, frameCount, user.uid], rank: true };
+
+            const unplayed = ordered(notCompleted);
 
             const stages = pick === "shuffle"
                 ? [
                     unplayed,
-                    {
-                        sql: `SELECT m.key, p.position ${from} AND ${answeredWrong} ORDER BY p.position LIMIT 1`,
-                        bindings: [playlistId, frameCount, user.uid]
-                    },
+                    ordered(answeredWrong),
                     {
                         sql: `SELECT m.key, p.position ${from} ORDER BY RANDOM() LIMIT 1`,
                         bindings: [playlistId, frameCount]
@@ -202,7 +206,14 @@ export async function handleRound(request, env, segments, url) {
                 : [unplayed];
 
             for (const stage of stages) {
-                row = await env.DB.prepare(stage.sql).bind(...stage.bindings).first();
+                if (stage.rank) {
+                    const rows = (await env.DB.prepare(stage.sql).bind(...stage.bindings).all()).results;
+                    row = rows.reduce((best, item) => !best
+                        || playerOrderRank(user.uid, playlistId, item.key) < playerOrderRank(user.uid, playlistId, best.key)
+                        ? item : best, null);
+                } else {
+                    row = await env.DB.prepare(stage.sql).bind(...stage.bindings).first();
+                }
                 if (row) break;
             }
         }
@@ -211,17 +222,22 @@ export async function handleRound(request, env, segments, url) {
 
         // Counted over what can be dealt, so a title that left the game does
         // not leave "17 of 100" forever one short.
+        // "17 of 100" counts what the player has answered, not where the title
+        // sits in the list: in a player's own order the two have nothing in common.
         const total = await env.DB.prepare(
-            `SELECT COUNT(*) AS count, SUM(p.position <= ?) AS position
+            `SELECT COUNT(*) AS count,
+                    SUM(EXISTS (SELECT 1 FROM playlist_progress pr
+                                WHERE pr.uid = ? AND pr.playlist_id = p.playlist_id
+                                  AND pr.media_key = p.media_key AND pr.state = 'completed')) AS answered
              FROM playlist_items p JOIN media_items m ON m.key = p.media_key
              WHERE p.playlist_id = ? AND m.published = 1`
-        ).bind(row.position, playlistId).first();
+        ).bind(user.uid, playlistId).first();
 
         return json({
             pool: "playlist",
             playlistId,
             // 1-based so the client can say "17 of 100" without arithmetic.
-            position: total.position,
+            position: Math.min(total.count, (total.answered ?? 0) + 1),
             playlistTotal: total.count,
             ...(await loadItemWithFrames(env, row.key, frameCount))
         });

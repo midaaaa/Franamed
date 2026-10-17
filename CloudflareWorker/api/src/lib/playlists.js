@@ -62,3 +62,83 @@ export async function recordPlaylistAnswer(env, user, playlistId, { mediaKey, at
 
     return { progress: await progressSummary(env, user.uid, playlistId) };
 }
+
+// ------------------------------------------------------------------ folder
+
+// The shelf shows a playlist as a folder with up to three posters, cover first.
+// The server picks them once, at publishing, and keeps them until the curator
+// changes them or one of them leaves the list; it never reshuffles on its own.
+export const MAX_FOLDER_POSTERS = 3;
+
+export function parseFolderKeys(row) {
+    try {
+        const keys = JSON.parse(row.folder_keys || "[]");
+        return Array.isArray(keys) ? keys.filter((key) => typeof key === "string") : [];
+    } catch {
+        return [];
+    }
+}
+
+async function membersWithPosters(env, playlistId) {
+    const rows = await env.DB.prepare(
+        `SELECT pi.media_key, m.poster_url FROM playlist_items pi
+         JOIN media_items m ON m.key = pi.media_key
+         WHERE pi.playlist_id = ? AND m.poster_url IS NOT NULL`
+    ).bind(playlistId).all();
+    return new Map(rows.results.map((row) => [row.media_key, row.poster_url]));
+}
+
+function pickRandom(keys, count) {
+    const pool = [...keys];
+    const picked = [];
+    while (pool.length > 0 && picked.length < count) {
+        picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    }
+    return picked;
+}
+
+// Keeps the stored folder valid against the current contents. A curator's
+// choice loses only the titles that left; an automatic one, or a curator's
+// choice left empty, is picked again from scratch.
+export async function refreshFolder(env, playlistId, { force = false } = {}) {
+    const row = await env.DB.prepare("SELECT folder_keys, folder_auto, published FROM playlists WHERE id = ?")
+        .bind(playlistId).first();
+    if (!row) return;
+
+    const posters = await membersWithPosters(env, playlistId);
+    const stored = parseFolderKeys(row);
+    let keys = stored.filter((key) => posters.has(key));
+    let auto = row.folder_auto === 1;
+
+    const brokenAuto = auto && keys.length !== stored.length;
+    if (force || keys.length === 0 || brokenAuto) {
+        keys = row.published === 1 || force ? pickRandom(posters.keys(), MAX_FOLDER_POSTERS) : [];
+        auto = true;
+    }
+
+    const next = keys.length > 0 ? JSON.stringify(keys) : null;
+    if (next !== (row.folder_keys ?? null) || (auto ? 1 : 0) !== row.folder_auto) {
+        await env.DB.prepare("UPDATE playlists SET folder_keys = ?, folder_auto = ? WHERE id = ?")
+            .bind(next, auto ? 1 : 0, playlistId).run();
+    }
+}
+
+export async function folderPosters(env, row) {
+    const keys = parseFolderKeys(row);
+    if (keys.length === 0) return row.cover_image_url ? [row.cover_image_url] : [];
+    const posters = await membersWithPosters(env, row.id);
+    return keys.map((key) => posters.get(key)).filter(Boolean);
+}
+
+// ------------------------------------------------------------------ order
+
+// Without the curator's order every player walks the list in an order of
+// their own that stays put between sessions: a stable hash of who and what.
+export function playerOrderRank(uid, playlistId, mediaKey) {
+    let hash = 2166136261;
+    for (const char of `${uid}:${playlistId}:${mediaKey}`) {
+        hash ^= char.codePointAt(0);
+        hash = Math.imul(hash, 16777619) >>> 0;
+    }
+    return hash;
+}
