@@ -14,6 +14,7 @@ final class RoundViewModel: ObservableObject {
     let source: RoundSource
     let frameCount: Int
     let shuffle: ShuffleMode
+    let playlistId: String?
     @Published private(set) var attemptsMade = 0
     let filters: MediaFilters
 
@@ -36,13 +37,14 @@ final class RoundViewModel: ObservableObject {
     private var detailsTask: Task<Void, Never>?
     private let mediaFacade: MediaFacadeProtocol
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlistId: String? = nil) {
         self.mediaFacade = mediaFacade
         self.mediaType = mediaType
         self.source = source
         self.filters = filters
         self.frameCount = frameCount
         self.shuffle = shuffle
+        self.playlistId = playlistId
         self.attemptsRemaining = frameCount
     }
 
@@ -65,13 +67,20 @@ final class RoundViewModel: ObservableObject {
         selectedSuggestion = nil
 
         do {
-            let loaded = try await mediaFacade.fetchRound(source: source, mediaType: mediaType, filters: filters, frameCount: frameCount, shuffle: shuffle)
+            let loaded = try await fetchRound()
             mediaItemWithBackdrops = loaded
             prefetchDetails(for: loaded.item)
             prefetchGenreNames()
         } catch {
             self.error = error
         }
+    }
+
+    private func fetchRound() async throws -> MediaItemWithBackdrops {
+        if let playlistId {
+            return try await mediaFacade.fetchPlaylistRound(playlistId: playlistId, frameCount: frameCount)
+        }
+        return try await mediaFacade.fetchRound(source: source, mediaType: mediaType, filters: filters, frameCount: frameCount, shuffle: shuffle)
     }
 
     func selectSuggestion(_ item: MediaItem) {
@@ -120,9 +129,9 @@ final class RoundViewModel: ObservableObject {
     }
 
     private func reportFinish(of item: MediaItem, solvedAtFrame: Int?) {
-        guard source == .curated else { return }
-        Task { [weak self, mediaFacade, mediaType, frameCount] in
-            let stats = await mediaFacade.finishCuratedRound(mediaType: mediaType, tmdbId: item.id, frameCount: frameCount, solvedAtFrame: solvedAtFrame)
+        guard source == .curated || playlistId != nil else { return }
+        Task { [weak self, mediaFacade, mediaType, frameCount, playlistId] in
+            let stats = await mediaFacade.finishRound(mediaType: mediaType, tmdbId: item.id, frameCount: frameCount, solvedAtFrame: solvedAtFrame, playlistId: playlistId)
             guard let self, mediaItemWithBackdrops?.item.id == item.id else { return }
             self.stats = stats
         }

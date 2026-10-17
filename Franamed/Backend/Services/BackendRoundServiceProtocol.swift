@@ -9,7 +9,7 @@ import Foundation
 
 protocol BackendRoundServiceProtocol: Sendable {
     func curatedRound(mediaKey: String, frameCount: Int) async throws -> RoundPayload
-    func finishCuratedRound(_ finish: PendingFinish) async throws -> RoundFinish
+    func finishRound(_ finish: PendingFinish) async throws -> RoundFinish
 
     func nextPlaylistRound(
         playlistId: String,

@@ -16,6 +16,8 @@ struct PlaylistEntry: Codable, Sendable, Identifiable, Equatable {
     let state: PlaylistEntryState
     let attemptsUsed: Int
     let wasCorrect: Bool?
+    var playable: Bool? = nil
+    var addedAt: Double? = nil
 
     var id: String { key }
 }

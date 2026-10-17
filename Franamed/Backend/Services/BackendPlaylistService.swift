@@ -28,7 +28,7 @@ final class BackendPlaylistService: BackendPlaylistServiceProtocol {
     }
 
     func playlist(id: String) async throws -> PlaylistDetail {
-        try await client.get("/v1/playlists/\(id)")
+        try await client.get("/v1/playlists/\(id)", query: [URLQueryItem(name: "order", value: "player")])
     }
 
     func create(title: String, description: String?, mediaType: MediaType) async throws -> Playlist {

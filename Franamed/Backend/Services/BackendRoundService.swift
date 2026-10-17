@@ -22,16 +22,19 @@ final class BackendRoundService: BackendRoundServiceProtocol {
         ])
     }
 
-    func finishCuratedRound(_ finish: PendingFinish) async throws -> RoundFinish {
+    func finishRound(_ finish: PendingFinish) async throws -> RoundFinish {
         struct Payload: Encodable, Sendable {
             let mediaKey: String
-            let mode = "random"
+            let mode: String
+            let playlistId: String?
             let result: String
             let frameCount: Int
             let solvedAtFrame: Int?
         }
         return try await client.post("/v1/round/finish", body: Payload(
             mediaKey: finish.mediaKey,
+            mode: finish.playlistId == nil ? "random" : "playlist",
+            playlistId: finish.playlistId,
             result: finish.solvedAtFrame == nil ? "wrong" : "correct",
             frameCount: finish.frameCount,
             solvedAtFrame: finish.solvedAtFrame

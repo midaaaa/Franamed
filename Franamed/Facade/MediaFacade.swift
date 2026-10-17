@@ -76,12 +76,19 @@ final class MediaFacade: MediaFacadeProtocol {
         throw CuratedRoundError.noMatches
     }
 
-    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async -> RoundStats? {
+    func fetchPlaylistRound(playlistId: String, frameCount: Int) async throws -> MediaItemWithBackdrops {
+        Task { [playedTitles = backend.playedTitles] in await playedTitles.sendPending() }
+        let payload = try await backend.round.nextPlaylistRound(playlistId: playlistId, pick: .shuffle, mediaKey: nil, frameCount: frameCount)
+        return payload.asMediaItemWithBackdrops(imageBaseURL: backend.configuration.imageBaseURL)
+    }
+
+    func finishRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?, playlistId: String?) async -> RoundStats? {
         let finish = await backend.playedTitles.record(PendingFinish(
             mediaKey: "\(mediaType.rawValue)_\(tmdbId)",
             frameCount: frameCount,
             solvedAtFrame: solvedAtFrame,
-            playedAt: .now
+            playedAt: .now,
+            playlistId: playlistId
         ))
         return finish?.stats.map { RoundStats(players: $0.players, solvedAtFrame: $0.solvedAtFrame) }
     }

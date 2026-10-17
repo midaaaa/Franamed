@@ -12,4 +12,5 @@ struct PendingFinish: Codable, Sendable {
     let frameCount: Int
     let solvedAtFrame: Int?
     let playedAt: Date
+    var playlistId: String?
 }

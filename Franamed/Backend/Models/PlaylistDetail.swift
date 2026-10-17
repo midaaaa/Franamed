@@ -19,4 +19,6 @@ struct PlaylistDetail: Codable, Sendable, Identifiable {
     let createdAt: Double
     let progress: PlaylistProgress
     let items: [PlaylistEntry]
+    var folderPosters: [String]? = nil
+    var orderByCurator: Bool? = nil
 }

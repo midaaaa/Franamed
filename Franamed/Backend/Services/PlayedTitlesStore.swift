@@ -46,7 +46,7 @@ actor PlayedTitlesStore {
 
         var results: [String: RoundFinish] = [:]
         while let finish = pending.first {
-            guard let result = try? await round.finishCuratedRound(finish) else { return results }
+            guard let result = try? await round.finishRound(finish) else { return results }
 
             results[Self.key(of: finish)] = result
             pending.removeFirst()

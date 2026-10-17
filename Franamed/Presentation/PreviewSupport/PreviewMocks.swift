@@ -42,7 +42,11 @@ struct PreviewMediaFacade: MediaFacadeProtocol {
         124
     }
 
-    func finishCuratedRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?) async -> RoundStats? { nil }
+    func fetchPlaylistRound(playlistId: String, frameCount: Int) async throws -> MediaItemWithBackdrops {
+        try await fetchRandomMediaItemAndBackdrops(mediaType: .movie, filters: MediaFilters(), frameCount: frameCount)
+    }
+
+    func finishRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?, playlistId: String?) async -> RoundStats? { nil }
 
     func resetPlayedTitles() async throws {}
 
