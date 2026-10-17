@@ -11,5 +11,8 @@ struct TicketCard {
     let mediaType: MediaType
     let posterPath: String?
     var mode: TicketGameMode = .random
+    var playlist: PlaylistTicket?
+
+    var canTear: Bool { mode != .collection || (playlist?.total ?? 0) > 0 }
 }
 

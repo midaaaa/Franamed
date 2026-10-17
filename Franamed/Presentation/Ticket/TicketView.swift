@@ -9,6 +9,7 @@ import SwiftUI
 
 struct TicketView: View {
     @StateObject private var viewModel: TicketViewModel
+    @StateObject private var playlists = PlaylistsViewModel()
     @ObservedObject var coordinator: AppCoordinator
 
     @Environment(\.displayScale) private var displayScale
@@ -16,6 +17,7 @@ struct TicketView: View {
     private var pixelGrid: PixelGrid { PixelGrid(displayScale: displayScale) }
 
     @State private var filtersSheetMediaType: MediaType?
+    @State private var playlistSheet: PlaylistSheetRoute?
     @State private var isShowingProfile = false
     @State private var stubReturnToken = 0
     @State private var isCardLocked = false
@@ -59,7 +61,7 @@ struct TicketView: View {
                     guard round == nil else { return }
                     scheduleStubReturn()
                 }
-                .fullScreenCover(item: $coordinator.presentedRound) { mediaType in
+                .fullScreenCover(item: $coordinator.presentedRound, onDismiss: refreshPlayedPlaylist) { mediaType in
                     NavigationStack {
                         RoundView(
                             mediaFacade: viewModel.mediaFacade,
@@ -67,7 +69,9 @@ struct TicketView: View {
                             mode: viewModel.mode,
                             filters: viewModel.setup(for: mediaType).filters,
                             frameCount: viewModel.setup(for: mediaType).frameCount,
-                            shuffle: viewModel.setup(for: mediaType).shuffle
+                            shuffle: viewModel.setup(for: mediaType).shuffle,
+                            playlists: playlists,
+                            playlistID: viewModel.mode == .collection ? playlists.selectedID(for: mediaType) : nil
                         )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
@@ -101,7 +105,20 @@ struct TicketView: View {
                     }
                     .navigationTransition(.zoom(sourceID: mediaType, in: filtersZoom))
                 }
+                .sheet(item: $playlistSheet, onDismiss: playlists.markOpenedSeen) { route in
+                    PlaylistPickerSheet(playlists: playlists, mediaType: route.mediaType, openedID: route.openedID) {
+                        playlistSheet = nil
+                    }
+                    .ignoresSafeArea()
+                    .task { await playlists.load() }
+                    .navigationTransition(.zoom(sourceID: route.mediaType, in: route.fromPoster ? posterZoom : filtersZoom))
+                }
         }
+    }
+
+    private func refreshPlayedPlaylist() {
+        guard viewModel.mode == .collection, let id = playlists.selectedID(for: viewModel.mediaType) else { return }
+        Task { await playlists.refresh(id) }
     }
 
     // MARK: Card cardLayer
@@ -119,13 +136,15 @@ struct TicketView: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
         }
         .task { await viewModel.loadGenreNames() }
+        .task { await playlists.load() }
     }
 
     private func cardView(width: CGFloat, posterHeight: CGFloat) -> some View {
         let isInteractive = !isTransitioning && !isCardLocked && !isStubAway
+        let card = currentCard
 
         return TicketFaceView(
-            card: viewModel.card,
+            card: card,
             setup: viewModel.setup(for: viewModel.mediaType),
             genreNames: viewModel.genreNames(for: viewModel.mediaType),
             width: width,
@@ -137,8 +156,9 @@ struct TicketView: View {
             returnToken: stubReturnToken,
             posterZoom: posterZoom,
             filtersZoom: filtersZoom,
-            onOpenFilters: { present { filtersSheetMediaType = viewModel.mediaType } },
-            onStart: { present { startRound(mediaType: viewModel.mediaType) } },
+            onOpenFilters: { present { openStubSheet() } },
+            onStart: { present { startOrOpenPlaylist() } },
+            onOpenPoster: openPlaylistFromPoster,
             onReturnChange: { setReturning($0) },
             onStubAwayChange: { setStubAway($0) }
         )
@@ -154,6 +174,40 @@ struct TicketView: View {
     }
 
     // MARK: Content
+
+    private var currentCard: TicketCard {
+        var card = viewModel.card
+        if card.mode == .collection {
+            card.playlist = playlists.ticket(for: card.mediaType)
+        }
+        return card
+    }
+
+    private func openStubSheet() {
+        guard viewModel.mode == .collection else {
+            filtersSheetMediaType = viewModel.mediaType
+            return
+        }
+        playlistSheet = PlaylistSheetRoute(mediaType: viewModel.mediaType, fromPoster: false)
+    }
+
+    private func startOrOpenPlaylist() {
+        guard !currentCard.canTear else {
+            startRound(mediaType: viewModel.mediaType)
+            return
+        }
+        playlistSheet = PlaylistSheetRoute(mediaType: viewModel.mediaType, fromPoster: false,
+                                           openedID: playlists.selectedID(for: viewModel.mediaType))
+    }
+
+    private func openPlaylistFromPoster() {
+        guard viewModel.mode == .collection else { return }
+        let mediaType = viewModel.mediaType
+        guard let selectedID = playlists.selectedID(for: mediaType) else { return }
+        present {
+            playlistSheet = PlaylistSheetRoute(mediaType: mediaType, fromPoster: true, openedID: selectedID)
+        }
+    }
 
     private func scheduleStubReturn() {
         Task {
@@ -190,11 +244,24 @@ struct TicketView: View {
         } else {
             withAnimation(TicketMotion.roundCoverIn) { hidesStub = false }
         }
+        revealPendingStamp()
 
         guard cardScale != 1 else { return }
         withAnimation(TicketMotion.returnRestore) { cardScale = 1 }
     }
     
+    private func revealPendingStamp() {
+        guard viewModel.mode == .collection,
+              let id = playlists.selectedID(for: viewModel.mediaType),
+              playlists.hasPendingStamp(id) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(TicketMotion.stampDelay))
+            withAnimation(TicketMotion.stampDrop) { playlists.revealStamp(id) }
+            try? await Task.sleep(for: .seconds(TicketMotion.stampImpactDelay))
+            Haptics.shared.play(.stamp)
+        }
+    }
+
     // MARK: Swipe
 
     private func dragChanged(_ translation: CGSize) {

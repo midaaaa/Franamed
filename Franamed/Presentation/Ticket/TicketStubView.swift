@@ -30,6 +30,15 @@ struct TicketStubBody: View {
     var onStart: () -> Void = {}
 
     var body: some View {
+        if card.mode == .collection {
+            PlaylistStubBody(mediaType: card.mediaType, mode: card.mode, playlist: card.playlist,
+                             onOpenPicker: onOpenFilters, onStart: onStart)
+        } else {
+            regularBody
+        }
+    }
+
+    private var regularBody: some View {
         VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
             title
             filtersButton

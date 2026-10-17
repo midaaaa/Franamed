@@ -42,6 +42,9 @@ struct RoundView: View {
 
     @State private var isShareLifted = false
     private let mode: TicketGameMode
+    @ObservedObject private var playlists: PlaylistsViewModel
+    private let playlistID: String?
+    @State private var roundStamp: Double?
 
     private static let backgroundSpace = "roundBackground"
 
@@ -57,9 +60,11 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil) {
         self.mode = mode
-        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle))
+        self.playlists = playlists
+        self.playlistID = playlistID
+        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle, playlistId: playlistID))
     }
 
     var body: some View {
@@ -267,6 +272,33 @@ struct RoundView: View {
         phone.showApp(pictures)
     }
 
+    // MARK: Playlist stamp
+
+    private var playlistTicket: PlaylistTicket? {
+        guard let playlistID, var ticket = playlists.ticket(id: playlistID) else { return nil }
+        if let roundStamp { ticket.stampProgress = roundStamp }
+        return ticket
+    }
+
+    private static let stampSteps: [Double] = [0.12, 0.3, 0.52, 0.76, 1]
+    private static let stampStepDelay = Duration.milliseconds(28)
+    private static let stampBackDelay = Duration.milliseconds(220)
+
+    private func stampBackIfNeeded() {
+        guard let playlistID, roundStamp == nil, playlists.hasPendingStamp(playlistID) else { return }
+        roundStamp = 0
+        Task { @MainActor in
+            try? await Task.sleep(for: Self.stampBackDelay)
+            for (index, step) in Self.stampSteps.enumerated() {
+                roundStamp = step
+                if index == Self.stampSteps.count - 1 { Haptics.shared.play(.stamp) }
+                try? await Task.sleep(for: Self.stampStepDelay)
+            }
+            playlists.revealStamp(playlistID)
+            roundStamp = nil
+        }
+    }
+
     // MARK: Share
 
     private func startShare(_ content: ResultStubContent, launch: ShareLaunch) {
@@ -358,6 +390,8 @@ struct RoundView: View {
                            keyboardLift: keyboardLift,
                            restOffset: stubRestOffset,
                            formWidth: WindowMetrics.size.width - barInset * 2,
+                           playlist: playlistTicket,
+                           onBackShown: stampBackIfNeeded,
                            isLifted: isShareLifted,
                            onShare: startShare)
                 .id(StubIdentity(itemID: media.item.id, round: roundNumber))
@@ -432,5 +466,5 @@ private struct StubIdentity: Hashable {
 }
 
 #Preview {
-    RoundView(mediaFacade: PreviewMediaFacade())
+    RoundView(mediaFacade: PreviewMediaFacade(), playlists: PlaylistsViewModel())
 }

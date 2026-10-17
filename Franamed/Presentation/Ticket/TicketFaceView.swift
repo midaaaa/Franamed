@@ -36,6 +36,7 @@ struct TicketFaceView: View, Equatable {
     let filtersZoom: Namespace.ID
     let onOpenFilters: () -> Void
     let onStart: () -> Void
+    let onOpenPoster: () -> Void
     var onReturnChange: ((Bool) -> Void)?
     var onStubAwayChange: ((Bool) -> Void)?
 
@@ -53,17 +54,18 @@ struct TicketFaceView: View, Equatable {
         let posterPath: String?
         let setup: RoundSetup
         let genreNames: [String]
+        let playlist: PlaylistTicket?
     }
 
     private var contentID: ContentID {
         ContentID(mediaType: card.mediaType, mode: card.mode, posterPath: card.posterPath,
-                  setup: setup, genreNames: genreNames)
+                  setup: setup, genreNames: genreNames, playlist: card.playlist)
     }
 
     var body: some View {
         TicketTear(config: tearConfig, stubShape: ResultStubShape(edgeStyle: edgeStyle),
                    resetToken: card.mode.rawValue,
-                   contentID: contentID, isGrabEnabled: isStubGrabEnabled,
+                   contentID: contentID, isGrabEnabled: isStubGrabEnabled && card.canTear,
                    isContentComplete: !hidesStub,
                    rasterizesContent: isRasterized, returnToken: returnToken,
                    onComplete: onStart, onReturnChange: onReturnChange,
@@ -78,6 +80,8 @@ struct TicketFaceView: View, Equatable {
             poster
                 .frame(width: width, height: posterHeight)
                 .clipped()
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onOpenPoster)
                 .matchedTransitionSource(id: card.mediaType, in: posterZoom)
 
             TicketStubView(
@@ -121,15 +125,15 @@ struct TicketFaceView: View, Equatable {
             posterImage = cached
             return
         }
-        posterImage = nil
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = UIImage(data: data) else { return }
+        posterImage = TMDBImageSize.small(of: url).flatMap(ImageCache.shared.image(for:))
+        guard let image = await FrameDownloads.shared.image(for: url) else { return }
         ImageCache.shared.store(image, for: url)
         posterImage = image
     }
 
     private var posterURL: URL? {
-        card.posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/w780/\($0)") }
+        if card.mode == .collection { return card.playlist?.coverURL }
+        return card.posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/w780/\($0)") }
     }
 
     private var placeholder: some View {
@@ -163,7 +167,8 @@ struct TicketFaceView: View, Equatable {
         posterZoom: posterZoom,
         filtersZoom: filtersZoom,
         onOpenFilters: {},
-        onStart: {}
+        onStart: {},
+        onOpenPoster: {}
     )
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black)

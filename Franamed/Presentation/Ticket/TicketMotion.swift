@@ -26,4 +26,7 @@ enum TicketMotion {
     static let flyOut = Animation.linear(duration: 0.22)
     static let stubReturnDelay: TimeInterval = 0.5
     static let settle = Animation.spring(response: 0.5, dampingFraction: 0.85)
+    static let stampDelay: TimeInterval = 0.35
+    static let stampDrop = Animation.easeIn(duration: 0.16)
+    static let stampImpactDelay: TimeInterval = 0.16
 }

@@ -30,6 +30,8 @@ struct ResultStubPeek: View {
     let keyboardLift: CGFloat
     let restOffset: CGFloat
     let formWidth: CGFloat
+    var playlist: PlaylistTicket?
+    var onBackShown: () -> Void = {}
     var isLifted = false
     var onShare: ((ResultStubContent, ShareLaunch) -> Void)?
 
@@ -64,6 +66,7 @@ struct ResultStubPeek: View {
         let content: ResultStubContent
         let genreNames: [String]
         let hidesDetails: Bool
+        let playlist: PlaylistTicket?
     }
 
     private var size: CGSize {
@@ -101,16 +104,20 @@ struct ResultStubPeek: View {
         let content = content
 
         FlipView(size: size,
-                 contentID: FacesID(content: content, genreNames: genreNames, hidesDetails: hidesDetails),
+                 contentID: FacesID(content: content, genreNames: genreNames, hidesDetails: hidesDetails,
+                                    playlist: playlist),
                  menuItems: content.menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) },
                                               onShare: shareAction(content)),
                  snapshotter: snapshotter) {
             ResultStubFront(content: content, hidesDetails: hidesDetails)
         } back: {
-            ResultStubSetupBack(card: TicketCard(mediaType: mediaType, posterPath: nil, mode: mode),
+            ResultStubSetupBack(card: TicketCard(mediaType: mediaType, posterPath: nil, mode: mode, playlist: playlist),
                                 setup: RoundSetup(filters: filters, frameCount: frameCount),
                                 genreNames: genreNames)
-        } onFrontVisibleChange: { isFrontVisible = $0 }
+        } onFrontVisibleChange: { isFront in
+            isFrontVisible = isFront
+            if !isFront { onBackShown() }
+        }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { globalFrame = $0 }
         .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,
                                        recordingMean: recordingLight,

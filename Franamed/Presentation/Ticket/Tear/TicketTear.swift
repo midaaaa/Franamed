@@ -229,9 +229,9 @@ struct TicketTear<Content: View>: View {
 
     private func snapshotTexture() {
         guard size.width > 1, size.height > 1 else { return }
-        needsSnapshot = !isContentComplete
-        guard isContentComplete,
-              let rendered = TicketSnapshot.texture(of: content, scale: displayScale) else { return }
+        needsSnapshot = false
+        guard let rendered = TicketSnapshot.texture(of: content.environment(\.ticketStubIsSnapshot, true),
+                                                    scale: displayScale) else { return }
         texture = rendered
     }
 
