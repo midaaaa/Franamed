@@ -12,10 +12,10 @@ enum TicketGameMode: Int, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .random: "Рандом"
-        case .pvp: "PvP"
-        case .curated: "Курир. рандом"
-        case .collection: "Подборка"
+        case .random: "Наугад"
+        case .pvp: "Дуэль"
+        case .curated: "Сеанс"
+        case .collection: "Подборки"
         }
     }
 
