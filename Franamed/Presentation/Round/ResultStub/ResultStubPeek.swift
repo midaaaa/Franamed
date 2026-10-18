@@ -31,7 +31,6 @@ struct ResultStubPeek: View {
     let restOffset: CGFloat
     let formWidth: CGFloat
     var playlist: PlaylistTicket?
-    var onBackShown: () -> Void = {}
     var isLifted = false
     var onShare: ((ResultStubContent, ShareLaunch) -> Void)?
 
@@ -116,7 +115,6 @@ struct ResultStubPeek: View {
                                 genreNames: genreNames)
         } onFrontVisibleChange: { isFront in
             isFrontVisible = isFront
-            if !isFront { onBackShown() }
         }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { globalFrame = $0 }
         .modifier(ResultStubTiltLight(animatableData: tilt, maxTilt: Self.tilt, hallMean: hallLight,

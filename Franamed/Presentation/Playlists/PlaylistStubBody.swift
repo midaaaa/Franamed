@@ -34,7 +34,7 @@ struct PlaylistStubBody: View {
         .overlay(alignment: .topTrailing) {
             if let playlist, playlist.isFinished {
                 PlaylistCompletionStamp(progress: playlist.stampProgress, seed: playlist.id,
-                                        isPerfect: playlist.isPerfect)
+                                        isPerfect: playlist.isStampGold)
                     .fixedSize()
                     .padding(.top, 16)
                     .padding(.trailing, 10)

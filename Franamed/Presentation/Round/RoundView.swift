@@ -44,7 +44,6 @@ struct RoundView: View {
     private let mode: TicketGameMode
     @ObservedObject private var playlists: PlaylistsViewModel
     private let playlistID: String?
-    @State private var roundStamp: Double?
 
     private static let backgroundSpace = "roundBackground"
 
@@ -272,31 +271,10 @@ struct RoundView: View {
         phone.showApp(pictures)
     }
 
-    // MARK: Playlist stamp
+    // MARK: Playlist
 
     private var playlistTicket: PlaylistTicket? {
-        guard let playlistID, var ticket = playlists.ticket(id: playlistID) else { return nil }
-        if let roundStamp { ticket.stampProgress = roundStamp }
-        return ticket
-    }
-
-    private static let stampSteps: [Double] = [0.12, 0.3, 0.52, 0.76, 1]
-    private static let stampStepDelay = Duration.milliseconds(28)
-    private static let stampBackDelay = Duration.milliseconds(220)
-
-    private func stampBackIfNeeded() {
-        guard let playlistID, roundStamp == nil, playlists.hasPendingStamp(playlistID) else { return }
-        roundStamp = 0
-        Task { @MainActor in
-            try? await Task.sleep(for: Self.stampBackDelay)
-            for (index, step) in Self.stampSteps.enumerated() {
-                roundStamp = step
-                if index == Self.stampSteps.count - 1 { Haptics.shared.play(.stamp) }
-                try? await Task.sleep(for: Self.stampStepDelay)
-            }
-            playlists.revealStamp(playlistID)
-            roundStamp = nil
-        }
+        playlistID.flatMap(playlists.ticket(id:))
     }
 
     // MARK: Share
@@ -391,7 +369,6 @@ struct RoundView: View {
                            restOffset: stubRestOffset,
                            formWidth: WindowMetrics.size.width - barInset * 2,
                            playlist: playlistTicket,
-                           onBackShown: stampBackIfNeeded,
                            isLifted: isShareLifted,
                            onShare: startShare)
                 .id(StubIdentity(itemID: media.item.id, round: roundNumber))

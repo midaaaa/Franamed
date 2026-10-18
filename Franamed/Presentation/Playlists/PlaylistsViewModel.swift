@@ -17,6 +17,7 @@ struct PlaylistTicket: Hashable {
     let correct: Int
     let isFinished: Bool
     var stampProgress: Double
+    var isStampGold = false
 
     var isPerfect: Bool { correct >= total }
 }
@@ -48,7 +49,7 @@ final class PlaylistsViewModel: ObservableObject {
 
     @Published private(set) var playlists: [PlaylistDetail] = []
     @Published private(set) var selectedIDs: [MediaType: String] = [:]
-    @Published private(set) var stampedIDs: Set<String> = []
+    @Published private(set) var stamps: [String: Bool] = [:]
     @Published private(set) var newKeys: [String: Set<String>] = [:]
     @Published private(set) var loadState = LoadState.idle
 
@@ -110,7 +111,9 @@ final class PlaylistsViewModel: ObservableObject {
     }
 
     func hasPendingStamp(_ id: String) -> Bool {
-        playlist(id: id)?.isFinished == true && !stampedIDs.contains(id)
+        guard let playlist = playlist(id: id), playlist.isFinished else { return false }
+        guard let isGold = stamps[id] else { return true }
+        return !isGold && playlist.completion == .perfect
     }
 
     func ticket(for mediaType: MediaType) -> PlaylistTicket? {
@@ -122,7 +125,7 @@ final class PlaylistsViewModel: ObservableObject {
         return PlaylistTicket(id: playlist.id, title: playlist.title, coverURL: playlist.largeCoverURL,
                               total: playlist.availableCount, answered: playlist.answeredCount,
                               correct: playlist.correctCount, isFinished: playlist.isFinished,
-                              stampProgress: stampedIDs.contains(id) ? 1 : 0)
+                              stampProgress: stamps[id] == nil ? 0 : 1, isStampGold: stamps[id] ?? false)
     }
 
     // MARK: Actions
@@ -135,7 +138,8 @@ final class PlaylistsViewModel: ObservableObject {
     }
 
     func revealStamp(_ id: String) {
-        stampedIDs.insert(id)
+        guard let playlist = playlist(id: id) else { return }
+        stamps[id] = playlist.completion == .perfect
     }
 
     func noteOpened(_ id: String) {
@@ -193,7 +197,6 @@ final class PlaylistsViewModel: ObservableObject {
     }
 
     private func apply(_ next: [PlaylistDetail]) {
-        let wasFinished = Set(playlists.filter(\.isFinished).map(\.id))
         let isFirstLoad = loadState != .loaded
         var seen = lastSeen
         let now = Date().timeIntervalSince1970 * 1000
@@ -205,8 +208,16 @@ final class PlaylistsViewModel: ObservableObject {
             let stored = defaults.string(forKey: Self.selectionKey(mediaType))
             selectedIDs[mediaType] = next.first { $0.id == stored && $0.mediaType == mediaType }?.id
         }
-        let finished = Set(next.filter(\.isFinished).map(\.id))
-        stampedIDs = isFirstLoad ? finished : stampedIDs.union(wasFinished).intersection(finished)
+        var nextStamps: [String: Bool] = [:]
+        for playlist in next where playlist.isFinished {
+            let isGold = playlist.completion == .perfect
+            if isFirstLoad {
+                nextStamps[playlist.id] = isGold
+            } else if let wasGold = stamps[playlist.id] {
+                nextStamps[playlist.id] = wasGold && isGold
+            }
+        }
+        stamps = nextStamps
         newKeys = Self.newKeys(in: next, seen: seen)
     }
 
