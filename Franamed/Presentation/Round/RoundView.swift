@@ -40,12 +40,19 @@ struct RoundView: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @AppStorage(DebugSettings.resultStubPlacementKey) private var stubPlacement = ResultStubPlacement.behindForm
 
+    @State private var ticketBeforeAnswer: PlaylistTicket?
+    @State private var roundStamp: Double?
+    @State private var isFormDismissed = false
+    @State private var formCollapse: CGFloat = 0
     @State private var isShareLifted = false
     private let mode: TicketGameMode
     @ObservedObject private var playlists: PlaylistsViewModel
     private let playlistID: String?
 
     private static let backgroundSpace = "roundBackground"
+    private static let formCollapsedSide: CGFloat = 44
+    private static let formCollapseDuration = 0.32
+    private static let formFadeDuration = 0.12
 
     private static let focusedBarInset: CGFloat = 6
     private static let restingBarInset: CGFloat = 24
@@ -212,12 +219,20 @@ struct RoundView: View {
             isMorphAnimating = true
             if newOutcome != nil {
                 isAnswerFieldFocused = false
-                withAnimation(.smooth, completionCriteria: .logicallyComplete) {
+                ticketBeforeAnswer = storedPlaylistTicket
+                let morphsViaStamp = nextAction.stamp != nil
+                if morphsViaStamp { collapseForm() }
+                let morph = morphsViaStamp ? AnswerBarActionShape.stampMorphAnimation : .smooth
+                withAnimation(morph, completionCriteria: .logicallyComplete) {
                     morphProgress = 1
                 } completion: {
                     isMorphAnimating = false
                 }
             } else {
+                ticketBeforeAnswer = nil
+                roundStamp = nil
+                isFormDismissed = false
+                formCollapse = 0
                 withAnimation(.smooth, completionCriteria: .logicallyComplete) {
                     morphProgress = 0
                 } completion: {
@@ -276,8 +291,66 @@ struct RoundView: View {
 
     // MARK: Playlist
 
-    private var playlistTicket: PlaylistTicket? {
+    private static let stampSteps: [Double] = [0.12, 0.3, 0.52, 0.76, 1]
+    private static let stampStepDelay = Duration.milliseconds(28)
+    private static let stampBackDelay = Duration.milliseconds(220)
+
+    private var storedPlaylistTicket: PlaylistTicket? {
         playlistID.flatMap(playlists.ticket(id:))
+    }
+
+    private var answeredTicket: PlaylistTicket? {
+        guard let outcome = viewModel.outcome, let before = ticketBeforeAnswer ?? storedPlaylistTicket else { return nil }
+        return before.answering(isCorrect: outcome == .correct)
+    }
+
+    private var playlistFinish: PlaylistFinish? {
+        guard let before = ticketBeforeAnswer ?? storedPlaylistTicket, let after = answeredTicket else { return nil }
+        return after.finish(comparedTo: before)
+    }
+
+    private var playlistTicket: PlaylistTicket? {
+        guard var ticket = answeredTicket ?? storedPlaylistTicket else { return nil }
+        if playlistFinish != nil, let roundStamp {
+            ticket.stampProgress = roundStamp
+            ticket.isStampGold = ticket.isPerfect
+        }
+        return ticket
+    }
+
+    private var nextAction: AnswerBarNext {
+        guard mode == .collection else { return AnswerBarNext(title: "Дальше") }
+        guard let ticket = answeredTicket ?? storedPlaylistTicket, ticket.isFinished else {
+            return AnswerBarNext(title: "Следующий")
+        }
+        if ticket.isPerfect {
+            return AnswerBarNext(title: "Играть дальше", badge: "100%", stamp: playlistFinish)
+        }
+        return AnswerBarNext(title: "Переиграть", badge: "\(ticket.correctPercent)%", stamp: playlistFinish)
+    }
+
+    private func collapseForm() {
+        withAnimation(.easeIn(duration: Self.formCollapseDuration)) { formCollapse = 1 }
+        withAnimation(.easeOut(duration: Self.formFadeDuration).delay(Self.formCollapseDuration - Self.formFadeDuration)) {
+            isFormDismissed = true
+        }
+    }
+
+    private func stampOnBackIfNeeded() {
+        guard playlistFinish != nil, roundStamp == nil, let playlistID,
+              let item = viewModel.mediaItemWithBackdrops?.item.id else { return }
+        roundStamp = 0
+        Task { @MainActor in
+            try? await Task.sleep(for: Self.stampBackDelay)
+            for (index, step) in Self.stampSteps.enumerated() {
+                guard viewModel.mediaItemWithBackdrops?.item.id == item, viewModel.outcome != nil else { return }
+                roundStamp = step
+                if index == Self.stampSteps.count - 1 { Haptics.shared.play(.stamp) }
+                try? await Task.sleep(for: Self.stampStepDelay)
+            }
+            await playlists.refresh(playlistID)
+            playlists.revealStamp(playlistID)
+        }
     }
 
     private func refreshPlaylist() {
@@ -333,7 +406,8 @@ struct RoundView: View {
                 onVisibleHeightChange: updateAnswerBarHeight,
                 hasOutcome: viewModel.outcome != nil
             )
-            .opacity((1 - morphProgress) * (isInputBlocked ? 0.5 : 1))
+            .clipShape(FormCollapseShape(progress: formCollapse, side: Self.formCollapsedSide))
+            .opacity((isFormDismissed ? 0 : 1) * (isInputBlocked ? 0.5 : 1))
             .allowsHitTesting(morphProgress < 0.5)
 
             GeometryReader { proxy in
@@ -342,6 +416,7 @@ struct RoundView: View {
                     width: proxy.size.width,
                     isBlocked: isSubmitBlocked,
                     isTransitioning: isMorphAnimating,
+                    next: nextAction,
                     onSubmit: submitIfReady,
                     onNewGame: startNewRound
                 )
@@ -377,6 +452,7 @@ struct RoundView: View {
                            restOffset: stubRestOffset,
                            formWidth: WindowMetrics.size.width - barInset * 2,
                            playlist: playlistTicket,
+                           onBackShown: stampOnBackIfNeeded,
                            isLifted: isShareLifted,
                            onShare: startShare)
                 .id(StubIdentity(itemID: media.item.id, round: roundNumber))
@@ -452,4 +528,22 @@ private struct StubIdentity: Hashable {
 
 #Preview {
     RoundView(mediaFacade: PreviewMediaFacade(), playlists: PlaylistsViewModel())
+}
+
+private struct FormCollapseShape: Shape {
+    var progress: CGFloat
+    let side: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard progress > 0 else { return Path(rect.insetBy(dx: -2000, dy: -2000)) }
+        let height = min(rect.height, side)
+        let width = rect.width - (rect.width - height) * progress
+        let frame = CGRect(x: rect.maxX - width, y: rect.maxY - height, width: width, height: height)
+        return Path(roundedRect: frame, cornerRadius: height / 2)
+    }
 }
