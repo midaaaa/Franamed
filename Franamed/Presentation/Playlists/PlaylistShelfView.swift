@@ -35,7 +35,7 @@ struct PlaylistShelfView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView { content }
+            ScrollView { content.coordinateSpace(.named(PlaylistFlightState.shelfSpace)) }
                 .onAppear {
                     guard !isRevealed else { return }
                     isRevealed = true
@@ -107,11 +107,10 @@ struct PlaylistShelfView: View {
                           addedCount: playlists.addedCount(playlist.id),
                           track: flight.flyingID == playlist.id ? flight.track : nil,
                           isOpen: flight.openID == playlist.id,
-                          folderOrigin: flight.folderFrames[playlist.id]?.origin ?? .zero,
                           actions: actions(for: playlist),
                           onTap: { onOpen(playlist.id) },
                           onFolderFrame: { [flight] in flight.folderFrames[playlist.id] = $0 })
-            .onGlobalFrameChange { [flight] in flight.cellFrames[playlist.id] = $0 }
+            .onShelfFrameChange { [flight] in flight.cellFrames[playlist.id] = $0 }
     }
 
     private func actions(for playlist: PlaylistDetail) -> [PlaylistMenuAction] {
@@ -132,7 +131,6 @@ private struct PlaylistShelfItem: View {
     let addedCount: Int
     let track: PlaylistPosterTrack?
     let isOpen: Bool
-    let folderOrigin: CGPoint
     let actions: [PlaylistMenuAction]
     let onTap: () -> Void
     let onFolderFrame: (CGRect) -> Void
@@ -143,7 +141,7 @@ private struct PlaylistShelfItem: View {
     private static let liftDown = Animation.spring(response: 0.35, dampingFraction: 0.62)
 
     var body: some View {
-        PlaylistTrackedPosters(track: track ?? .idle, origin: folderOrigin) { slots, isCopyShown in
+        PlaylistTrackedPosters(track: track ?? .idle) { slots, isCopyShown in
             cell(isLifted: isLifted || isOpen || track != nil, posterOverride: slots, hidesPosters: isCopyShown,
                  onFolderFrame: onFolderFrame)
         }
@@ -165,10 +163,9 @@ private struct PlaylistShelfItem: View {
 
 private struct PlaylistTrackedPosters<Content: View>: View {
     @ObservedObject var track: PlaylistPosterTrack
-    let origin: CGPoint
     @ViewBuilder let content: ([PlaylistPosterSlot]?, Bool) -> Content
 
     var body: some View {
-        content(track.slots?.map { $0.offset(by: CGPoint(x: -origin.x, y: -origin.y)) }, track.isCopyShown)
+        content(track.slots, track.isCopyShown)
     }
 }

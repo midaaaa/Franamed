@@ -11,6 +11,8 @@ import UIKit
 
 @MainActor
 final class PlaylistFlightState: ObservableObject {
+    static let shelfSpace = "playlistShelf"
+
     @Published var flyingID: String?
     @Published var openID: String?
     let track = PlaylistPosterTrack()
@@ -290,5 +292,9 @@ private final class PlaylistFlightView: UIView {
 extension View {
     func onGlobalFrameChange(_ action: @escaping (CGRect) -> Void) -> some View {
         onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { action($0) }
+    }
+
+    func onShelfFrameChange(_ action: @escaping (CGRect) -> Void) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .named(PlaylistFlightState.shelfSpace)) } action: { action($0) }
     }
 }

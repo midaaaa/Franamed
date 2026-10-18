@@ -71,7 +71,7 @@ struct PlaylistFolderCover: View {
         static let backTint: Double = 0.32
         static let frontTint: Double = 0.35
         static let frontUnderlay: Double = 0.22
-        static let backLift: Double = 0.04
+        static let backLift: Double = 0.11
         static let sheen: [(width: CGFloat, opacity: Double)] = [(2.5, 0.02), (1.4, 0.04), (0.9, 0.06), (0.6, 0.12)]
         static let outlineOpacity: Double = 0.35
     }
@@ -107,10 +107,12 @@ struct PlaylistFolderCover: View {
         return Color.clear
             .background { if let tint { shape.fill(tint.opacity(Metrics.backTint)) } }
             .background { shape.fill(.white.opacity(Metrics.backLift)) }
-            .background(.ultraThinMaterial, in: shape)
             .overlay { shape.stroke(.black.opacity(Metrics.outlineOpacity), lineWidth: 1) }
             .overlay { backSheen(clippedTo: shape) }
             .frame(width: size.width * Metrics.backWidth, height: size.height * Metrics.backHeight)
+            .padding(1)
+            .drawingGroup()
+            .padding(-1)
             .padding(.bottom, size.height * Metrics.backBottom)
     }
 
@@ -177,7 +179,6 @@ struct PlaylistFolderCover: View {
             .overlay(alignment: .bottomLeading) {
                 if completion != .inProgress {
                     PlaylistSealStamp(isGold: completion == .perfect)
-                        .shadow(color: PlaylistStyle.gold.opacity(completion == .perfect ? 0.5 : 0), radius: 6)
                         .rotationEffect(.degrees(stampAngle))
                         .scaleEffect(0.85, anchor: .bottomLeading)
                         .padding(.leading, 10 + inset * (1 - 20 / max(height, 1)))

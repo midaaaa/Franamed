@@ -35,8 +35,7 @@ struct CachedRemoteImage: View {
             return
         }
         image = nil
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let loaded = UIImage(data: data) else { return }
+        guard let loaded = await FrameDownloads.shared.image(for: url) else { return }
         ImageCache.shared.store(loaded, for: url)
         withAnimation(.easeOut(duration: 0.2)) { image = loaded }
     }

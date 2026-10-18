@@ -155,14 +155,16 @@ final class PlaylistNavigationController: UINavigationController {
         pushViewController(makeDetail(id), animated: true)
     }
 
-    private func revealShelf(at id: String) -> CGFloat {
-        guard let shelf = viewControllers.first as? PlaylistHost, let scroll = shelf.scrollView,
-              let folder = flight.folderFrames[id] else { return 0 }
-        let rect = scroll.convert(flight.cellFrames[id] ?? folder, from: nil)
+    private var shelfScroll: UIScrollView? {
+        (viewControllers.first as? PlaylistHost)?.scrollView
+    }
+
+    private func revealShelf(at id: String) {
+        guard let scroll = shelfScroll, let folder = flight.folderFrames[id] else { return }
+        let rect = flight.cellFrames[id] ?? folder
         var inset = scroll.adjustedContentInset
         inset.bottom = max(inset.bottom, settledBottomInset)
-        let old = scroll.contentOffset.y
-        var y = old
+        var y = scroll.contentOffset.y
         let top = y + inset.top + Self.revealMargin
         let bottom = y + scroll.bounds.height - inset.bottom - Self.revealMargin
         if rect.minY < top {
@@ -173,14 +175,13 @@ final class PlaylistNavigationController: UINavigationController {
         let maxY = max(scroll.contentSize.height + inset.bottom - scroll.bounds.height, -inset.top)
         y = min(max(y, -inset.top), maxY)
         scroll.contentOffset.y = y
-        return y - old
     }
 
     private func flightPlan(for id: String, in container: UIView, isPush: Bool) -> PlaylistFlightPlan? {
-        let shift = isPush ? 0 : revealShelf(at: id)
-        guard let playlist = playlists.playlist(id: id),
+        if !isPush { revealShelf(at: id) }
+        guard let playlist = playlists.playlist(id: id), let scroll = shelfScroll,
               let folder = flight.folderFrames[id], let header = flight.headerFrames[id] else { return nil }
-        let folderRect = container.convert(folder, from: nil).offsetBy(dx: 0, dy: -shift)
+        let folderRect = container.convert(folder, from: scroll)
         let headerRect = container.convert(header, from: nil)
         guard folderRect.intersects(container.bounds) else { return nil }
         let posters = playlist.folderPosters(count: PlaylistFolderCover.posterCount)
@@ -209,7 +210,9 @@ final class PlaylistNavigationController: UINavigationController {
     }
 
     private func apply(_ sample: PlaylistFlightSample) {
-        flight.track.slots = sample.slots
+        guard let id = flight.flyingID, let folder = flight.folderFrames[id], let scroll = shelfScroll else { return }
+        let origin = scroll.convert(folder.origin, to: nil)
+        flight.track.slots = sample.slots.map { $0.offset(by: CGPoint(x: -origin.x, y: -origin.y)) }
         if flight.track.isCopyShown != sample.isCopyShown { flight.track.isCopyShown = sample.isCopyShown }
     }
 

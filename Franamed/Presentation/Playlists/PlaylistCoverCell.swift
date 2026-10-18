@@ -20,7 +20,7 @@ struct PlaylistCoverCell: View {
         VStack(spacing: 6) {
             PlaylistFolderCover(content: playlist.folderContent, addedCount: addedCount, isOpen: isLifted, isSelected: isSelected,
                                 posterOverride: posterOverride, hidesPosters: hidesPosters)
-                .onGlobalFrameChange { onFolderFrame?($0) }
+                .onShelfFrameChange { onFolderFrame?($0) }
             Text(playlist.title)
                 .font(PlaylistStyle.shelfTitle)
                 .multilineTextAlignment(.center)
