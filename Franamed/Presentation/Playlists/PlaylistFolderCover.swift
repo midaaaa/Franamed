@@ -68,10 +68,12 @@ struct PlaylistFolderCover: View {
         static let posterWidth: CGFloat = 0.3
         static let posterOffset: CGFloat = -0.07
         static let liftScale: CGFloat = 2
-        static let backTint: Double = 0.2
-        static let backUnderlay: Double = 0.15
+        static let backTint: Double = 0.32
         static let frontTint: Double = 0.35
         static let frontUnderlay: Double = 0.22
+        static let backLift: Double = 0.04
+        static let sheen: [(width: CGFloat, opacity: Double)] = [(2.5, 0.02), (1.4, 0.04), (0.9, 0.06), (0.6, 0.12)]
+        static let outlineOpacity: Double = 0.35
     }
 
     private var completion: PlaylistCompletion { content.completion }
@@ -103,10 +105,32 @@ struct PlaylistFolderCover: View {
     private func back(in size: CGSize) -> some View {
         let shape = PlaylistFolderBackShape(radius: Metrics.backRadius)
         return Color.clear
-            .background { if let tint { shape.fill(tint.opacity(Metrics.backUnderlay)) } }
-            .glassEffect(.regular.tint(tint?.opacity(Metrics.backTint)), in: shape)
+            .background { if let tint { shape.fill(tint.opacity(Metrics.backTint)) } }
+            .background { shape.fill(.white.opacity(Metrics.backLift)) }
+            .background(.ultraThinMaterial, in: shape)
+            .overlay { shape.stroke(.black.opacity(Metrics.outlineOpacity), lineWidth: 1) }
+            .overlay { backSheen(clippedTo: shape) }
             .frame(width: size.width * Metrics.backWidth, height: size.height * Metrics.backHeight)
             .padding(.bottom, size.height * Metrics.backBottom)
+    }
+
+    private func backSheen(clippedTo shape: PlaylistFolderBackShape) -> some View {
+        let topEdge = PlaylistFolderBackShape(radius: Metrics.backRadius, isTopEdge: true)
+        return ZStack {
+            ForEach(Metrics.sheen.indices, id: \.self) { index in
+                topEdge.stroke(.white.opacity(Metrics.sheen[index].opacity), lineWidth: Metrics.sheen[index].width * 2)
+            }
+        }
+        .clipShape(shape)
+        .mask {
+            HStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: Metrics.backRadius)
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: Metrics.backRadius)
+            }
+        }
     }
 
     private func posterStack(in size: CGSize) -> some View {
@@ -298,6 +322,7 @@ private struct PlaylistNewBadge: View {
 
 private struct PlaylistFolderBackShape: Shape {
     var radius: CGFloat = 12
+    var isTopEdge = false
 
     static func tabHeight(in height: CGFloat) -> CGFloat {
         min(14, height * 0.08)
@@ -316,6 +341,7 @@ private struct PlaylistFolderBackShape: Shape {
                       control2: CGPoint(x: rect.minX + tabWidth, y: top))
         path.addLine(to: CGPoint(x: rect.maxX - radius, y: top))
         path.addQuadCurve(to: CGPoint(x: rect.maxX, y: top + radius), control: CGPoint(x: rect.maxX, y: top))
+        if isTopEdge { return path }
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
         path.addQuadCurve(to: CGPoint(x: rect.maxX - radius, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY))
         path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
