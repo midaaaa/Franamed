@@ -108,6 +108,7 @@ struct PlaylistCompletionStamp: View {
     let seed: String
     var isPerfect = false
 
+    private static let side: CGFloat = 52
 
     private var pose: (angle: Double, x: CGFloat, y: CGFloat) {
         let hash = PlaylistSeed.hash(seed)
@@ -128,6 +129,7 @@ struct PlaylistCompletionStamp: View {
                 PlaylistInkStamp(ink: Accent.rewardInk)
             }
         }
+        .frame(width: Self.side, height: Self.side)
         .rotationEffect(.degrees(pose.angle))
         .scaleEffect(1 + (1 - progress) * 1.6)
         .opacity(progress)
