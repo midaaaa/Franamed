@@ -40,7 +40,7 @@ struct PlaylistDetailView: View {
             PlaylistPosterFan(posters: playlist.folderPosters(count: PlaylistFolderCover.posterCount),
                               isHidden: flight.flyingID == playlist.id)
                 .onGlobalFrameChange { [flight] in flight.headerFrames[playlist.id] = $0 }
-            HStack(alignment: .top, spacing: 16) {
+            HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     let added = playlists.addedCount(playlist.id)
                     if added > 0 {
