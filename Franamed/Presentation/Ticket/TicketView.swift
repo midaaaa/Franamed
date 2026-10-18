@@ -117,8 +117,8 @@ struct TicketView: View {
     }
 
     private func refreshPlayedPlaylist() {
-        guard viewModel.mode == .collection, let id = playlists.selectedID(for: viewModel.mediaType) else { return }
-        Task { await playlists.refresh(id) }
+        guard viewModel.mode == .collection else { return }
+        Task { await playlists.reloadProgress() }
     }
 
     // MARK: Card cardLayer

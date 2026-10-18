@@ -21,6 +21,8 @@ actor PlayedTitlesStore {
         self.round = round
     }
 
+    var hasPending: Bool { !pending.isEmpty }
+
     func all() async -> [String: PlayedTitle] {
         var result = await loadTitles() ?? [:]
         for finish in pending where result[finish.mediaKey] == nil {

@@ -19,6 +19,13 @@ actor CatalogIndexStore {
         self.latestVersion = latestVersion
     }
 
+    func cached() -> CatalogIndex? {
+        if index == nil {
+            index = cache.load()
+        }
+        return index
+    }
+
     func current() async throws -> CatalogIndex {
         if index == nil {
             index = cache.load()

@@ -54,14 +54,16 @@ final class PlaylistsViewModel: ObservableObject {
     @Published private(set) var loadState = LoadState.idle
 
     private var openedIDs: Set<String> = []
-    private let service: BackendPlaylistServiceProtocol
+    private let store: PlaylistsStore
+    private let catalogIndex: CatalogIndexStore
     private let imageBaseURL: String
     private let defaults: UserDefaults
 
     private static let lastSeenKey = "playlists.lastSeen"
 
     init(backend: Backend = AppFactory.makeBackend(), defaults: UserDefaults = .standard) {
-        service = backend.playlists
+        store = backend.playlistsStore
+        catalogIndex = backend.catalogIndex
         imageBaseURL = backend.configuration.imageBaseURL
         self.defaults = defaults
     }
@@ -167,33 +169,27 @@ final class PlaylistsViewModel: ObservableObject {
 
     func load() async {
         guard loadState != .loading else { return }
-        if playlists.isEmpty { loadState = .loading }
+        if playlists.isEmpty {
+            await reloadProgress()
+            if playlists.isEmpty { loadState = .loading }
+        }
         do {
-            let list = try await service.playlists(mediaType: nil)
-            let details = try await withThrowingTaskGroup(of: (Int, PlaylistDetail).self) { [service] group in
-                for (index, playlist) in list.enumerated() {
-                    group.addTask { (index, try await service.playlist(id: playlist.id)) }
-                }
-                var found: [(Int, PlaylistDetail)] = []
-                for try await pair in group { found.append(pair) }
-                return found.sorted { $0.0 < $1.0 }.map(\.1)
-            }
-            apply(details.map(resolvingImages))
-            loadState = .loaded
+            let contents = try await store.refresh()
+            show(contents, index: try? await catalogIndex.current())
         } catch {
             loadState = playlists.isEmpty ? .failed : .loaded
         }
     }
 
-    func refresh(_ id: String) async {
-        guard let detail = try? await service.playlist(id: id) else { return }
-        var next = playlists
-        if let index = next.firstIndex(where: { $0.id == id }) {
-            next[index] = resolvingImages(detail)
-        } else {
-            next.append(resolvingImages(detail))
-        }
-        apply(next)
+    func reloadProgress() async {
+        let contents = await store.cached()
+        guard contents.snapshot != nil else { return }
+        show(contents, index: await catalogIndex.cached())
+    }
+
+    private func show(_ contents: PlaylistsStore.Contents, index: CatalogIndex?) {
+        apply(PlaylistAssembly.details(from: contents, index: index, imageBaseURL: imageBaseURL))
+        loadState = .loaded
     }
 
     private func apply(_ next: [PlaylistDetail]) {
@@ -241,27 +237,6 @@ final class PlaylistsViewModel: ObservableObject {
             if !keys.isEmpty { result[playlist.id] = Set(keys) }
         }
         return result
-    }
-
-    private func resolvingImages(_ detail: PlaylistDetail) -> PlaylistDetail {
-        let items = detail.items.filter { $0.isPlayable || $0.state == .completed }.map { item in
-            PlaylistEntry(key: item.key, title: item.title, releaseYear: item.releaseYear,
-                          posterURL: resolvedImage(item.posterURL), approvedImages: item.approvedImages,
-                          state: item.state, attemptsUsed: item.attemptsUsed, wasCorrect: item.wasCorrect,
-                          playable: item.playable, addedAt: item.addedAt)
-        }
-        return PlaylistDetail(id: detail.id, title: detail.title, description: detail.description,
-                              coverImageURL: resolvedImage(detail.coverImageURL ?? detail.folderPosters?.first),
-                              mediaType: detail.mediaType, source: detail.source, allowUncurated: detail.allowUncurated,
-                              published: detail.published, createdAt: detail.createdAt, progress: detail.progress,
-                              items: items, folderPosters: detail.folderPosters?.compactMap(resolvedImage),
-                              orderByCurator: detail.orderByCurator)
-    }
-
-    private func resolvedImage(_ path: String?) -> String? {
-        guard let path else { return nil }
-        if path.hasPrefix("http") { return path }
-        return "\(imageBaseURL)\(TMDBImageSize.smallPath)\(path)"
     }
 }
 

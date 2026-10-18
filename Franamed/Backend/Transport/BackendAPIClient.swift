@@ -15,6 +15,7 @@ final class BackendAPIClient: Sendable {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let catalogVersion = Mutex<String?>(nil)
+    private let playlistsVersion = Mutex<String?>(nil)
 
     init(configuration: BackendConfiguration = .default, session: URLSession = .shared) {
         self.configuration = configuration
@@ -28,6 +29,10 @@ final class BackendAPIClient: Sendable {
 
     var latestCatalogVersion: String? {
         catalogVersion.withLock { $0 }
+    }
+
+    var latestPlaylistsVersion: String? {
+        playlistsVersion.withLock { $0 }
     }
 
     // MARK: Requests
@@ -117,6 +122,9 @@ final class BackendAPIClient: Sendable {
 
         if let version = http.value(forHTTPHeaderField: "X-Catalog-Version") {
             catalogVersion.withLock { $0 = version }
+        }
+        if let version = http.value(forHTTPHeaderField: "X-Playlists-Version") {
+            playlistsVersion.withLock { $0 = version }
         }
 
         guard (200...299).contains(http.statusCode) || http.statusCode == 304 else {

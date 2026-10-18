@@ -83,11 +83,17 @@ final class MediaFacade: MediaFacadeProtocol {
     }
 
     func finishRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?, playlistId: String?) async -> RoundStats? {
+        let mediaKey = "\(mediaType.rawValue)_\(tmdbId)"
+        let playedAt = Date.now
+        if let playlistId {
+            await backend.playlistsStore.record(playlistId: playlistId, mediaKey: mediaKey, attemptsUsed: solvedAtFrame ?? frameCount,
+                                                wasCorrect: solvedAtFrame != nil, at: playedAt)
+        }
         let finish = await backend.playedTitles.record(PendingFinish(
-            mediaKey: "\(mediaType.rawValue)_\(tmdbId)",
+            mediaKey: mediaKey,
             frameCount: frameCount,
             solvedAtFrame: solvedAtFrame,
-            playedAt: .now,
+            playedAt: playedAt,
             playlistId: playlistId
         ))
         return finish?.stats.map { RoundStats(players: $0.players, solvedAtFrame: $0.solvedAtFrame) }

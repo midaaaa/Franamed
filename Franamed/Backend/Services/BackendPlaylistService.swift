@@ -31,6 +31,14 @@ final class BackendPlaylistService: BackendPlaylistServiceProtocol {
         try await client.get("/v1/playlists/\(id)", query: [URLQueryItem(name: "order", value: "player")])
     }
 
+    func snapshot(ifNoneMatch version: String?) async throws -> PlaylistsSnapshot? {
+        try await client.get("/v1/playlists/snapshot", ifNoneMatch: version)
+    }
+
+    func answers() async throws -> PlaylistAnswers {
+        try await client.get("/v1/playlists/progress")
+    }
+
     func create(title: String, description: String?, mediaType: MediaType) async throws -> Playlist {
         struct Payload: Encodable, Sendable {
             let title: String

@@ -10,6 +10,8 @@ import Foundation
 protocol BackendPlaylistServiceProtocol: Sendable {
     func playlists(mediaType: MediaType?, includeUnpublished: Bool) async throws -> [Playlist]
     func playlist(id: String) async throws -> PlaylistDetail
+    func snapshot(ifNoneMatch version: String?) async throws -> PlaylistsSnapshot?
+    func answers() async throws -> PlaylistAnswers
 
     func create(title: String, description: String?, mediaType: MediaType) async throws -> Playlist
     func setPublished(id: String, published: Bool) async throws -> Playlist

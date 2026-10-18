@@ -348,14 +348,14 @@ struct RoundView: View {
                 if index == Self.stampSteps.count - 1 { Haptics.shared.play(.stamp) }
                 try? await Task.sleep(for: Self.stampStepDelay)
             }
-            await playlists.refresh(playlistID)
+            await playlists.reloadProgress()
             playlists.revealStamp(playlistID)
         }
     }
 
     private func refreshPlaylist() {
-        guard let playlistID else { return }
-        Task { await playlists.refresh(playlistID) }
+        guard playlistID != nil else { return }
+        Task { await playlists.reloadProgress() }
     }
 
     // MARK: Share
