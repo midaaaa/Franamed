@@ -191,6 +191,9 @@ struct RoundView: View {
         .onChange(of: viewModel.searchResults) { _, _ in
             pendingAnimatedHeightCatchUp = true
         }
+        .onChange(of: viewModel.recordedFinishes) { _, _ in
+            refreshPlaylist()
+        }
         .gesture(
             DragGesture().onChanged { value in
                 guard value.translation.height > 20, isAnswerFieldFocused else { return }
@@ -275,6 +278,11 @@ struct RoundView: View {
 
     private var playlistTicket: PlaylistTicket? {
         playlistID.flatMap(playlists.ticket(id:))
+    }
+
+    private func refreshPlaylist() {
+        guard let playlistID else { return }
+        Task { await playlists.refresh(playlistID) }
     }
 
     // MARK: Share

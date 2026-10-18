@@ -34,6 +34,7 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var details: MediaDetails?
     @Published private(set) var genreNames: [String] = []
     @Published private(set) var stats: RoundStats?
+    @Published private(set) var recordedFinishes = 0
     private var detailsTask: Task<Void, Never>?
     private let mediaFacade: MediaFacadeProtocol
 
@@ -132,7 +133,9 @@ final class RoundViewModel: ObservableObject {
         guard source == .curated || playlistId != nil else { return }
         Task { [weak self, mediaFacade, mediaType, frameCount, playlistId] in
             let stats = await mediaFacade.finishRound(mediaType: mediaType, tmdbId: item.id, frameCount: frameCount, solvedAtFrame: solvedAtFrame, playlistId: playlistId)
-            guard let self, mediaItemWithBackdrops?.item.id == item.id else { return }
+            guard let self else { return }
+            recordedFinishes += 1
+            guard mediaItemWithBackdrops?.item.id == item.id else { return }
             self.stats = stats
         }
     }
