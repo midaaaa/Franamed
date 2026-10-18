@@ -18,7 +18,12 @@ final class PlaylistNavigationController: UINavigationController {
     private var popInteraction: UIPercentDrivenInteractiveTransition?
     private var trackLink: CADisplayLink?
     private var sampleFlight: (() -> PlaylistFlightSample)?
-    private(set) var isTransitioning = false
+    private(set) var isTransitioning = false {
+        didSet {
+            guard isTransitioning != oldValue else { return }
+            view.subviews.forEach { $0.isUserInteractionEnabled = !isTransitioning }
+        }
+    }
     var settledBottomInset: CGFloat = 0
     private lazy var popPan = UIPanGestureRecognizer(target: self, action: #selector(handlePopPan(_:)))
 
