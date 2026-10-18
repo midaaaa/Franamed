@@ -189,7 +189,7 @@ final class PlaylistsViewModel: ObservableObject {
 
     private func show(_ contents: PlaylistsStore.Contents, index: CatalogIndex?) {
         apply(PlaylistAssembly.details(from: contents, index: index, imageBaseURL: imageBaseURL))
-        loadState = .loaded
+        if loadState != .loaded { loadState = .loaded }
     }
 
     private func apply(_ next: [PlaylistDetail]) {
@@ -199,11 +199,13 @@ final class PlaylistsViewModel: ObservableObject {
         for playlist in next where seen[playlist.id] == nil { seen[playlist.id] = now }
         defaults.set(seen, forKey: Self.lastSeenKey)
 
-        playlists = next
+        if playlists != next { playlists = next }
+        var nextSelected: [MediaType: String] = [:]
         for mediaType in MediaType.allCases {
             let stored = defaults.string(forKey: Self.selectionKey(mediaType))
-            selectedIDs[mediaType] = next.first { $0.id == stored && $0.mediaType == mediaType }?.id
+            nextSelected[mediaType] = next.first { $0.id == stored && $0.mediaType == mediaType }?.id
         }
+        if selectedIDs != nextSelected { selectedIDs = nextSelected }
         var nextStamps: [String: Bool] = [:]
         for playlist in next where playlist.isFinished {
             let isGold = playlist.completion == .perfect
@@ -213,8 +215,9 @@ final class PlaylistsViewModel: ObservableObject {
                 nextStamps[playlist.id] = wasGold && isGold
             }
         }
-        stamps = nextStamps
-        newKeys = Self.newKeys(in: next, seen: seen)
+        if stamps != nextStamps { stamps = nextStamps }
+        let nextNewKeys = Self.newKeys(in: next, seen: seen)
+        if newKeys != nextNewKeys { newKeys = nextNewKeys }
     }
 
     // MARK: Helpers

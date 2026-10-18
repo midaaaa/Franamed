@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct PlaylistDetail: Codable, Sendable, Identifiable {
+struct PlaylistDetail: Codable, Sendable, Identifiable, Equatable {
     let id: String
     let title: String
     let description: String?
