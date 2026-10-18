@@ -7,6 +7,7 @@
 import { APIError } from "./http.js";
 import { mediaKey } from "./media.js";
 import { markIndexDirtyStatement } from "./catalogIndex.js";
+import { markPlaylistsDirtyIfMovedStatement } from "./playlistsSnapshot.js";
 
 const TMDB_ORIGIN = "https://api.themoviedb.org/3";
 
@@ -133,6 +134,11 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
     const key = mediaKey(mediaType, tmdbId);
     const now = Date.now();
     const poster = bestPoster(details);
+    const title = mediaType === "movie" ? details.title : details.name;
+    const year = releaseYear(details, mediaType);
+
+    // Re-importing a title already in a playlist; compared before the upsert.
+    await markPlaylistsDirtyIfMovedStatement(env, key, { title, releaseYear: year, posterURL: poster, fillPoster: true }).run();
 
     await env.DB.prepare(
         `INSERT INTO media_items (key, tmdb_id, media_type, title, original_title, release_year,
@@ -154,9 +160,9 @@ export async function importMediaItem(env, mediaType, tmdbId, { addedBy = null, 
         key,
         tmdbId,
         mediaType,
-        mediaType === "movie" ? details.title : details.name,
+        title,
         mediaType === "movie" ? details.original_title : details.original_name,
-        releaseYear(details, mediaType),
+        year,
         details.original_language || null,
         details.popularity || 0,
         poster,

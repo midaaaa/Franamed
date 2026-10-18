@@ -92,9 +92,10 @@ exactly six approved frames has no spares — which is why the curation target
 | POST | `/v1/curation/images/{id}/lock`, `/dismiss-disputes` | moderator |
 | GET | `/v1/curation/reports`, `/contested` | moderator |
 | GET/POST | `/v1/playlists` | signed in / moderator |
+| GET | `/v1/playlists/snapshot` (ETag, 304), `/progress` | signed in |
 | GET/PATCH | `/v1/playlists/{id}` | signed in / moderator |
 | PUT | `/v1/playlists/{id}/items` | moderator |
-| POST | `/v1/playlists/{id}/progress`, `/reset` | signed in |
+| POST | `/v1/playlists/{id}/reset` | signed in |
 | GET/POST/DELETE | `/v1/profile/...` | signed in |
 | GET | `/v1/admin/config` | signed in |
 | PATCH | `/v1/admin/config`, POST `/v1/admin/roles` | admin |

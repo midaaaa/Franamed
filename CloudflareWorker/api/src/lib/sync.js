@@ -10,6 +10,7 @@
 import { refreshMediaCounters } from "./media.js";
 import { cleanBackdrops, releaseYear, tmdbFetch } from "./tmdb.js";
 import { INDEX_STEPS, markIndexDirty, stepDown } from "./catalogIndex.js";
+import { markPlaylistsDirtyIfMovedStatement } from "./playlistsSnapshot.js";
 import { replaceMissingDailyFrames } from "./daily.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -106,14 +107,17 @@ export async function syncTitle(env, item, { budget = { requests: OUTSIDE_REQUES
     const year = releaseYear(details, item.media_type);
     const voteAverage = details.vote_average ?? 0;
     const voteCount = details.vote_count ?? 0;
+    const title = (item.media_type === "movie" ? details.title : details.name) || item.title;
 
+    // Ahead of the update, which it compares against.
+    statements.push(markPlaylistsDirtyIfMovedStatement(env, key, { title, releaseYear: year }));
     statements.push(env.DB.prepare(
         `UPDATE media_items
          SET title = ?, original_title = ?, release_year = ?, original_language = ?, popularity = ?,
              vote_average = ?, vote_count = ?${complete ? ", last_synced_at = ?" : ""}
          WHERE key = ?`
     ).bind(
-        (item.media_type === "movie" ? details.title : details.name) || item.title,
+        title,
         (item.media_type === "movie" ? details.original_title : details.original_name) || item.original_title,
         year,
         details.original_language || null,

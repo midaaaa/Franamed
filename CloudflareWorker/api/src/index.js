@@ -13,6 +13,7 @@ import { handlePlaylists } from "./routes/playlists.js";
 import { handleProfile } from "./routes/profile.js";
 import { handleAdmin } from "./routes/admin.js";
 import { CATALOG_VERSION_HEADER, currentIndexVersion } from "./lib/catalogIndex.js";
+import { PLAYLISTS_VERSION_HEADER, currentPlaylistsVersion } from "./lib/playlistsSnapshot.js";
 import { runScheduled } from "./lib/scheduled.js";
 
 const HANDLERS = {
@@ -48,7 +49,7 @@ export default {
         try {
             const response = await handler(request, env, segments.slice(2), url, ctx);
             if (!response) return json({ error: "not_found", message: "No route matches this method and path" }, 404);
-            return withCatalogVersion(env, response);
+            return withVersions(env, response);
         } catch (error) {
             if (error instanceof APIError) {
                 return json({ error: error.code, message: error.message }, error.status);
@@ -66,14 +67,20 @@ export default {
     }
 };
 
-// The phone compares this with the index it holds; no request of its own.
-async function withCatalogVersion(env, response) {
-    if (response.headers.has(CATALOG_VERSION_HEADER)) return response;
-    try {
-        const version = await currentIndexVersion(env);
-        if (version) response.headers.set(CATALOG_VERSION_HEADER, version);
-    } catch (error) {
-        console.error("Catalog version unavailable", error?.message);
+// The phone compares these with the index and snapshot it holds; no request
+// of its own.
+async function withVersions(env, response) {
+    for (const [header, current] of [
+        [CATALOG_VERSION_HEADER, currentIndexVersion],
+        [PLAYLISTS_VERSION_HEADER, currentPlaylistsVersion]
+    ]) {
+        if (response.headers.has(header)) continue;
+        try {
+            const version = await current(env);
+            if (version) response.headers.set(header, version);
+        } catch (error) {
+            console.error(`${header} unavailable`, error?.message);
+        }
     }
     return response;
 }

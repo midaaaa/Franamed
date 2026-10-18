@@ -215,6 +215,8 @@ CREATE TABLE IF NOT EXISTS playlist_items (
     added_at    INTEGER,                                         -- NULL for titles that predate the column
     PRIMARY KEY (playlist_id, media_key)
 );
+-- "Is this title in any playlist": a sync asks it before flagging the snapshot.
+CREATE INDEX IF NOT EXISTS idx_playlist_items_media ON playlist_items(media_key);
 
 -- Absence of a row means "notStarted" — no need to write a row per movie up front.
 CREATE TABLE IF NOT EXISTS playlist_progress (
@@ -294,6 +296,13 @@ CREATE INDEX IF NOT EXISTS idx_watched_stats ON watched_media(media_key, solved_
 -- version is the hash of the body, so an unchanged catalogue writes nothing.
 CREATE TABLE IF NOT EXISTS catalog_index (
     version    TEXT PRIMARY KEY,                                 -- v1-<first 16 hex of SHA-256>
+    body       TEXT    NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+-- The same for published playlists and their titles, versioned "p1-".
+CREATE TABLE IF NOT EXISTS playlists_snapshot (
+    version    TEXT PRIMARY KEY,                                 -- p1-<first 16 hex of SHA-256>
     body       TEXT    NOT NULL,
     created_at INTEGER NOT NULL
 );

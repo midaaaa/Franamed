@@ -16,7 +16,7 @@ const { refreshMediaCounters, buildCatalogQuery } = await import(`${API}src/lib/
 const { reporterWeight } = await import(`${API}src/lib/limits.js`);
 const { selectRoundFrames, seededRandom } = await import(`${API}src/lib/frames.js`);
 const { stepDown } = await import(`${API}src/lib/catalogIndex.js`);
-const { syncDueTitles } = await import(`${API}src/lib/sync.js`);
+const { syncDueTitles, syncTitle } = await import(`${API}src/lib/sync.js`);
 const { autoScheduleTomorrow } = await import(`${API}src/lib/daily.js`);
 const { NIGHTLY_CRON } = await import(`${API}src/lib/scheduled.js`);
 
@@ -150,11 +150,11 @@ globalThis.fetch = async (url, init) => {
     throw new Error(`unexpected fetch ${url}`);
 };
 
-async function call(uid, method, path, body) {
+async function call(uid, method, path, body, headers = {}) {
     const token = await signJWT({ sub: uid }, SECRET, 900);
     const request = new Request(`https://api.test${path}`, {
         method,
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...headers },
         body: body ? JSON.stringify(body) : undefined
     });
     const response = await worker.fetch(request, env, {});
@@ -972,6 +972,168 @@ delete env.REQUEST_LIMITER;
 check("the fourth request in the window is refused", JSON.stringify(statuses) === "[200,200,200,429]", JSON.stringify(statuses));
 check("keyed by account", [...hits.keys()].every((key) => key === "REQUEST_LIMITER:mod"));
 
+console.log("playlists snapshot");
+{
+    db.db.prepare("INSERT INTO users (uid, role, is_anonymous, created_at) VALUES ('fan', 'user', 1, ?)").run(now);
+    const config = (key) => db.db.prepare("SELECT value FROM app_config WHERE key = ?").get(key)?.value;
+    const version = () => config("playlistsSnapshotVersion");
+    const dirty = () => config("playlistsSnapshotDirty") !== undefined;
+    const body = () => JSON.parse(db.db.prepare("SELECT body FROM playlists_snapshot WHERE version = ?").get(version()).body);
+    const entry = (id) => body().playlists.find((item) => item.id === id);
+    // A rebuild clears the flag, so a flag set by hand tells whether one ran.
+    const rebuilds = async (work) => {
+        db.db.prepare("INSERT INTO app_config (key, value) VALUES ('playlistsSnapshotDirty', '1') ON CONFLICT (key) DO UPDATE SET value = '1'").run();
+        await work();
+        return !dirty();
+    };
+
+    res = await call("fan", "GET", "/v1/playlists/snapshot");
+    const first = version();
+    check("the first request builds the snapshot", res.status === 200 && /^p1-[0-9a-f]{16}$/.test(first ?? "") && res.body.version === first
+        && res.headers.get("X-Playlists-Version") === first, JSON.stringify(res.body).slice(0, 200));
+    const publishedIds = db.db.prepare("SELECT id FROM playlists WHERE published = 1 ORDER BY created_at DESC, id").all().map((r) => r.id);
+    check("it lists exactly the published playlists", publishedIds.length > 0
+        && JSON.stringify(res.body.playlists.map((item) => item.id)) === JSON.stringify(publishedIds));
+    check("with catalogue fields only", res.body.playlists.every((item) =>
+        Object.keys(item).sort().join() === "coverImageURL,createdAt,description,folderPosters,id,items,mediaType,orderByCurator,title"
+        && item.items.every((i) => Object.keys(i).sort().join() === "addedAt,key,posterURL,releaseYear,title")), JSON.stringify(res.body.playlists[0]));
+    // Counts reads of the body row while a request runs.
+    const bodyReads = async (work) => {
+        const prepare = db.prepare;
+        let reads = 0;
+        db.prepare = (sql) => {
+            if (/FROM playlists_snapshot/.test(sql) && /^\s*SELECT/i.test(sql)) reads += 1;
+            return prepare.call(db, sql);
+        };
+        try {
+            return { result: await work(), reads: () => reads };
+        } finally {
+            db.prepare = prepare;
+        }
+    };
+    let probe = await bodyReads(() => call("fan", "GET", "/v1/playlists/snapshot", null, { "If-None-Match": `"${first}"` }));
+    res = probe.result;
+    check("the held version is a 304", res.status === 304 && res.body === null && res.headers.get("ETag") === `"${first}"`);
+    check("answered without reading the body", probe.reads() === 0);
+    probe = await bodyReads(() => call("fan", "GET", "/v1/playlists/snapshot"));
+    check("a phone without a version reads it", probe.result.status === 200 && probe.reads() === 1);
+    res = await call("fan", "GET", "/v1/playlists/snapshot", null, { "If-None-Match": "\"p1-0000000000000000\"" });
+    check("another version gets the body", res.status === 200 && res.body.version === first);
+    res = await call("fan", "GET", "/v1/profile");
+    check("every response carries the playlists version", res.headers.get("X-Playlists-Version") === first
+        && res.headers.get("Access-Control-Expose-Headers").includes("X-Playlists-Version"));
+
+    const members = db.db.prepare("SELECT key FROM media_items WHERE poster_url IS NOT NULL AND media_type = 'movie' ORDER BY key LIMIT 4").all().map((r) => r.key);
+    let draft;
+    check("creating a draft leaves the snapshot alone", !(await rebuilds(async () => {
+        draft = await call("mod", "POST", "/v1/playlists", { title: "Снимок", mediaType: "movie" });
+    })));
+    const id = draft.body.id;
+    check("so does filling and renaming it", !(await rebuilds(async () => {
+        await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: members });
+        await call("mod", "PATCH", `/v1/playlists/${id}`, { title: "Снимок 2" });
+    })) && !entry(id));
+
+    const steps = [
+        ["publishing", "PATCH", { published: true }, () => entry(id)?.title === "Снимок 2" && entry(id).items.length === members.length],
+        ["a new title", "PATCH", { title: "Снимок 3" }, () => entry(id)?.title === "Снимок 3"],
+        ["a new description", "PATCH", { description: "Описание" }, () => entry(id)?.description === "Описание"],
+        ["a new cover", "PATCH", { coverImageURL: "https://img.test/cover.jpg" }, () => entry(id)?.coverImageURL === "https://img.test/cover.jpg"],
+        ["a curator's folder", "PATCH", { folderKeys: [members[3]] }, () => JSON.stringify(entry(id)?.folderPosters) === JSON.stringify([row(members[3]).poster_url])],
+        ["the curator's order", "PATCH", { orderByCurator: true }, () => entry(id)?.orderByCurator === true],
+        ["new contents", "PUT", { mediaKeys: [...members].reverse() }, () => entry(id)?.items.map((i) => i.key).join() === [...members].reverse().join()],
+        ["unpublishing", "PATCH", { published: false }, () => !entry(id)]
+    ];
+    for (const [label, method, payload, holds] of steps) {
+        const before = version();
+        const ran = await rebuilds(() => call("mod", method, method === "PUT" ? `/v1/playlists/${id}/items` : `/v1/playlists/${id}`, payload));
+        check(`${label} rebuilds the snapshot at once`, ran && version() !== before && holds(), JSON.stringify(entry(id)));
+    }
+    check("an unchanged save does not", !(await rebuilds(() => call("mod", "PATCH", `/v1/playlists/${id}`, { description: "Описание" }))));
+    await call("mod", "PATCH", `/v1/playlists/${id}`, { published: true });
+    check("nor does re-saving the same contents", !(await rebuilds(() => call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: [...members].reverse() }))));
+    // A rebuild that fails after the save is left to the cron, not a 500.
+    db.db.exec("ALTER TABLE playlists_snapshot RENAME TO playlists_snapshot_away");
+    const errors = console.error;
+    console.error = () => {};
+    db.db.prepare("DELETE FROM app_config WHERE key = 'playlistsSnapshotDirty'").run();
+    res = await call("mod", "PATCH", `/v1/playlists/${id}`, { title: "Снимок 4" });
+    console.error = errors;
+    db.db.exec("ALTER TABLE playlists_snapshot_away RENAME TO playlists_snapshot");
+    check("a failed rebuild still saves and answers", res.status === 200 && res.body.title === "Снимок 4", JSON.stringify(res.body));
+    check("and flags the snapshot", dirty() && entry(id)?.title === "Снимок 3");
+    await worker.scheduled({ cron: "*/30 * * * *" }, env, {});
+    check("which the cron rebuilds", !dirty() && entry(id)?.title === "Снимок 4");
+    check("an answer header follows the rebuild", (await call("fan", "GET", "/v1/profile")).headers.get("X-Playlists-Version") === version());
+
+    // Title fields change in the background, and the cron carries them over.
+    db.db.prepare("DELETE FROM app_config WHERE key = 'playlistsSnapshotDirty'").run();
+    await call("mod", "PATCH", `/v1/catalog/items/${members[0]}`, { posterURL: row(members[0]).poster_url });
+    check("the same poster flags nothing", !dirty());
+    await call("mod", "PATCH", `/v1/catalog/items/${members[0]}`, { publishMode: "off" });
+    await call("mod", "PATCH", `/v1/catalog/items/${members[0]}`, { publishMode: "auto" });
+    check("nor does unpublishing a member", !dirty());
+    await call("mod", "PATCH", `/v1/catalog/items/${members[0]}`, { posterURL: "https://img.test/new-poster.jpg" });
+    check("a member's new poster flags the snapshot", dirty() && entry(id).items.find((i) => i.key === members[0]).posterURL !== "https://img.test/new-poster.jpg");
+    await worker.scheduled({ cron: "*/30 * * * *" }, env, {});
+    check("and the cron rebuilds it", !dirty() && entry(id).items.find((i) => i.key === members[0]).posterURL === "https://img.test/new-poster.jpg");
+    await call("mod", "PATCH", `/v1/catalog/items/movie_106`, { posterURL: "https://img.test/other.jpg" });
+    check("a title in no playlist flags nothing", !dirty());
+
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: [...members, "movie_7777"] });
+    db.db.prepare("DELETE FROM app_config WHERE key = 'playlistsSnapshotDirty'").run();
+    await syncTitle(env, row("movie_7777"));
+    check("a sync that moves nothing flags nothing", !dirty());
+    tmdbTitles.set(7777, { ...tmdbTitles.get(7777), title: "Синк 3" });
+    await syncTitle(env, row("movie_7777"));
+    check("a sync that renames a member flags it", dirty() && row("movie_7777").title === "Синк 3");
+    await worker.scheduled({ cron: "*/30 * * * *" }, env, {});
+    check("and the cron carries the name over", entry(id).items.find((i) => i.key === "movie_7777")?.title === "Синк 3");
+    const quiet = version();
+    await worker.scheduled({ cron: "*/30 * * * *" }, env, {});
+    check("a clean snapshot is not rebuilt", version() === quiet && !dirty());
+
+    // Progress: one player's rows, never another's.
+    db.db.prepare("INSERT INTO playlist_progress (uid, playlist_id, media_key, state, attempts_used, was_correct, updated_at) VALUES ('fan', ?, ?, 'completed', 2, 1, 50)").run(id, members[1]);
+    db.db.prepare("INSERT INTO playlist_progress (uid, playlist_id, media_key, state, attempts_used, was_correct, updated_at) VALUES ('fan', ?, ?, 'inProgress', 1, NULL, 51)").run(id, members[2]);
+    db.db.prepare("INSERT INTO playlist_progress (uid, playlist_id, media_key, state, attempts_used, was_correct, updated_at) VALUES ('me', ?, ?, 'completed', 6, 0, 52)").run(id, members[1]);
+    db.db.prepare("INSERT INTO playlist_completions (uid, playlist_id, times_completed, completed_at) VALUES ('fan', ?, 2, NULL)").run(id);
+    db.db.prepare("INSERT INTO playlist_completions (uid, playlist_id, times_completed, completed_at) VALUES ('me', ?, 1, 60)").run(id);
+    res = await call("fan", "GET", "/v1/playlists/progress");
+    check("progress lists the player's own answers", res.status === 200
+        && JSON.stringify(res.body.answers) === JSON.stringify([{ playlistId: id, mediaKey: members[1], attemptsUsed: 2, wasCorrect: true, updatedAt: 50 }]),
+        JSON.stringify(res.body));
+    check("and completions", JSON.stringify(res.body.completions) === JSON.stringify([{ playlistId: id, timesCompleted: 2, completedAt: null }]));
+    res = await call("me", "GET", "/v1/playlists/progress");
+    check("another player sees theirs", res.body.answers.length === 1 && res.body.answers[0].wasCorrect === false
+        && res.body.completions.length === 1 && res.body.completions[0].completedAt === 60);
+
+    // The old list keeps its shape and its numbers, now read in one batch.
+    for (const [uid, query] of [["fan", ""], ["me", "?includeUnpublished=true"], ["me", "?mediaType=tv"]]) {
+        res = await call(uid, "GET", `/v1/playlists${query}`);
+        let same = res.status === 200;
+        for (const item of res.body.playlists) {
+            const detail = (await call(uid, "GET", `/v1/playlists/${item.id}`)).body;
+            const { items, progress, folderPosters, ...rest } = detail;
+            const playable = items.filter((i) => i.playable).map((i) => i.addedAt).sort();
+            same &&= Object.keys(item).sort().join() === "allowUncurated,coverImageURL,createdAt,description,folderAuto,folderKeys,folderPosters,id,itemsAddedAt,mediaType,orderByCurator,progress,published,source,title"
+                && JSON.stringify(item.progress) === JSON.stringify(progress)
+                && JSON.stringify(item.folderPosters) === JSON.stringify(folderPosters)
+                && JSON.stringify([...item.itemsAddedAt].sort()) === JSON.stringify(playable)
+                && Object.entries(rest).every(([key, value]) => JSON.stringify(item[key]) === JSON.stringify(value));
+        }
+        check(`the old list keeps its shape (${uid}${query})`, same, JSON.stringify(res.body.playlists[0]));
+    }
+    res = await call("fan", "GET", "/v1/playlists");
+    check("with the player's progress in it", res.body.playlists.find((item) => item.id === id)?.progress.answered === 1
+        && res.body.playlists.find((item) => item.id === id).progress.timesCompleted === 2);
+    check("drafts stay out of a player's list", !res.body.playlists.some((item) => !item.published));
+
+    const before = version();
+    check("deleting a published playlist rebuilds the snapshot", await rebuilds(() => call("me", "DELETE", `/v1/playlists/${id}`))
+        && version() !== before && !entry(id));
+}
+
 // ------------------------------------------------------------------ plans
 
 console.log("query plans");
@@ -994,7 +1156,12 @@ const hot = {
     titleStats: [`SELECT solved_at_frame AS frame, COUNT(*) AS n FROM watched_media
                   WHERE media_key = ? AND result IS NOT NULL GROUP BY solved_at_frame`, ["movie_101"]],
     dayStats: [`SELECT CASE WHEN was_correct = 1 THEN attempts_used END AS frame, COUNT(*) AS n
-                FROM daily_results WHERE date = ? GROUP BY was_correct, attempts_used`, ["2026-01-01"]]
+                FROM daily_results WHERE date = ? GROUP BY was_correct, attempts_used`, ["2026-01-01"]],
+    playlistProgress: [`SELECT playlist_id, media_key, attempts_used, was_correct, updated_at
+                        FROM playlist_progress WHERE uid = ? AND state = 'completed'`, ["plain"]],
+    playlistCompletions: ["SELECT playlist_id, times_completed, completed_at FROM playlist_completions WHERE uid = ?", ["plain"]],
+    playlistMember: [`SELECT 1 FROM media_items m WHERE m.key = ? AND (m.title IS NOT ?)
+                      AND EXISTS (SELECT 1 FROM playlist_items pi WHERE pi.media_key = m.key)`, ["movie_101", "x"]]
 };
 for (const [name, filters] of Object.entries({
     roundPick: baseFilters,
@@ -1008,7 +1175,7 @@ for (const [name, [sql, values]] of Object.entries(hot)) {
     const text = db.plan(sql, values).join(" | ");
     const scansFrames = /SCAN (i|media_images)\b/.test(text);
     const sorts = /TEMP B-TREE FOR (ORDER|GROUP) BY/.test(text);
-    const scansPlayers = /SCAN (watched_media|daily_results)\b/.test(text);
+    const scansPlayers = /SCAN (watched_media|daily_results|playlist_progress|playlist_completions|pi)\b/.test(text);
     const fullItems = /SCAN m\b(?! USING)/.test(text) || /SCAN media_items\b(?! USING)/.test(text);
     check(`${name}: no frame scan, no sort, no bare table scan`, !scansFrames && !sorts && !fullItems && !scansPlayers, `\n      ${text}`);
 }

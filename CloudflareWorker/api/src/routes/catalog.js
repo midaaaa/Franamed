@@ -19,6 +19,7 @@ import { fetchDiscoverPage, fetchPosterOptions, importMediaItem } from "../lib/t
 import { limitByUser } from "../lib/limits.js";
 import { CATALOG_VERSION_HEADER, loadIndex, rebuildIndex } from "../lib/catalogIndex.js";
 import { syncTitle } from "../lib/sync.js";
+import { markPlaylistsDirtyIfMovedStatement } from "../lib/playlistsSnapshot.js";
 
 const MAX_BULK_IMPORT = 20;
 const MANUAL_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
@@ -216,7 +217,10 @@ export async function handleCatalog(request, env, segments, url) {
         const body = await readJSON(request);
 
         if (typeof body.posterURL === "string" || body.posterURL === null) {
-            await env.DB.prepare("UPDATE media_items SET poster_url = ?, poster_auto = 0 WHERE key = ?").bind(body.posterURL, key).run();
+            await env.DB.batch([
+                markPlaylistsDirtyIfMovedStatement(env, key, { posterURL: body.posterURL }),
+                env.DB.prepare("UPDATE media_items SET poster_url = ?, poster_auto = 0 WHERE key = ?").bind(body.posterURL, key)
+            ]);
         }
         if (body.publishMode !== undefined) {
             const mode = requireEnum(body, "publishMode", PUBLISH_MODES);

@@ -1,11 +1,12 @@
 // What runs on the cron triggers. Each step is bounded so one run stays under
 // the 50 D1 queries and 50 outside requests a free invocation gets, and the
 // steps go cheapest and most important first in case a run falls short. What
-// the sync changes reaches the index on the next run.
+// the sync changes reaches the index and the playlists snapshot on the next run.
 
 import { pruneRefreshTokens } from "./auth.js";
 import { rebuildIndexIfDirty } from "./catalogIndex.js";
 import { autoScheduleTomorrow } from "./daily.js";
+import { rebuildPlaylistsIfDirty } from "./playlistsSnapshot.js";
 import { syncDueTitles } from "./sync.js";
 import { backfillRatings } from "./tmdb.js";
 
@@ -19,6 +20,7 @@ export async function runScheduled(env, event = {}) {
 
     await step("daily", () => autoScheduleTomorrow(env));
     await step("index", () => rebuildIndexIfDirty(env));
+    await step("playlists", () => rebuildPlaylistsIfDirty(env));
     // Both spend most of a run's queries, so a run does one or the other.
     const backfilled = await step("ratings", () => backfillRatings(env));
     if (!backfilled) await step("sync", () => syncDueTitles(env));

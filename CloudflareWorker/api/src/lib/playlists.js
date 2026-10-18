@@ -7,7 +7,7 @@
 // to be cleaned up on edit. The catalogue side and the player side are read
 // separately and matched here, so players can move to a database of their own.
 export async function progressSummary(env, uid, playlistId) {
-    const [playable, progress] = await env.DB.batch([
+    const [playable, progress, completion] = await env.DB.batch([
         env.DB.prepare(
             `SELECT pi.media_key FROM playlist_items pi
              JOIN media_items m ON m.key = pi.media_key
@@ -15,26 +15,31 @@ export async function progressSummary(env, uid, playlistId) {
         ).bind(playlistId),
         env.DB.prepare(
             "SELECT media_key, was_correct FROM playlist_progress WHERE uid = ? AND playlist_id = ? AND state = 'completed'"
+        ).bind(uid, playlistId),
+        env.DB.prepare(
+            "SELECT times_completed, completed_at FROM playlist_completions WHERE uid = ? AND playlist_id = ?"
         ).bind(uid, playlistId)
     ]);
 
-    const keys = new Set(playable.results.map((item) => item.media_key));
-    const answeredRows = progress.results.filter((item) => keys.has(item.media_key));
-    const row = {
-        total: keys.size,
-        answered: answeredRows.length,
-        correct: answeredRows.filter((item) => item.was_correct === 1).length
-    };
+    return summarizeProgress(
+        new Set(playable.results.map((item) => item.media_key)),
+        progress.results,
+        completion.results[0]
+    );
+}
 
-    const completion = await env.DB.prepare(
-        "SELECT times_completed, completed_at FROM playlist_completions WHERE uid = ? AND playlist_id = ?"
-    ).bind(uid, playlistId).first();
+// The arithmetic of progressSummary over rows already read, so a list of
+// playlists can read them all in one go.
+export function summarizeProgress(playableKeys, progressRows, completion) {
+    const answeredRows = progressRows.filter((item) => playableKeys.has(item.media_key));
+    const answered = answeredRows.length;
+    const correct = answeredRows.filter((item) => item.was_correct === 1).length;
 
     return {
-        total: row.total,
-        answered: row.answered,
-        correct: row.correct,
-        accuracy: row.answered > 0 ? row.correct / row.answered : null,
+        total: playableKeys.size,
+        answered,
+        correct,
+        accuracy: answered > 0 ? correct / answered : null,
         timesCompleted: completion?.times_completed ?? 0,
         completedAt: completion?.completed_at ?? null
     };
@@ -106,11 +111,11 @@ function pickRandom(keys, count) {
 
 // Keeps the stored folder valid against the current contents. A curator's
 // choice loses only the titles that left; an automatic one, or a curator's
-// choice left empty, is picked again from scratch.
+// choice left empty, is picked again from scratch. Says whether it wrote.
 export async function refreshFolder(env, playlistId, { force = false } = {}) {
     const row = await env.DB.prepare("SELECT folder_keys, folder_auto, published FROM playlists WHERE id = ?")
         .bind(playlistId).first();
-    if (!row) return;
+    if (!row) return false;
 
     const posters = await membersWithPosters(env, playlistId);
     const stored = parseFolderKeys(row);
@@ -127,13 +132,20 @@ export async function refreshFolder(env, playlistId, { force = false } = {}) {
     if (next !== (row.folder_keys ?? null) || (auto ? 1 : 0) !== row.folder_auto) {
         await env.DB.prepare("UPDATE playlists SET folder_keys = ?, folder_auto = ? WHERE id = ?")
             .bind(next, auto ? 1 : 0, playlistId).run();
+        return true;
     }
+    return false;
 }
 
 export async function folderPosters(env, row) {
+    const posters = parseFolderKeys(row).length > 0 ? await membersWithPosters(env, row.id) : new Map();
+    return folderPostersFrom(row, posters);
+}
+
+// posters: media key to poster URL for the members that have one.
+export function folderPostersFrom(row, posters) {
     const keys = parseFolderKeys(row);
     if (keys.length === 0) return row.cover_image_url ? [row.cover_image_url] : [];
-    const posters = await membersWithPosters(env, row.id);
     return keys.map((key) => posters.get(key)).filter(Boolean);
 }
 

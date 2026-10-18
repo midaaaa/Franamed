@@ -7,7 +7,23 @@
 import { badRequest, json, noContent, notFound, readJSON, requireEnum, requireString, optionalString } from "../lib/http.js";
 import { authenticate, requireRole } from "../lib/auth.js";
 import { MEDIA_TYPES } from "../lib/media.js";
-import { MAX_FOLDER_POSTERS, folderPosters, parseFolderKeys, playerOrderRank, progressSummary, refreshFolder } from "../lib/playlists.js";
+import {
+    MAX_FOLDER_POSTERS,
+    folderPosters,
+    folderPostersFrom,
+    parseFolderKeys,
+    playerOrderRank,
+    progressSummary,
+    refreshFolder,
+    summarizeProgress
+} from "../lib/playlists.js";
+import {
+    PLAYLISTS_VERSION_HEADER,
+    currentPlaylistsVersion,
+    loadPlaylistsSnapshot,
+    rebuildPlaylistsOrMarkDirty,
+    rebuildPlaylistsSnapshot
+} from "../lib/playlistsSnapshot.js";
 
 function serializePlaylist(row) {
     return {
@@ -30,15 +46,13 @@ async function serializeWithFolder(env, row) {
     return { ...serializePlaylist(row), folderPosters: await folderPosters(env, row) };
 }
 
-// When each playable title joined the list, so the shelf can say "+2 new since
-// you last looked" without the server keeping track of who looked when.
-async function addedTimes(env, playlistId) {
-    const rows = await env.DB.prepare(
-        `SELECT pi.added_at FROM playlist_items pi
-         JOIN media_items m ON m.key = pi.media_key
-         WHERE pi.playlist_id = ? AND m.published = 1`
-    ).bind(playlistId).all();
-    return rows.results.map((row) => row.added_at ?? 0);
+// What the snapshot shows of a playlist row; a write that moves none of these
+// on a playlist that is not or was not published leaves the snapshot alone.
+const SNAPSHOT_COLUMNS = ["published", "title", "description", "cover_image_url", "curator_order", "folder_keys"];
+
+function snapshotMoved(before, after) {
+    if (before.published !== 1 && after.published !== 1) return false;
+    return SNAPSHOT_COLUMNS.some((column) => (before[column] ?? null) !== (after[column] ?? null));
 }
 
 // A playlist is a curated 1-to-100 walk, so this only bounds the write.
@@ -53,21 +67,111 @@ export async function handlePlaylists(request, env, segments, url) {
 
         const includeUnpublished = user.role !== "user" && url.searchParams.get("includeUnpublished") === "true";
 
-        const rows = await env.DB.prepare(
-            `SELECT * FROM playlists
-             WHERE (? IS NULL OR media_type = ?) AND (published = 1 OR ?)
-             ORDER BY created_at DESC`
-        ).bind(mediaType || null, mediaType || null, includeUnpublished ? 1 : 0).all();
+        // Every playlist's members and the player's rows in one batch, matched
+        // here: the catalogue and the player tables are never joined.
+        const listed = "(?1 IS NULL OR media_type = ?1) AND (published = 1 OR ?2)";
+        const [rows, members, progress, completions] = await env.DB.batch([
+            env.DB.prepare(`SELECT * FROM playlists WHERE ${listed} ORDER BY created_at DESC`).bind(mediaType || null, includeUnpublished ? 1 : 0),
+            env.DB.prepare(
+                `SELECT pi.playlist_id, pi.media_key, pi.added_at, m.poster_url, m.published
+                 FROM playlist_items pi JOIN media_items m ON m.key = pi.media_key
+                 WHERE pi.playlist_id IN (SELECT id FROM playlists WHERE ${listed})`
+            ).bind(mediaType || null, includeUnpublished ? 1 : 0),
+            env.DB.prepare(
+                "SELECT playlist_id, media_key, was_correct FROM playlist_progress WHERE uid = ? AND state = 'completed'"
+            ).bind(user.uid),
+            env.DB.prepare("SELECT playlist_id, times_completed, completed_at FROM playlist_completions WHERE uid = ?")
+                .bind(user.uid)
+        ]);
 
-        const playlists = [];
-        for (const row of rows.results) {
-            playlists.push({
-                ...(await serializeWithFolder(env, row)),
-                itemsAddedAt: await addedTimes(env, row.id),
-                progress: await progressSummary(env, user.uid, row.id)
-            });
-        }
+        const group = (list) => {
+            const grouped = new Map();
+            for (const item of list) {
+                if (!grouped.has(item.playlist_id)) grouped.set(item.playlist_id, []);
+                grouped.get(item.playlist_id).push(item);
+            }
+            return grouped;
+        };
+        const membersOf = group(members.results);
+        const progressOf = group(progress.results);
+        const completionOf = new Map(completions.results.map((item) => [item.playlist_id, item]));
+
+        const playlists = rows.results.map((row) => {
+            const own = membersOf.get(row.id) || [];
+            const playable = own.filter((item) => item.published === 1);
+            const posters = new Map(own.filter((item) => item.poster_url).map((item) => [item.media_key, item.poster_url]));
+            return {
+                ...serializePlaylist(row),
+                folderPosters: folderPostersFrom(row, posters),
+                itemsAddedAt: playable.map((item) => item.added_at ?? 0),
+                progress: summarizeProgress(
+                    new Set(playable.map((item) => item.media_key)),
+                    progressOf.get(row.id) || [],
+                    completionOf.get(row.id)
+                )
+            };
+        });
         return json({ playlists });
+    }
+
+    // GET /v1/playlists/snapshot — every published playlist and its titles; the
+    // version is in the body and in the header every response carries
+    if (segments[0] === "snapshot" && segments.length === 1 && request.method === "GET") {
+        await authenticate(request, env);
+
+        // The phone that holds the current version is answered without the body row.
+        const held = await currentPlaylistsVersion(env);
+        if (held && request.headers.get("If-None-Match") === `"${held}"`) {
+            return new Response(null, { status: 304, headers: { ETag: `"${held}"` } });
+        }
+
+        let snapshot = await loadPlaylistsSnapshot(env);
+        if (!snapshot) {
+            await rebuildPlaylistsSnapshot(env);
+            snapshot = await loadPlaylistsSnapshot(env);
+        }
+
+        if (request.headers.get("If-None-Match") === `"${snapshot.version}"`) {
+            return new Response(null, { status: 304, headers: { ETag: `"${snapshot.version}"` } });
+        }
+        return new Response(`{"version":${JSON.stringify(snapshot.version)},${snapshot.body.slice(1)}`, {
+            status: 200,
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                ETag: `"${snapshot.version}"`,
+                [PLAYLISTS_VERSION_HEADER]: snapshot.version
+            }
+        });
+    }
+
+    // GET /v1/playlists/progress — the player's answers and completions across
+    // every playlist; the phone matches them against the snapshot and the index
+    if (segments[0] === "progress" && segments.length === 1 && request.method === "GET") {
+        const user = await authenticate(request, env);
+
+        const [answers, completions] = await env.DB.batch([
+            env.DB.prepare(
+                `SELECT playlist_id, media_key, attempts_used, was_correct, updated_at
+                 FROM playlist_progress WHERE uid = ? AND state = 'completed'`
+            ).bind(user.uid),
+            env.DB.prepare("SELECT playlist_id, times_completed, completed_at FROM playlist_completions WHERE uid = ?")
+                .bind(user.uid)
+        ]);
+
+        return json({
+            answers: answers.results.map((row) => ({
+                playlistId: row.playlist_id,
+                mediaKey: row.media_key,
+                attemptsUsed: row.attempts_used,
+                wasCorrect: row.was_correct === null ? null : row.was_correct === 1,
+                updatedAt: row.updated_at
+            })),
+            completions: completions.results.map((row) => ({
+                playlistId: row.playlist_id,
+                timesCompleted: row.times_completed,
+                completedAt: row.completed_at
+            }))
+        });
     }
 
     // POST /v1/playlists
@@ -154,6 +258,7 @@ export async function handlePlaylists(request, env, segments, url) {
             env.DB.prepare("DELETE FROM playlist_completions WHERE playlist_id = ?").bind(playlistId),
             env.DB.prepare("DELETE FROM playlists WHERE id = ?").bind(playlistId)
         ]);
+        if (playlist.published === 1) await rebuildPlaylistsOrMarkDirty(env);
         return noContent();
     }
 
@@ -227,6 +332,7 @@ export async function handlePlaylists(request, env, segments, url) {
         }
 
         const row = await env.DB.prepare("SELECT * FROM playlists WHERE id = ?").bind(playlistId).first();
+        if (snapshotMoved(playlist, row)) await rebuildPlaylistsOrMarkDirty(env);
         return json(await serializeWithFolder(env, row));
     }
 
@@ -257,8 +363,9 @@ export async function handlePlaylists(request, env, segments, url) {
 
         // A title keeps the moment it first joined, so reordering or re-saving
         // the list does not make old titles look new to players.
-        const existing = await env.DB.prepare("SELECT media_key, added_at FROM playlist_items WHERE playlist_id = ?")
-            .bind(playlistId).all();
+        const existing = await env.DB.prepare(
+            "SELECT media_key, added_at FROM playlist_items WHERE playlist_id = ? ORDER BY position"
+        ).bind(playlistId).all();
         const joined = new Map(existing.results.map((row) => [row.media_key, row.added_at]));
         const savedAt = Date.now();
 
@@ -271,7 +378,11 @@ export async function handlePlaylists(request, env, segments, url) {
                     .bind(playlistId, key, index, joined.has(key) ? joined.get(key) : savedAt)
             )
         ]);
-        await refreshFolder(env, playlistId);
+        const folderMoved = await refreshFolder(env, playlistId);
+
+        const reordered = existing.results.length !== keys.length
+            || existing.results.some((row, index) => row.media_key !== keys[index]);
+        if (playlist.published === 1 && (reordered || folderMoved)) await rebuildPlaylistsOrMarkDirty(env);
 
         return json({ id: playlistId, count: keys.length, duplicatesDropped: submitted.length - keys.length });
     }
