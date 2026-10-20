@@ -31,16 +31,8 @@ export async function handleAdmin(request, env, segments, url) {
         const uid = requireString(body, "uid", { maxLength: 64 });
         const role = requireEnum(body, "role", ROLES);
 
-        const target = await env.DB.prepare("SELECT uid, role, is_anonymous FROM users WHERE uid = ?").bind(uid).first();
+        const target = await env.DB.prepare("SELECT uid, role FROM users WHERE uid = ?").bind(uid).first();
         if (!target) throw notFound("Unknown user");
-
-        // An anonymous account is tied to one install, which is a reason to be
-        // careful about powers rather than about curating: a curator's work
-        // lands on a moderator's desk anyway. So the Apple requirement starts
-        // at moderator, where a lost account means lost authority.
-        if (roleRank(role) >= roleRank("moderator") && target.is_anonymous === 1) {
-            throw badRequest("Link an Apple ID to this account before granting moderator or admin");
-        }
 
         await env.DB.prepare("UPDATE users SET role = ? WHERE uid = ?").bind(role, uid).run();
 
