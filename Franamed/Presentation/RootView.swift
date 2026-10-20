@@ -20,8 +20,12 @@ struct RootView: View {
     var body: some View {
         TicketView(coordinator: coordinator, mediaFacade: mediaFacade)
             .environmentObject(session)
+            .providesWindowGeometry()
+            .background(WindowSizeRestrictions(minimumSize: Self.minimumWindowSize))
             .task { await session.start() }
     }
+
+    private static let minimumWindowSize = CGSize(width: 390, height: 640)
 }
 
 #Preview {

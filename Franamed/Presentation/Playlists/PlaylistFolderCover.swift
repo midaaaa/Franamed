@@ -53,10 +53,15 @@ struct PlaylistFolderCover: View {
     var hidesPosters = false
 
     static let posterCornerRadius: CGFloat = 4
+
+    static func posterCornerRadius(posterWidth: CGFloat) -> CGFloat {
+        posterCornerRadius * posterWidth / (Metrics.referenceWidth * Metrics.posterWidth)
+    }
     nonisolated static let posterCount = 3
 
     private enum Metrics {
         static let aspectRatio: CGFloat = 1.15
+        static let referenceWidth: CGFloat = 168
         static let backWidth: CGFloat = 0.9
         static let backHeight: CGFloat = 0.72
         static let backBottom: CGFloat = 0.03
@@ -103,12 +108,13 @@ struct PlaylistFolderCover: View {
     }
 
     private func back(in size: CGSize) -> some View {
-        let shape = PlaylistFolderBackShape(radius: Metrics.backRadius)
+        let zoom = Self.zoom(width: size.width)
+        let shape = PlaylistFolderBackShape(radius: Metrics.backRadius * zoom)
         return Color.clear
             .background { if let tint { shape.fill(tint.opacity(Metrics.backTint)) } }
             .background { shape.fill(.white.opacity(Metrics.backLift)) }
             .overlay { shape.stroke(.black.opacity(Metrics.outlineOpacity), lineWidth: 1) }
-            .overlay { backSheen(clippedTo: shape) }
+            .overlay { backSheen(clippedTo: shape, zoom: zoom) }
             .frame(width: size.width * Metrics.backWidth, height: size.height * Metrics.backHeight)
             .padding(1)
             .drawingGroup()
@@ -116,21 +122,23 @@ struct PlaylistFolderCover: View {
             .padding(.bottom, size.height * Metrics.backBottom)
     }
 
-    private func backSheen(clippedTo shape: PlaylistFolderBackShape) -> some View {
-        let topEdge = PlaylistFolderBackShape(radius: Metrics.backRadius, isTopEdge: true)
+    private func backSheen(clippedTo shape: PlaylistFolderBackShape, zoom: CGFloat) -> some View {
+        let radius = Metrics.backRadius * zoom
+        let topEdge = PlaylistFolderBackShape(radius: radius, isTopEdge: true)
         return ZStack {
             ForEach(Metrics.sheen.indices, id: \.self) { index in
-                topEdge.stroke(.white.opacity(Metrics.sheen[index].opacity), lineWidth: Metrics.sheen[index].width * 2)
+                topEdge.stroke(.white.opacity(Metrics.sheen[index].opacity),
+                               lineWidth: Metrics.sheen[index].width * 2 * zoom)
             }
         }
         .clipShape(shape)
         .mask {
             HStack(spacing: 0) {
                 LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: Metrics.backRadius)
+                    .frame(width: radius)
                 Color.black
                 LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: Metrics.backRadius)
+                    .frame(width: radius)
             }
         }
     }
@@ -143,7 +151,7 @@ struct PlaylistFolderCover: View {
                 let (poster, slot) = pair
                 CachedRemoteImage(url: poster)
                     .frame(width: slot.size.width, height: slot.size.height)
-                    .clipShape(RoundedRectangle(cornerRadius: Self.posterCornerRadius))
+                    .clipShape(RoundedRectangle(cornerRadius: Self.posterCornerRadius(posterWidth: slot.size.width)))
                     .rotationEffect(.degrees(slot.angle), anchor: .bottom)
                     .position(x: slot.bottomCenter.x, y: slot.bottomCenter.y - slot.size.height / 2)
             }
@@ -156,6 +164,7 @@ struct PlaylistFolderCover: View {
     private func front(width: CGFloat, height: CGFloat) -> some View {
         let shape = PlaylistFolderFrontShape(taper: Metrics.taper)
         let inset = width * Metrics.taper
+        let zoom = Self.zoom(width: width)
         return Color.clear
             .background { if let tint { shape.fill(tint.opacity(Metrics.frontUnderlay)) } }
             .glassEffect(.regular.tint(tint?.opacity(Metrics.frontTint)), in: shape)
@@ -163,28 +172,34 @@ struct PlaylistFolderCover: View {
             .overlay(alignment: .bottomTrailing) {
                 if content.total > 0 {
                     PlaylistFolderSticker(content: content, angle: stickerAngle)
+                        .scaleEffect(zoom, anchor: .bottomTrailing)
                         .padding(.trailing, inset * (1 - 14 / max(height, 1)))
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if isSelected { selectionMark }
+                if isSelected { selectionMark.scaleEffect(zoom, anchor: .topTrailing) }
             }
             .overlay(alignment: .topLeading) {
                 if addedCount > 0 {
                     PlaylistNewBadge(count: addedCount)
-                        .padding(.leading, 8 + inset * 17 / max(height, 1))
-                        .padding(.top, 8)
+                        .scaleEffect(zoom, anchor: .topLeading)
+                        .padding(.leading, 8 * zoom + inset * 17 / max(height, 1))
+                        .padding(.top, 8 * zoom)
                 }
             }
             .overlay(alignment: .bottomLeading) {
                 if completion != .inProgress {
                     PlaylistSealStamp(isGold: completion == .perfect)
                         .rotationEffect(.degrees(stampAngle))
-                        .scaleEffect(0.85, anchor: .bottomLeading)
-                        .padding(.leading, 10 + inset * (1 - 20 / max(height, 1)))
-                        .padding(.bottom, 8)
+                        .scaleEffect(0.85 * zoom, anchor: .bottomLeading)
+                        .padding(.leading, 10 * zoom + inset * (1 - 20 / max(height, 1)))
+                        .padding(.bottom, 8 * zoom)
                 }
             }
+    }
+
+    private static func zoom(width: CGFloat) -> CGFloat {
+        width > 0 ? width / Metrics.referenceWidth : 1
     }
 
     private var selectionMark: some View {

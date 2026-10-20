@@ -203,9 +203,9 @@ private final class PlaylistFlightView: UIView {
         isHidden = startsInFolder
         cards.reversed().forEach(addSubview)
         if startsInFolder {
-            place(plan.folder, radius: PlaylistFolderCover.posterCornerRadius, shadow: 0)
+            place(plan.folder, radius: folderRadius, shadow: 0)
         } else {
-            place(plan.header, radius: PlaylistPosterFan.cornerRadius, shadow: 1)
+            place(plan.header, radius: headerRadius, shadow: 1)
         }
     }
 
@@ -214,10 +214,18 @@ private final class PlaylistFlightView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    private var headerRadius: CGFloat {
+        PlaylistPosterFan.cornerRadius(posterWidth: plan.header.first?.size.width ?? 0)
+    }
+
+    private var folderRadius: CGFloat {
+        PlaylistFolderCover.posterCornerRadius(posterWidth: plan.folder.first?.size.width ?? 0)
+    }
+
     func addKeyframes(isPush: Bool) {
         let liftAt = isPush ? Self.liftTime : 1 - Self.liftTime
-        let folderRadius = PlaylistFolderCover.posterCornerRadius
-        let headerRadius = PlaylistPosterFan.cornerRadius
+        let folderRadius = self.folderRadius
+        let headerRadius = self.headerRadius
         let lifted = liftedSlots
         let liftedRadius = folderRadius + (headerRadius - folderRadius) * Self.liftDrift
         UIView.animateKeyframes(withDuration: 0, delay: 0, options: .calculationModeCubic) {

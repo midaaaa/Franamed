@@ -13,6 +13,11 @@ struct PlaylistDetailView: View {
     @ObservedObject var flight: PlaylistFlightState
 
     @State private var focusedKey: String?
+    @State private var contentWidth: CGFloat = 0
+
+    private static let cardMaxWidth: CGFloat = 420
+
+    private var zoom: CGFloat { PlaylistStyle.pageZoom(forWidth: contentWidth) }
 
     var body: some View {
         if let playlist = playlists.playlist(id: playlistID) {
@@ -27,9 +32,10 @@ struct PlaylistDetailView: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, PlaylistStyle.pageInset(forWidth: contentWidth))
                 .padding(.bottom, 24)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         }
     }
 
@@ -38,7 +44,7 @@ struct PlaylistDetailView: View {
     private func header(_ playlist: PlaylistDetail) -> some View {
         VStack(spacing: 14) {
             PlaylistPosterFan(posters: playlist.folderPosters(count: PlaylistFolderCover.posterCount),
-                              isHidden: flight.flyingID == playlist.id)
+                              isHidden: flight.flyingID == playlist.id, zoom: zoom)
                 .onGlobalFrameChange { [flight] in flight.headerFrames[playlist.id] = $0 }
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -50,12 +56,12 @@ struct PlaylistDetailView: View {
                             .foregroundStyle(Accent.reward)
                     }
                     Text(playlist.title)
-                        .font(PlaylistStyle.title)
+                        .font(PlaylistStyle.title(zoom: zoom))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                PlaylistProgressRing(playlist: playlist)
-                    .frame(width: 64)
+                PlaylistProgressRing(playlist: playlist, zoom: zoom)
+                    .frame(width: 64 * zoom)
             }
             if let description = playlist.description, !description.isEmpty {
                 Text(description)
@@ -72,7 +78,7 @@ struct PlaylistDetailView: View {
     // MARK: Grid
 
     private func grid(_ playlist: PlaylistDetail) -> some View {
-        let columns = PlaylistStyle.gridColumns
+        let columns = PlaylistStyle.gridColumns(width: contentWidth)
         let entries = playlist.playableItems
         let rows = stride(from: 0, to: entries.count, by: columns).map { start in
             Array(start..<min(start + columns, entries.count))
@@ -100,11 +106,11 @@ struct PlaylistDetailView: View {
             .onTapGesture { focusedKey = entry.key }
             .popover(isPresented: focusBinding(entry.key), arrowEdge: .bottom) {
                 PlaylistEntryCard(entry: entry, display: display, number: number)
-                    .frame(maxWidth: WindowMetrics.size.width - 32, alignment: .leading)
+                    .frame(maxWidth: min(Self.cardMaxWidth, contentWidth - 32), alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .presentationCompactAdaptation(.popover)
             }
-            .modifier(PlaylistPosterPreview(entry: entry))
+            .modifier(PlaylistPosterPreview(entry: entry, zoom: zoom))
     }
 
     private func focusBinding(_ key: String) -> Binding<Bool> {
@@ -162,6 +168,9 @@ private struct PlaylistEntryCard: View {
 
 private struct PlaylistPosterPreview: ViewModifier {
     let entry: PlaylistEntry
+    let zoom: CGFloat
+
+    private static let width: CGFloat = 280
 
     func body(content: Content) -> some View {
         if entry.state == .completed {
@@ -180,7 +189,7 @@ private struct PlaylistPosterPreview: ViewModifier {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                 }
-                .frame(width: 280)
+                .frame(width: Self.width * zoom)
             }
         } else {
             content

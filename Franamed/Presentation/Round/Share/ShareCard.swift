@@ -30,6 +30,11 @@ struct ShareCard: View {
     }
 
     var body: some View {
+        card
+            .environment(\.resultStubWidth, material.stubWidth)
+    }
+
+    private var card: some View {
         ZStack(alignment: .topLeading) {
             if showsBackdrop {
                 ZStack(alignment: .topLeading) {
@@ -90,7 +95,7 @@ struct ShareCard: View {
     }
 
     private var hall: some View {
-        let rect = material.hallRect.insetBy(dx: -Self.bleed, dy: -Self.bleed)
+        let rect = CGRect(origin: .zero, size: ShareMaterial.hallSize).insetBy(dx: -Self.bleed, dy: -Self.bleed)
         return ZStack(alignment: .topLeading) {
             Color.black
                 .padding(-Self.bleed)
@@ -127,6 +132,7 @@ struct ShareCard: View {
     // MARK: Overlays
 
     private static let riddleScrimDepth: CGFloat = 90
+    private static let wordmarkTracking: CGFloat = 5
 
     private var riddleScrim: Double {
         let luminance: Float = switch background {
@@ -163,7 +169,8 @@ struct ShareCard: View {
             }
             Text("FRANAMED")
                 .font(.system(size: 13, weight: .bold))
-                .tracking(5)
+                .tracking(Self.wordmarkTracking)
+                .offset(x: Self.wordmarkTracking / 2)
                 .foregroundStyle(.white.opacity(0.7))
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, edgeInset)

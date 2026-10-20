@@ -17,6 +17,7 @@ struct TicketFaceView: View, Equatable {
             && lhs.isRasterized == rhs.isRasterized
             && lhs.hidesStub == rhs.hidesStub
             && lhs.edgeStyle == rhs.edgeStyle
+            && lhs.tearOverscan == rhs.tearOverscan
             && lhs.returnToken == rhs.returnToken
             && lhs.posterZoom == rhs.posterZoom
             && lhs.filtersZoom == rhs.filtersZoom
@@ -31,6 +32,7 @@ struct TicketFaceView: View, Equatable {
     let isRasterized: Bool
     var hidesStub: Bool = false
     var edgeStyle: TicketEdgeStyle = .straight
+    var tearOverscan: CGFloat = 0
     let returnToken: Int
     let posterZoom: Namespace.ID
     let filtersZoom: Namespace.ID
@@ -45,6 +47,7 @@ struct TicketFaceView: View, Equatable {
     private var tearConfig: TicketTearConfig {
         var config = TicketTearConfig.ticket(width: width)
         config.stubExtent = TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
+        config.canvasPadding = max(config.canvasPadding, tearOverscan)
         return config
     }
 

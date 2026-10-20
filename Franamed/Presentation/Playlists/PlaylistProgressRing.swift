@@ -9,7 +9,9 @@ import SwiftUI
 
 struct PlaylistProgressRing: View {
     let playlist: PlaylistDetail
-    var lineWidth: CGFloat = 6
+    var zoom: CGFloat = 1
+
+    private var lineWidth: CGFloat { 6 * zoom }
 
     private var total: Int { playlist.availableCount }
     private var correct: Int { playlist.playableItems.filter { $0.wasCorrect == true }.count }
@@ -29,8 +31,8 @@ struct PlaylistProgressRing: View {
         .overlay(alignment: .bottomTrailing) {
             if playlist.completion != .inProgress {
                 PlaylistSealStamp(isGold: isPerfect)
-                    .scaleEffect(0.6)
-                    .offset(x: 8, y: 8)
+                    .scaleEffect(0.6 * zoom)
+                    .offset(x: 8 * zoom, y: 8 * zoom)
             }
         }
     }
@@ -38,9 +40,9 @@ struct PlaylistProgressRing: View {
     private var count: some View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
             Text("\(correct)")
-                .font(.system(.title3, design: .monospaced).weight(.bold))
+                .font(PlaylistStyle.scaledFont(.title3, zoom: zoom, weight: .bold, design: .monospaced))
             Text("/\(total)")
-                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .font(PlaylistStyle.scaledFont(.caption1, zoom: zoom, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
         .foregroundStyle(isPerfect ? PlaylistStyle.gold : .primary)

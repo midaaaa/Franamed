@@ -26,6 +26,7 @@ final class HallPhone: @unchecked Sendable {
         static let bezel: Float = 0.039
         static let zoomStops: [Float] = [1, 2, 3]
         static let startZoom: Float = 2
+        static let maxViewWidth: Float = 520
 
         var finderRatio: Float { isWide ? 16.0 / 9 : 4.0 / 3 }
 
@@ -36,7 +37,7 @@ final class HallPhone: @unchecked Sendable {
         }
 
         func size(viewWidth: Float) -> SIMD2<Float> {
-            let long = viewWidth * width
+            let long = min(viewWidth, Self.maxViewWidth) * width
             return isPortrait ? SIMD2(long / Self.aspect, long) : SIMD2(long, long / Self.aspect)
         }
     }
@@ -333,7 +334,22 @@ final class HallPhone: @unchecked Sendable {
     }
 
     func setGeometry(_ next: Geometry) {
-        lock.withLock { if geometry != next { geometry = next } }
+        lock.withLock {
+            guard geometry != next else { return }
+            let old = currentLayout()
+            geometry = next
+            guard let old, let new = currentLayout() else { return }
+            if isRaised {
+                point.remapY(from: old, to: new)
+                lens.remapY(from: old, to: new)
+            }
+            stowed = stowed.map { Self.remapY($0, from: old, to: new) }
+        }
+    }
+
+    fileprivate static func remapY(_ state: SIMD2<Float>, from old: Layout, to new: Layout) -> SIMD2<Float> {
+        let share = (state.y - old.yLow) / max(old.yHigh - old.yLow, 1)
+        return SIMD2(state.x, new.yLow + share * (new.yHigh - new.yLow))
     }
 
     private func currentLayout() -> Layout? {
@@ -583,5 +599,12 @@ final class HallPhone: @unchecked Sendable {
 extension SIMD2 where Scalar == Float {
     init(_ point: CGPoint) {
         self.init(Float(point.x), Float(point.y))
+    }
+}
+
+private extension HallPhone.Spring where Value == SIMD2<Float> {
+    mutating func remapY(from old: HallPhone.Layout, to new: HallPhone.Layout) {
+        value = HallPhone.remapY(value, from: old, to: new)
+        target = HallPhone.remapY(target, from: old, to: new)
     }
 }

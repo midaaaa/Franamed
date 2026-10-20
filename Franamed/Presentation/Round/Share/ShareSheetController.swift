@@ -18,6 +18,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     private var sizeLink: CADisplayLink?
     private var detent: CGFloat?
     private var maximumDetent: CGFloat?
+    private var containerSize: CGSize?
     private var resize: Resize?
     private var restTop: CGFloat?
     private var sheetFormat = ShareFormat.story
@@ -77,9 +78,23 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         if !hasLanded { restTop = sheetTop() }
         hasLanded = true
         if resize == nil, let maximum = maximumDetent {
-            model.sheetHeight = targetDetent(for: sheetFormat, maximum: maximum) + Self.safeBottom
+            model.sheetHeight = targetDetent(for: sheetFormat, maximum: maximum) + safeBottom
         }
         land()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if let size = presentationController?.containerView?.bounds.size, size != containerSize {
+            containerSize = size
+            model.updateStubWidth(windowSize: size)
+            sheetPresentationController?.invalidateDetents()
+        }
+        guard hasLanded, resize == nil, !isBeingDismissed, let maximum = maximumDetent else { return }
+        let height = targetDetent(for: sheetFormat, maximum: maximum) + safeBottom
+        guard height != model.sheetHeight else { return }
+        model.sheetHeight = height
+        sheetPresentationController?.invalidateDetents()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -113,23 +128,25 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
 
     private func configureDetent() {
         guard let sheet = sheetPresentationController else { return }
-        let clearance = WindowMetrics.safeAreaInsets.top + Self.topClearance
         sheetFormat = model.format
         sheet.detents = [.custom(identifier: .init("share")) { [weak self] context in
-            let maximum = context.maximumDetentValue - clearance
-            guard let self else { return maximum }
+            guard let self else { return context.maximumDetentValue }
+            let maximum = context.maximumDetentValue - safeArea.top - Self.topClearance
             maximumDetent = maximum
             return min(maximum, detent ?? targetDetent(for: sheetFormat, maximum: maximum))
         }]
         model.onFormatChange = { [weak self] in self?.resizeSheet(to: $0) }
     }
 
-    private static var safeBottom: CGFloat { WindowMetrics.safeAreaInsets.bottom }
+    private var safeArea: UIEdgeInsets { window?.safeAreaInsets ?? .zero }
+
+    private var safeBottom: CGFloat { safeArea.bottom }
 
     private func targetDetent(for format: ShareFormat, maximum: CGFloat) -> CGFloat {
-        let fitted = ShareSheetLayout.fittedHeight(width: WindowMetrics.size.width, panelHeight: model.panelHeight(for: format),
-                                                   format: format)
-        return min(maximum, fitted - Self.safeBottom)
+        let width = isViewLoaded && view.bounds.width > 0 ? view.bounds.width : model.material.roundSize.width
+        let fitted = ShareSheetLayout.fittedHeight(width: width, panelHeight: model.panelHeight(for: format),
+                                                   format: format, stubWidth: model.stubWidth)
+        return min(maximum, fitted - safeBottom)
     }
 
     private func resizeSheet(to format: ShareFormat) {
@@ -138,7 +155,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
             model.cardShape = model.cardShape(for: format)
             return
         }
-        let from = detent ?? view.bounds.height - Self.safeBottom
+        let from = detent ?? view.bounds.height - safeBottom
         resize = Resize(from: from, to: targetDetent(for: format, maximum: maximum), fromShape: model.cardShape,
                         toShape: model.cardShape(for: format), start: CACurrentMediaTime())
         isModalInPresentation = true
@@ -158,7 +175,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         let height = grid.snapped(resize.from + (resize.to - resize.from) * progress)
         detent = isDone ? nil : height
         model.cardShape = resize.fromShape.mixed(with: resize.toShape, by: progress)
-        model.sheetHeight = height + Self.safeBottom
+        model.sheetHeight = height + safeBottom
         sheet.invalidateDetents()
         guard isDone else { return }
         self.resize = nil
@@ -187,7 +204,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         guard let renderer = model.launch.makeFlight() else { return }
         model.isFlying = true
         let flight = ShareFlightView(flight: renderer, shareFace: model.faceTexture(), shadow: model.shadowImage(),
-                                     entering: entering)
+                                     shadowStubWidth: model.material.stubWidth, entering: entering)
         window.addSubview(flight)
         self.flight = flight
         stopLink()
@@ -210,7 +227,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         let progress = 1 - min(max((top - restTop) / travel, 0), 1)
         let layout = model.layout(in: view.layer.presentation()?.bounds.size ?? view.bounds.size)
         let target = onScreen(layout.stub) ?? layout.stub.offsetBy(dx: 0, dy: top)
-        flight.update(progress: progress, source: model.launch.source, target: target,
+        flight.update(progress: progress, source: model.launch.currentSource(), target: target,
                       angle: CGFloat(layout.angle.radians), turnsFromBack: model.launch.startsOnBack)
     }
 

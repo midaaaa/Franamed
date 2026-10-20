@@ -25,6 +25,9 @@ enum TicketStyle {
     static let minimumScale: CGFloat = 0.7
 
     static let screenInset: CGFloat = 50
+    static let maxWidth: CGFloat = 480
+    static let verticalInset: CGFloat = 24
+    static let referenceWidth: CGFloat = 293
     static let posterAspectRatio: CGFloat = 1.5
     static let tearNotchRadius: CGFloat = 16
     static let paperThickness: CGFloat = 1
@@ -45,3 +48,23 @@ enum TicketStyle {
     static let barcodeSerialSpacing: CGFloat = 5
 }
 
+extension TicketStyle {
+    static func width(forScreenWidth screenWidth: CGFloat) -> CGFloat {
+        min(maxWidth, max(0, screenWidth - screenInset * 2))
+    }
+
+    static func cardWidth(in container: CGSize, edgeStyle: TicketEdgeStyle) -> CGFloat {
+        let byWidth = width(forScreenWidth: container.width)
+        let stubPerWidth = TicketStubMetrics.height(width: referenceWidth, edgeStyle: edgeStyle) / referenceWidth
+        let byHeight = (container.height - verticalInset * 2) / (posterAspectRatio + stubPerWidth)
+        return max(0, min(byWidth, byHeight))
+    }
+
+    static func zoom(forWidth width: CGFloat) -> CGFloat {
+        width / referenceWidth
+    }
+
+    static func notchRadius(forWidth width: CGFloat) -> CGFloat {
+        tearNotchRadius * zoom(forWidth: width)
+    }
+}

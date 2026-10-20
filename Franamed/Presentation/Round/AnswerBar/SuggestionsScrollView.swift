@@ -50,13 +50,17 @@ struct SuggestionsScrollView: UIViewRepresentable {
         guard let scrollView = coordinator.scrollView else { return }
         guard let hosting = coordinator.hostingController else { return }
 
-        let slotHeight = suggestionsContentHeight(rows: maxVisibleSuggestions)
+        let slotHeight = context.environment.suggestionsMaxHeight
+        let restRows = context.environment.suggestionsRestRows
+        let slotChanged = coordinator.slotHeight != slotHeight || coordinator.restRows != restRows
+        let revealedTop = scrollView.contentOffset.y + coordinator.slotHeight - revealedHeight
         coordinator.slotHeight = slotHeight
+        coordinator.restRows = restRows
 
         let style: UIUserInterfaceStyle = context.environment.colorScheme == .dark ? .dark : .light
         let rowIDs = rows.map(\.id)
         let rowsChanged = coordinator.lastRowIDs != rowIDs
-        guard rowsChanged || coordinator.lastWidth != availableWidth || coordinator.lastStyle != style
+        guard rowsChanged || slotChanged || coordinator.lastWidth != availableWidth || coordinator.lastStyle != style
         else { return }
 
         coordinator.lastRowIDs = rowIDs
@@ -70,13 +74,13 @@ struct SuggestionsScrollView: UIViewRepresentable {
 
         let grid = PixelGrid(displayScale: context.environment.displayScale)
         var measuredHeight = suggestionsContentHeight(rows: rows.count)
-        var restHeight = min(measuredHeight, suggestionsContentHeight(rows: minVisibleSuggestions))
+        var restHeight = min(measuredHeight, suggestionsContentHeight(rows: restRows))
         if availableWidth > 0 {
             let fitting = hosting.sizeThatFits(in: CGSize(width: availableWidth, height: .greatestFiniteMagnitude))
             if fitting.height > 0 {
                 measuredHeight = grid.aligned(fitting.height, rule: .up)
-                restHeight = coordinator.restHeight(width: availableWidth, style: style,
-                                                    grid: grid, total: measuredHeight)
+                restHeight = coordinator.restHeight(width: availableWidth, style: style, grid: grid,
+                                                    total: measuredHeight, rows: restRows)
             }
         }
 
@@ -87,14 +91,15 @@ struct SuggestionsScrollView: UIViewRepresentable {
         let minHeight = restHeight
         scrollView.contentInset.top = max(0, slotHeight - minHeight)
 
-        guard rowsChanged else {
+        guard rowsChanged || slotChanged else {
             DispatchQueue.main.async { totalContentHeight = measuredHeight }
             return
         }
 
         let targetReveal = min(max(revealedHeight, minHeight), min(measuredHeight, slotHeight))
+        let keptTop = rowsChanged ? 0 : min(max(revealedTop, 0), max(measuredHeight - targetReveal, 0))
         coordinator.isProgrammaticScroll = true
-        scrollView.contentOffset = CGPoint(x: 0, y: targetReveal - slotHeight)
+        scrollView.contentOffset = CGPoint(x: 0, y: keptTop + targetReveal - slotHeight)
         coordinator.isProgrammaticScroll = false
         DispatchQueue.main.async {
             withAnimation(.snappy) { revealedHeight = targetReveal }
@@ -107,6 +112,7 @@ struct SuggestionsScrollView: UIViewRepresentable {
         weak var scrollView: SelfSizingScrollView?
         let revealedHeightBinding: Binding<CGFloat>
         var slotHeight: CGFloat = 0
+        var restRows = minVisibleSuggestions
         var lastRowIDs: [AnyHashable] = []
         var lastWidth: CGFloat = -1
         var lastStyle: UIUserInterfaceStyle?
@@ -121,9 +127,9 @@ struct SuggestionsScrollView: UIViewRepresentable {
         }
 
         func restHeight(width: CGFloat, style: UIUserInterfaceStyle,
-                        grid: PixelGrid, total: CGFloat) -> CGFloat {
+                        grid: PixelGrid, total: CGFloat, rows restRows: Int) -> CGFloat {
             let rowHeight = oneLineRowHeight(width: width, style: style) ?? suggestionRowHeight
-            let rows = CGFloat(minVisibleSuggestions)
+            let rows = CGFloat(restRows)
             let cap = grid.aligned(rowHeight * rows + suggestionDividerHeight * (rows - 1), rule: .up)
             return min(total, cap)
         }

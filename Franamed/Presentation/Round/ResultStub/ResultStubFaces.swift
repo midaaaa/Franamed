@@ -14,7 +14,7 @@ struct ResultStubFront: View {
     private static let creditsLines = 2
 
     private static func firstFitting(_ variants: [String], font: UIFont, lines: Int) -> String? {
-        let width = ResultStubMetrics.width - TicketStyle.stubPadding * 2
+        let width = TicketStyle.referenceWidth - TicketStyle.stubPadding * 2
         let limit = font.lineHeight * CGFloat(lines) + 1
         return variants.first { variant in
             let box = (variant as NSString).boundingRect(

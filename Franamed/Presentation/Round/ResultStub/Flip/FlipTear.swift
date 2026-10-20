@@ -23,12 +23,13 @@ struct FlipTear: Equatable {
     func shape(width: CGFloat) -> (line: SIMD4<Float>, shape: SIMD4<Float>) {
         var generator = SplitMix(state: seed &+ 0x51_7C_C1_B7_27_22_0A_95)
         let w = Float(width)
+        let zoom = Float(TicketStyle.zoom(forWidth: width))
         let top = (generator.unit() * 0.3 - 0.15) * w
         let bottom = (generator.unit() * 0.36 - 0.18) * w
         let phaseA = generator.unit() * 6.2832
         let phaseB = generator.unit() * 6.2832
-        let amplitudeA = 4 + generator.unit() * 6
-        let amplitudeB = 1 + generator.unit() * 2.5
+        let amplitudeA = (4 + generator.unit() * 6) * zoom
+        let amplitudeB = (1 + generator.unit() * 2.5) * zoom
         let noiseSeed = generator.unit() * 97
         let wideSide: Float = generator.unit() < 0.5 ? -1 : 1
         return (SIMD4(top, bottom, phaseA, phaseB), SIMD4(amplitudeA, amplitudeB, noiseSeed, wideSide))

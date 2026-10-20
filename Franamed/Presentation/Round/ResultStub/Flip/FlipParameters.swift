@@ -21,4 +21,12 @@ enum FlipLook {
     static let sheen: Float = 1.0
     static let gloss: Float = 26
     static let canvasPadding: CGFloat = 44
+
+    static func canvasPadding(forStubWidth width: CGFloat) -> CGFloat {
+        canvasPadding * TicketStyle.zoom(forWidth: width)
+    }
+
+    static func perspective(forStubWidth width: CGFloat) -> Float {
+        perspective * Float(TicketStyle.zoom(forWidth: width))
+    }
 }

@@ -39,6 +39,7 @@ final class FlipEngine: ObservableObject {
     var plainSnapshot: ((CGImage?) -> UIImage?)?
     var hostController: (() -> UIViewController?)?
     var flightRenderer: (() -> FlipFlight?)?
+    var frameInWindow: (() -> CGRect?)?
     var onCanvasHidden: ((Bool) -> Void)?
 
     var isApproachingRest: Bool {
@@ -101,7 +102,8 @@ final class FlipEngine: ObservableObject {
     }
 
     func tapEdge(at x: CGFloat, width: CGFloat) {
-        guard x < Self.edgeTapZone || x > width - Self.edgeTapZone else { return }
+        let zone = Self.edgeTapZone * TicketStyle.zoom(forWidth: width)
+        guard x < zone || x > width - zone else { return }
         flip(towardsTrailing: x > width / 2)
     }
 

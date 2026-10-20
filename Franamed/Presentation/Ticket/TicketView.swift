@@ -13,6 +13,7 @@ struct TicketView: View {
     @ObservedObject var coordinator: AppCoordinator
 
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.windowGeometry) private var window
 
     private var pixelGrid: PixelGrid { PixelGrid(displayScale: displayScale) }
 
@@ -80,9 +81,12 @@ struct TicketView: View {
                                 } label: {
                                     Image(systemName: "xmark")
                                 }
+                                .keyboardShortcut(.cancelAction)
                             }
                         }
                     }
+                    .providesWindowGeometry()
+                    .environment(\.resultStubWidth, ticketWidth)
                     .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
                 }
                 .sheet(isPresented: $isShowingProfile) {
@@ -110,6 +114,7 @@ struct TicketView: View {
                         playlistSheet = nil
                     }
                     .ignoresSafeArea()
+                    .presentationSizing(.page)
                     .task { await playlists.load() }
                     .navigationTransition(.zoom(sourceID: route.mediaType, in: route.fromPoster ? posterZoom : filtersZoom))
                 }
@@ -125,21 +130,23 @@ struct TicketView: View {
 
     private var cardLayer: some View {
         GeometryReader { geo in
-            let width = pixelGrid.evenAligned(max(0, geo.size.width - TicketStyle.screenInset * 2))
+            let width = pixelGrid.evenAligned(TicketStyle.cardWidth(in: geo.size, edgeStyle: edgeStyle))
             let posterHeight = pixelGrid.evenAligned(width * TicketStyle.posterAspectRatio)
-            let container = geo.frame(in: .global)
-            let centerY = Self.cardCenterY(in: container, cardHeight: cardSize.height) - container.minY
+            let cardHeight = posterHeight + TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
+            let centerY = Self.cardCenterY(containerHeight: geo.size.height, cardHeight: cardHeight)
+            let overscan = max(geo.size.width - width, geo.size.height - cardHeight) / 2 + Self.tearOverscanMargin
 
-            cardView(width: width, posterHeight: posterHeight)
+            cardView(width: width, posterHeight: posterHeight, tearOverscan: overscan)
                 .frame(width: width)
                 .position(x: pixelGrid.snapped(geo.size.width / 2), y: pixelGrid.snapped(centerY))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
         }
+        .ignoresSafeArea(.keyboard)
         .task { await viewModel.loadGenreNames() }
         .task { await playlists.load() }
     }
 
-    private func cardView(width: CGFloat, posterHeight: CGFloat) -> some View {
+    private func cardView(width: CGFloat, posterHeight: CGFloat, tearOverscan: CGFloat) -> some View {
         let isInteractive = !isTransitioning && !isCardLocked && !isStubAway
         let card = currentCard
 
@@ -152,7 +159,8 @@ struct TicketView: View {
             isStubGrabEnabled: !isDraggingCard,
             isRasterized: isRasterized,
             hidesStub: hidesStub,
-            edgeStyle: TicketEdgeStyle(hasScallops: hasScallops),
+            edgeStyle: edgeStyle,
+            tearOverscan: tearOverscan,
             returnToken: stubReturnToken,
             posterZoom: posterZoom,
             filtersZoom: filtersZoom,
@@ -285,7 +293,7 @@ struct TicketView: View {
 
         let flight = TicketSwipe.flightDistance(direction: thrown.direction,
                                                 card: restingCardFrame,
-                                                screen: WindowMetrics.size)
+                                                screen: window.size)
 
         isTransitioning = true
         isRasterized = true
@@ -299,19 +307,25 @@ struct TicketView: View {
     }
 
     private static let navigationBarHeight: CGFloat = 44
+    private static let tearOverscanMargin: CGFloat = 48
 
-    private static func cardCenterY(in container: CGRect, cardHeight: CGFloat) -> CGFloat {
-        let insets = WindowMetrics.safeAreaInsets
-        let top = insets.top + navigationBarHeight
-        let bottom = WindowMetrics.size.height - insets.bottom
+    private static func cardCenterY(containerHeight: CGFloat, cardHeight: CGFloat) -> CGFloat {
+        guard containerHeight > cardHeight else { return containerHeight / 2 }
         let half = cardHeight / 2
-        guard bottom - top > cardHeight else { return container.midY }
-        return min(max((insets.top + bottom) / 2, top + half), bottom - half)
+        return min(max(containerHeight / 2 - navigationBarHeight / 2, half), containerHeight - half)
+    }
+
+    private var edgeStyle: TicketEdgeStyle { TicketEdgeStyle(hasScallops: hasScallops) }
+
+    private var ticketWidth: CGFloat {
+        let width = TicketStyle.cardWidth(in: containerFrame.size, edgeStyle: edgeStyle)
+        return width > 0 ? pixelGrid.evenAligned(width) : TicketStyle.referenceWidth
     }
 
     private var restingCardFrame: CGRect {
         CGRect(x: containerFrame.midX - cardSize.width / 2,
-               y: Self.cardCenterY(in: containerFrame, cardHeight: cardSize.height) - cardSize.height / 2,
+               y: containerFrame.minY + Self.cardCenterY(containerHeight: containerFrame.height, cardHeight: cardSize.height)
+                   - cardSize.height / 2,
                width: cardSize.width, height: cardSize.height)
     }
 

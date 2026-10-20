@@ -150,6 +150,7 @@ struct FlipRenderer: UIViewRepresentable {
             engine.plainSnapshot = { [weak coordinator = context.coordinator] in coordinator?.plainSnapshot(front: $0) }
             engine.hostController = { [weak coordinator = context.coordinator] in coordinator?.hostController() }
             engine.flightRenderer = { [weak coordinator = context.coordinator] in coordinator?.makeFlight() }
+            engine.frameInWindow = { [weak coordinator = context.coordinator] in coordinator?.frameInWindow() }
         }
         let coordinator = context.coordinator
         let needsFrame = coordinator.frontTexture !== frontTexture
@@ -278,7 +279,9 @@ struct FlipRenderer: UIViewRepresentable {
             sampler = device.makeSamplerState(descriptor: samplerDescriptor)
         }
 
-        nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+        nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+            MainActor.assumeIsolated { view.isPaused = false }
+        }
 
         nonisolated func draw(in view: MTKView) {
             MainActor.assumeIsolated { render(in: view) }
@@ -307,16 +310,18 @@ struct FlipRenderer: UIViewRepresentable {
             }
         }
 
-        static let tearMargin: CGFloat = 10
+        static func tearMargin(forStubWidth width: CGFloat) -> CGFloat {
+            10 * TicketStyle.zoom(forWidth: width)
+        }
 
         func tearSnapshot() -> (plain: UIImage, lit: UIImage?)? {
             guard tear.showsMarks else { return nil }
-            let lit = snapshot(margin: Self.tearMargin)
+            let lit = snapshot(margin: Self.tearMargin(forStubWidth: stubSize.width))
             let saved = (lighting, tilt)
             lighting = .neutral
             tilt = 0
             defer { (lighting, tilt) = saved }
-            return snapshot(margin: Self.tearMargin).map { ($0, lit) }
+            return snapshot(margin: Self.tearMargin(forStubWidth: stubSize.width)).map { ($0, lit) }
         }
 
         func plainSnapshot(front: CGImage?) -> UIImage? {
@@ -329,7 +334,7 @@ struct FlipRenderer: UIViewRepresentable {
                 (frontTexture, lighting, tilt) = saved
                 angleOverride = nil
             }
-            return snapshot(margin: Self.tearMargin)
+            return snapshot(margin: Self.tearMargin(forStubWidth: stubSize.width))
         }
 
         func makeFlight() -> FlipFlight {
@@ -345,6 +350,11 @@ struct FlipRenderer: UIViewRepresentable {
             (view.layer as? CAMetalLayer)?.presentsWithTransaction = true
             flight.setOutline(size: stubSize, edgeStyle: outlineStyle)
             return FlipFlight(coordinator: flight, view: view)
+        }
+
+        func frameInWindow() -> CGRect? {
+            guard let view, let window = view.window else { return nil }
+            return view.convert(view.bounds, to: window)
         }
 
         func hostController() -> UIViewController? {
@@ -398,7 +408,7 @@ struct FlipRenderer: UIViewRepresentable {
                   let image = context.makeImage()
             else { return nil }
             let scale = view.drawableSize.width / max(view.bounds.width, 1)
-            let inset = (FlipLook.canvasPadding - margin) * scale
+            let inset = (FlipLook.canvasPadding(forStubWidth: stubSize.width) - margin) * scale
             let crop = CGRect(x: inset, y: inset, width: (stubSize.width + margin * 2) * scale,
                               height: (stubSize.height + margin * 2) * scale)
             return image.cropping(to: crop.integral).map { UIImage(cgImage: $0, scale: scale, orientation: .up) }
@@ -471,7 +481,7 @@ struct FlipRenderer: UIViewRepresentable {
                 height: Float(stubSize.height),
                 angle: Float(angleOverride ?? engine.angle),
                 bend: angleOverride == nil ? Float(engine.bend) : 0,
-                perspective: FlipLook.perspective,
+                perspective: FlipLook.perspective(forStubWidth: stubSize.width),
                 sheen: FlipLook.sheen,
                 cols: Float(FlipMesh.columns),
                 rows: Float(FlipMesh.rows),

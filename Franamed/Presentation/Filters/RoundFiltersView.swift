@@ -9,9 +9,11 @@ import SwiftUI
 
 struct RoundFiltersView: View {
     private static let earliestYear = 1888
+    private static let applyBottomSpace: CGFloat = 20
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: RoundFiltersViewModel
+    @State private var applyBottomGap: CGFloat = 0
     let onApply: (RoundSetup) -> Void
     let onPlayOptionsChange: (Int, ShuffleMode) -> Void
 
@@ -150,6 +152,10 @@ struct RoundFiltersView: View {
         .disabled(viewModel.isApplyDisabled)
         .padding(.horizontal, 32)
         .padding(.top, 8)
+        .padding(.bottom, applyBottomGap)
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset in
+            applyBottomGap = max(0, Self.applyBottomSpace - inset)
+        }
     }
 }
 

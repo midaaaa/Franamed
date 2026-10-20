@@ -58,12 +58,16 @@ private struct SuggestionsSlot<Content: View>: View {
     let visibleHeight: CGFloat
     @ViewBuilder let content: Content
 
+    @Environment(\.suggestionsMaxHeight) private var maxHeight
+
     var body: some View {
         Color.clear
             .frame(maxWidth: .infinity)
             .frame(height: max(0, visibleHeight))
             .overlay(alignment: .bottom) {
-                content.frame(height: suggestionsContentHeight(rows: maxVisibleSuggestions))
+                content
+                    .frame(height: maxHeight)
+                    .animation(nil, value: maxHeight)
             }
     }
 }

@@ -19,8 +19,12 @@ enum TicketStubMetrics {
     }
 
     static func height(width: CGFloat, edgeStyle: TicketEdgeStyle) -> CGFloat {
-        let height = TicketStyle.stubPadding + contentHeight + bottomPadding(width: width, edgeStyle: edgeStyle)
+        let height = layoutHeight(edgeStyle: edgeStyle) * TicketStyle.zoom(forWidth: width)
         return (height / 2).rounded(.up) * 2
+    }
+
+    private static func layoutHeight(edgeStyle: TicketEdgeStyle) -> CGFloat {
+        TicketStyle.stubPadding + contentHeight + bottomPadding(width: TicketStyle.referenceWidth, edgeStyle: edgeStyle)
     }
 }
 
@@ -29,11 +33,14 @@ struct TicketStubFrame: ViewModifier {
     let edgeStyle: TicketEdgeStyle
 
     func body(content: Content) -> some View {
+        let layoutWidth = TicketStyle.referenceWidth
         content
             .frame(height: TicketStubMetrics.contentHeight, alignment: .top)
             .padding(.top, TicketStyle.stubPadding)
             .padding(.horizontal, TicketStyle.stubPadding)
-            .padding(.bottom, TicketStubMetrics.bottomPadding(width: width, edgeStyle: edgeStyle))
+            .padding(.bottom, TicketStubMetrics.bottomPadding(width: layoutWidth, edgeStyle: edgeStyle))
+            .frame(width: layoutWidth, alignment: .topLeading)
+            .scaleEffect(TicketStyle.zoom(forWidth: width), anchor: .topLeading)
             .frame(width: width, height: TicketStubMetrics.height(width: width, edgeStyle: edgeStyle),
                    alignment: .topLeading)
     }

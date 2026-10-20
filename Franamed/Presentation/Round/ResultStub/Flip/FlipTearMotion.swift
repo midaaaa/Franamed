@@ -68,8 +68,11 @@ struct FlipTearMotion {
     func uniforms(width: CGFloat, half: Float) -> (line: SIMD4<Float>, shape: SIMD4<Float>,
                                                    state: SIMD4<Float>, heal: SIMD4<Float>) {
         let shape = target.shape(width: width)
-        return (shape.line, shape.shape, SIMD4(strainedState, half),
-                SIMD4(healGlow, min(healReach, 1), target.scar, 0))
+        let zoom = Float(TicketStyle.zoom(forWidth: width))
+        var state = strainedState
+        state.z *= zoom
+        return (shape.line, shape.shape, SIMD4(state, half),
+                SIMD4(healGlow, min(healReach, 1), target.scar, zoom))
     }
 
     private mutating func heal(dt: Double) {

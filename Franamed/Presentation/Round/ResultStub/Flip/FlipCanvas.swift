@@ -53,8 +53,8 @@ struct FlipCanvas: View {
             tear: tear,
             providesSnapshot: providesSnapshot
         )
-        .frame(width: size.width + FlipLook.canvasPadding * 2,
-               height: size.height + FlipLook.canvasPadding * 2)
+        .frame(width: size.width + FlipLook.canvasPadding(forStubWidth: size.width) * 2,
+               height: size.height + FlipLook.canvasPadding(forStubWidth: size.width) * 2)
         .frame(width: size.width, height: size.height)
         .allowsHitTesting(false)
         .accessibilityHidden(true)

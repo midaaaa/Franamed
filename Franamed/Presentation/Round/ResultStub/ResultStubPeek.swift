@@ -36,6 +36,7 @@ struct ResultStubPeek: View {
     var onShare: ((ResultStubContent, ShareLaunch) -> Void)?
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
+    @Environment(\.resultStubWidth) private var stubWidth
     @State private var playedAt = Date.now
     @State private var reveal: CGFloat = 0
     @State private var shake: CGFloat = 0
@@ -70,8 +71,7 @@ struct ResultStubPeek: View {
     }
 
     private var size: CGSize {
-        CGSize(width: ResultStubMetrics.width,
-               height: ResultStubMetrics.height(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops)))
+        ResultStubMetrics.size(width: stubWidth, edgeStyle: TicketEdgeStyle(hasScallops: hasScallops))
     }
 
     private var hidesDetails: Bool { outcome == nil }
@@ -81,7 +81,7 @@ struct ResultStubPeek: View {
     private var isHidden: Bool { isTucked || !hasEntered }
 
     private var hiddenOffset: CGFloat {
-        guard isHidden else { return size.height - suggestionRowHeight - Self.peekHeight }
+        guard isHidden else { return size.height - suggestionRowHeight - Self.peekHeight * TicketStyle.zoom(forWidth: stubWidth) }
         switch placement {
         case .behindForm: return size.height + Self.screenEdgeGap + keyboardLift
         case .clippedByForm: return size.height - suggestionRowHeight

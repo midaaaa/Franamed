@@ -92,6 +92,10 @@ final class FlipSnapshotter {
         engine?.flightRenderer?()
     }
 
+    func frameInWindow() -> CGRect? {
+        engine?.frameInWindow?()
+    }
+
     func faceTexture(front: some View) -> MTLTexture? {
         TicketSnapshot.texture(of: front, scale: scale)
     }
@@ -284,7 +288,7 @@ private struct FlipInteractionView: UIViewRepresentable {
 
         private func makePreviewView(lit: UIImage?) -> UIView? {
             if let tearPreview {
-                let margin = FlipRenderer.Coordinator.tearMargin
+                let margin = FlipRenderer.Coordinator.tearMargin(forStubWidth: size.width)
                 return makePreviewView(image: tearPreview.plain, lit: tearPreview.lit,
                                        frame: CGRect(origin: .zero, size: size).insetBy(dx: -margin, dy: -margin))
             }

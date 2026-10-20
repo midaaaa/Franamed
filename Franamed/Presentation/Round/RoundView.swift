@@ -28,12 +28,17 @@ struct RoundView: View {
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var fullHeight: CGFloat = 0
     @State private var frameHeight: CGFloat = 0
-    @State private var frameTop: CGFloat = 0
+    @State private var frameWidth: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
     @State private var morphProgress: Double = 0
     @State private var isMorphAnimating = false
     @State private var keyboardLift: CGFloat = 0
+    @State private var keyboardHeight: CGFloat = 0
+    @State private var windowReference = WindowReference()
+    @Environment(\.windowGeometry) private var window
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.resultStubWidth) private var stubWidth
     @AppStorage(DebugSettings.screenProtectionKey) private var isScreenProtected = true
     @State private var isStubLeaving = false
     @State private var roundNumber = 0
@@ -60,11 +65,41 @@ struct RoundView: View {
 
     private var barInset: CGFloat { isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset }
 
+    private static let suggestionsTopMargin: CGFloat = 8
+    private static let frameMaxHeightShare: CGFloat = 0.45
+    private static let formMaxWidth: CGFloat = 640
+
+    private var suggestionsRestRows: Int {
+        switch window.size.height {
+        case ..<1000: minVisibleSuggestions
+        case ..<1250: minVisibleSuggestions + 1
+        default: minVisibleSuggestions + 2
+        }
+    }
+
+    private var frameMaxWidth: CGFloat {
+        guard window.size.height > 0 else { return .infinity }
+        return window.size.height * Self.frameMaxHeightShare * 16 / 9
+    }
+
+    private var formOuterWidth: CGFloat {
+        let preferred = min(frameWidth > 0 ? frameWidth : window.size.width, Self.formMaxWidth)
+        return min(window.size.width, max(preferred, stubWidth + barInset * 2))
+    }
+
+    private var suggestionsMaxHeight: CGFloat {
+        let barBottom = isAnswerFieldFocused && keyboardHeight > 0
+            ? fullHeight + homeIndicatorInset - keyboardHeight - Self.focusedBarInset
+            : fullHeight - (Self.restingBarInset - homeIndicatorInset)
+        let available = barBottom - suggestionRowHeight - Self.suggestionsTopMargin
+        return max(suggestionsContentHeight(rows: minVisibleSuggestions), available.rounded(.down))
+    }
+
     private var barBottomInset: CGFloat {
         isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset - homeIndicatorInset
     }
 
-    private var homeIndicatorInset: CGFloat { WindowMetrics.safeAreaInsets.bottom }
+    private var homeIndicatorInset: CGFloat { window.safeAreaInsets.bottom }
 
     init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil) {
         self.mode = mode
@@ -79,9 +114,12 @@ struct RoundView: View {
                 Text(error.localizedDescription)
             } else {
                 VStack(spacing: 0) {
-                    FrameView()
+                    FrameView(maxWidth: frameMaxWidth)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                        frameWidth = width
+                        frames.displayPixelWidth = width * displayScale
+                    }
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { frameTop = $0 }
                     .layoutPriority(1)
 
                     Spacer(minLength: 0)
@@ -95,10 +133,8 @@ struct RoundView: View {
                 }
                 .background {
                     Color.clear
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
                         .ignoresSafeArea(.keyboard)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                            if !isAnswerFieldFocused || height > fullHeight { fullHeight = height }
-                        }
                 }
                 .overlay(alignment: .bottom) { bottomActionBar }
                 .navigationBarTitleDisplayMode(.inline)
@@ -207,13 +243,22 @@ struct RoundView: View {
                 DispatchQueue.main.async { resignKeyboard() }
             }
         )
+        .background(WindowReader(reference: windowReference))
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
             guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-            let keyboardHeight = WindowMetrics.size.height - frame.minY
-            keyboardLift = max(0, keyboardHeight + Self.focusedBarInset - Self.restingBarInset)
+            keyboardHeight = dockedKeyboardHeight(screenFrame: frame)
+            keyboardLift = Self.keyboardLift(forHeight: keyboardHeight)
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            keyboardHeight = 0
             withAnimation(ResultStubPeek.keyboardSettleAnimation) { keyboardLift = 0 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let height = dockedKeyboardHeight(screenFrame: frame)
+            guard height != keyboardHeight else { return }
+            keyboardHeight = height
+            withAnimation(ResultStubPeek.keyboardSettleAnimation) { keyboardLift = Self.keyboardLift(forHeight: height) }
         }
         .onChange(of: viewModel.outcome) { _, newOutcome in
             isMorphAnimating = true
@@ -370,7 +415,8 @@ struct RoundView: View {
                                      answerFrame: answer.flatMap { frames.image(for: $0) },
                                      firstLight: first.flatMap { frames.light(for: $0) } ?? frames.hallLight,
                                      answerLight: answer.flatMap { frames.light(for: $0) } ?? frames.hallLight,
-                                     roundSize: WindowMetrics.size, roundFrameTop: frameTop)
+                                     roundSize: window.size)
+        material.stubWidth = stubWidth
         material.stubs[content] = launch.currentStub().map { ShareStubImage(face: $0) }
         let model = ShareSheetModel(material: material, launch: launch,
                                     posterPath: media.posterPath ?? viewModel.details?.posterPath)
@@ -406,6 +452,8 @@ struct RoundView: View {
                 onVisibleHeightChange: updateAnswerBarHeight,
                 hasOutcome: viewModel.outcome != nil
             )
+            .environment(\.suggestionsMaxHeight, suggestionsMaxHeight)
+            .environment(\.suggestionsRestRows, suggestionsRestRows)
             .clipShape(FormCollapseShape(progress: formCollapse, side: Self.formCollapsedSide))
             .opacity((isFormDismissed ? 0 : 1) * (isInputBlocked ? 0.5 : 1))
             .allowsHitTesting(morphProgress < 0.5)
@@ -425,6 +473,7 @@ struct RoundView: View {
         }
         .background(alignment: .bottom) { stubAnchor }
         .padding(.horizontal, barInset)
+        .frame(maxWidth: formOuterWidth)
         .padding(.bottom, barBottomInset)
         .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
         .disabled(isInputBlocked)
@@ -450,14 +499,14 @@ struct RoundView: View {
                            isTucked: isStubTucked,
                            keyboardLift: keyboardLift,
                            restOffset: stubRestOffset,
-                           formWidth: WindowMetrics.size.width - barInset * 2,
+                           formWidth: formOuterWidth - barInset * 2,
                            playlist: playlistTicket,
                            onBackShown: stampOnBackIfNeeded,
                            isLifted: isShareLifted,
                            onShare: startShare)
                 .id(StubIdentity(itemID: media.item.id, round: roundNumber))
                 .transition(.asymmetric(insertion: .identity,
-                                        removal: .offset(x: WindowMetrics.size.width)))
+                                        removal: .offset(x: window.size.width)))
         }
     }
 
@@ -475,9 +524,21 @@ struct RoundView: View {
     private var stubRestOffset: CGFloat {
         let restingBarTop = fullHeight - (Self.restingBarInset - homeIndicatorInset) - suggestionRowHeight
         let gap = restingBarTop - frameHeight
-        let stubHeight = ResultStubMetrics.height(edgeStyle: TicketEdgeStyle(hasScallops: hasScallops))
+        let stubHeight = TicketStubMetrics.height(width: stubWidth, edgeStyle: TicketEdgeStyle(hasScallops: hasScallops))
         let restingStubTop = frameHeight + max(0, gap - stubHeight - Self.stubBarGap)
         return restingStubTop + stubHeight - restingBarTop - suggestionRowHeight
+    }
+
+    private static func keyboardLift(forHeight height: CGFloat) -> CGFloat {
+        height > 0 ? max(0, height + focusedBarInset - restingBarInset) : 0
+    }
+
+    private func dockedKeyboardHeight(screenFrame: CGRect) -> CGFloat {
+        guard let window = windowReference.window, let screen = window.windowScene?.screen,
+              screenFrame.width >= screen.bounds.width - 1 else { return 0 }
+        let frame = window.convert(screenFrame, from: screen.coordinateSpace)
+        guard frame.maxY >= window.bounds.maxY - 1 else { return 0 }
+        return max(0, window.bounds.maxY - frame.minY)
     }
 
     private func resignKeyboard() {

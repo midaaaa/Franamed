@@ -21,7 +21,7 @@ final class ShareFlightView: UIView {
     private static let arcLift: CGFloat = 80
     private static let arcTilt: CGFloat = 12 * .pi / 180
 
-    init(flight: FlipFlight, shareFace: MTLTexture?, shadow image: UIImage?, entering: Bool) {
+    init(flight: FlipFlight, shareFace: MTLTexture?, shadow image: UIImage?, shadowStubWidth: CGFloat, entering: Bool) {
         renderer = flight.coordinator
         metalView = flight.view
         litLighting = renderer.lighting
@@ -29,14 +29,16 @@ final class ShareFlightView: UIView {
         self.entering = entering
         let stub = renderer.stubSize
         stubWidth = max(stub.width, 1)
-        let canvas = CGSize(width: stub.width + FlipLook.canvasPadding * 2, height: stub.height + FlipLook.canvasPadding * 2)
+        let padding = FlipLook.canvasPadding(forStubWidth: stub.width)
+        let canvas = CGSize(width: stub.width + padding * 2, height: stub.height + padding * 2)
         super.init(frame: CGRect(origin: .zero, size: canvas))
         isUserInteractionEnabled = false
         renderer.blendTexture = shareFace
         body.frame = bounds
         addSubview(body)
         shadow.image = image
-        shadow.bounds.size = image?.size ?? .zero
+        let shadowScale = stubWidth / max(shadowStubWidth, 1)
+        shadow.bounds.size = (image?.size ?? .zero).applying(CGAffineTransform(scaleX: shadowScale, y: shadowScale))
         shadow.center = CGPoint(x: bounds.midX, y: bounds.midY)
         body.addSubview(shadow)
         metalView.frame = bounds

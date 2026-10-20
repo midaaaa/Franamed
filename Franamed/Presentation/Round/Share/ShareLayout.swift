@@ -14,10 +14,9 @@ struct ShareStubPlacement {
 
     static let stickerShare: CGFloat = 0.92
 
-    @MainActor
     static var stubAspect: CGFloat {
-        let edgeStyle = TicketEdgeStyle(hasScallops: UserDefaults.standard.bool(forKey: TicketEdgeStyle.storageKey))
-        return ResultStubMetrics.height(edgeStyle: edgeStyle) / ResultStubMetrics.width
+        let width = TicketStyle.referenceWidth
+        return TicketStubMetrics.height(width: width, edgeStyle: .stored) / width
     }
 
     static func tallness(of size: CGSize) -> CGFloat {
@@ -84,11 +83,13 @@ struct ShareSheetLayout {
     private static let stickerTopInset: CGFloat = 8
     private static let gap: CGFloat = 12
     private static let sideInset: CGFloat = 24
+    private static let regularStubShare: CGFloat = 0.8
 
     @MainActor
-    static func fittedHeight(width: CGFloat, panelHeight: CGFloat, format: ShareFormat) -> CGFloat {
+    static func fittedHeight(width: CGFloat, panelHeight: CGFloat, format: ShareFormat, stubWidth: CGFloat) -> CGFloat {
         let card = format.canvas
-        let cardHeight = (width - 2 * sideInset) * card.height / card.width
+        let cardWidth = widthLimit(width: width, stubWidth: stubWidth, stickerness: format == .sticker ? 1 : 0)
+        let cardHeight = cardWidth * card.height / card.width
         return (topInset(for: format) + cardHeight + gap + panelHeight + bottomInset).rounded(.up)
     }
 
@@ -104,15 +105,25 @@ struct ShareSheetLayout {
         format == .sticker ? stickerTopInset : regularTopInset
     }
 
-    private static func canvas(width: CGFloat, top: CGFloat, bottom: CGFloat, aspect: CGFloat) -> CGRect {
+    private static func widthLimit(width: CGFloat, stubWidth: CGFloat, stickerness: CGFloat) -> CGFloat {
+        let full = width - 2 * sideInset
+        let regular = min(full, stubWidth / regularStubShare)
+        let sticker = min(full, stubWidth / ShareStubPlacement.stickerShare)
+        return regular + (sticker - regular) * stickerness
+    }
+
+    private static func canvas(width: CGFloat, top: CGFloat, bottom: CGFloat, aspect: CGFloat,
+                               limit: CGFloat) -> CGRect {
         let height = max(bottom - top, 80)
-        let cardWidth = min(width - 2 * sideInset, height / aspect)
+        let cardWidth = min(width - 2 * sideInset, height / aspect, limit)
         return CGRect(x: (width - cardWidth) / 2, y: bottom - height, width: cardWidth, height: height)
     }
 
     @MainActor
-    init(size: CGSize, shape: ShareCardShape) {
-        canvas = Self.canvas(width: size.width, top: shape.inset, bottom: size.height - shape.lift, aspect: shape.aspect)
+    init(size: CGSize, shape: ShareCardShape, stubWidth: CGFloat) {
+        let limit = Self.widthLimit(width: size.width, stubWidth: stubWidth, stickerness: shape.stickerness)
+        canvas = Self.canvas(width: size.width, top: shape.inset, bottom: size.height - shape.lift,
+                             aspect: shape.aspect, limit: limit)
         let scale = canvas.width / ShareFormat.baseWidth
         let placement = ShareStubPlacement.of(stickerness: shape.stickerness,
                                               in: CGSize(width: ShareFormat.baseWidth, height: canvas.height / scale))

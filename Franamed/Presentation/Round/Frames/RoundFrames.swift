@@ -21,7 +21,12 @@ final class RoundFrames: ObservableObject {
     private var frameLights: [URL: HallFrameSample] = [:]
     private var pictures: [URL: HallPicture] = [:]
 
+    var displayPixelWidth: CGFloat = 0
+
     private static let retryCap = Duration.seconds(2)
+    private static let standardBackdropWidth: CGFloat = 1280
+    private static let standardBackdropPath = "/t/p/w1280/"
+    private static let originalBackdropPath = "/t/p/original/"
 
     var hallLight: HallFrameSample {
         displayedURL == nil && isWaiting ? SpinnerGlyph.hallLight : frameLight
@@ -74,15 +79,23 @@ final class RoundFrames: ObservableObject {
         isWaiting = true
         clearDisplayed()
 
+        let source = Self.source(for: url, displayPixelWidth: displayPixelWidth)
+        let fitting = source == url ? nil : displayPixelWidth
         var attempt = 0
         while !Task.isCancelled {
-            if let image = await FrameDownloads.shared.image(for: url) {
+            if let image = await FrameDownloads.shared.image(for: source, fittingPixelWidth: fitting) {
                 if !Task.isCancelled { images[url] = image }
                 return
             }
             attempt += 1
             try? await Task.sleep(for: min(.milliseconds(400 * attempt), Self.retryCap))
         }
+    }
+
+    private static func source(for url: URL, displayPixelWidth: CGFloat) -> URL {
+        let link = url.absoluteString
+        guard displayPixelWidth > standardBackdropWidth * 1.25, link.contains(standardBackdropPath) else { return url }
+        return URL(string: link.replacingOccurrences(of: standardBackdropPath, with: originalBackdropPath)) ?? url
     }
 
     private func prepareLight(_ url: URL) async {

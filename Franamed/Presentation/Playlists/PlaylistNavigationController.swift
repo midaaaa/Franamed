@@ -26,10 +26,13 @@ final class PlaylistNavigationController: UINavigationController {
     }
     var settledBottomInset: CGFloat = 0
     private lazy var popPan = UIPanGestureRecognizer(target: self, action: #selector(handlePopPan(_:)))
+    private let selectWidths = NSHashTable<NSLayoutConstraint>.weakObjects()
 
     private static let revealMargin: CGFloat = 12
     private static let selectInset: CGFloat = 24
     private static let selectHeight: CGFloat = 52
+    private static let toolbarMinBottomGap: CGFloat = 16
+    private static let selectMaxWidth: CGFloat = 480
     private static let popFinishProgress: CGFloat = 0.4
     private static let popFinishVelocity: CGFloat = 500
 
@@ -57,6 +60,25 @@ final class PlaylistNavigationController: UINavigationController {
         setToolbarHidden(false, animated: false)
         popPan.delegate = self
         view.addGestureRecognizer(popPan)
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        let systemBottom = view.safeAreaInsets.bottom - additionalSafeAreaInsets.bottom
+        let extra = max(0, Self.toolbarMinBottomGap - systemBottom)
+        if additionalSafeAreaInsets.bottom != extra { additionalSafeAreaInsets.bottom = extra }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = Self.selectWidth(in: view.bounds.width)
+        for constraint in selectWidths.allObjects where constraint.constant != width {
+            constraint.constant = width
+        }
+    }
+
+    private static func selectWidth(in containerWidth: CGFloat) -> CGFloat {
+        min(selectMaxWidth, containerWidth - 2 * selectInset)
     }
 
     // MARK: Screens
@@ -122,8 +144,10 @@ final class PlaylistNavigationController: UINavigationController {
         })
         button.isEnabled = isSelected || playlist.availableCount > 0
         button.isUserInteractionEnabled = !isSelected
+        let width = button.widthAnchor.constraint(equalToConstant: Self.selectMaxWidth)
+        selectWidths.add(width)
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: WindowMetrics.size.width - 2 * Self.selectInset),
+            width,
             button.heightAnchor.constraint(equalToConstant: Self.selectHeight),
         ])
         let item = UIBarButtonItem(customView: button)
@@ -189,9 +213,15 @@ final class PlaylistNavigationController: UINavigationController {
             images: posters.map { $0.flatMap(ImageCache.shared.image(for:)) },
             folder: PlaylistFolderCover.posterSlots(count: posters.count, in: folderRect.size, isOpen: false)
                 .map { $0.offset(by: folderRect.origin) },
-            header: PlaylistPosterFan.layout(count: posters.count).slots.map { $0.offset(by: headerRect.origin) },
+            header: PlaylistPosterFan.layout(count: posters.count, zoom: headerZoom(width: headerRect.width, count: posters.count))
+                .slots.map { $0.offset(by: headerRect.origin) },
             frontTop: folderRect.minY + PlaylistFolderCover.frontTop(in: folderRect.size, isOpen: true)
         )
+    }
+
+    private func headerZoom(width: CGFloat, count: Int) -> CGFloat {
+        let base = PlaylistPosterFan.layout(count: count).size.width
+        return base > 0 ? width / base : 1
     }
 
     private func startFlight(id: String, sample: (() -> PlaylistFlightSample)?) {

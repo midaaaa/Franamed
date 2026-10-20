@@ -107,8 +107,11 @@ struct HallShaderArgs {
         arm = SIMD4(scene.armrestHeight, scene.armrestLength, scene.armrestSetback, 0)
         screen = SIMD4(HallScene.screenWidth, HallScene.screenHeight, HallScene.screenBottom, 0)
         mean = SIMD4(sample.mean, 0)
-        frame = SIMD4((Float(frameTop) * s).rounded(), (Float(frameBottom) * s).rounded(), 0,
-                      (Float(size.width) * s).rounded())
-        self.picture = SIMD4(picture?.aspect ?? 0, picture == nil ? 0 : 1, Float(size.width), spinnerTime ?? -1)
+        let frameWidth = min(Float(size.width),
+                             Float(frameBottom - frameTop) * HallScene.screenWidth / HallScene.screenHeight)
+        let frameLeft = (Float(size.width) - frameWidth) / 2
+        frame = SIMD4((Float(frameTop) * s).rounded(), (Float(frameBottom) * s).rounded(),
+                      (frameLeft * s).rounded(), ((frameLeft + frameWidth) * s).rounded())
+        self.picture = SIMD4(picture?.aspect ?? 0, picture == nil ? 0 : 1, frameWidth, spinnerTime ?? -1)
     }
 }

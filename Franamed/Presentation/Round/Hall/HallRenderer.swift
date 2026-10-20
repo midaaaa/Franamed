@@ -283,8 +283,9 @@ final class HallRenderer: @unchecked Sendable {
             let distance = scene.eye.z - scene.rowPitch * Float(index + 1)
             let floorY = scene.rowRise * Float(scene.rowsInFront - index - 1)
             let offset: Float = index % 2 == 0 ? scene.seatPitch * 0.5 : 0
-            let reach = Self.visibleHalfWidth(viewSlope: viewSlope, depth: scene.eye.z - distance + 0.8,
-                                              radius: distance + HallScene.rowArc) + abs(swayX) + 0.5
+            let visible = Self.visibleHalfWidth(viewSlope: viewSlope, depth: scene.eye.z - distance + 0.8,
+                                                radius: distance + HallScene.rowArc) + abs(swayX) + 0.5
+            let reach = min(visible, HallScene.rowHalfAngle * (distance + HallScene.rowArc))
             for mesh in rowMeshes {
                 let center = offset + (mesh.shape == .seat ? 0 : scene.seatPitch * 0.5)
                 let first = ((-reach - center) / scene.seatPitch).rounded(.down)

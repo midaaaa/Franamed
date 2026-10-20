@@ -72,6 +72,10 @@ static bool isTorn(constant FlipUniforms &u) {
     return u.tearState.w != 0.0 && u.tearState.x > 0.0;
 }
 
+static float tearZoom(constant FlipUniforms &u) {
+    return max(u.tearHeal.w, 0.001);
+}
+
 static float tearTipY(constant FlipUniforms &u) {
     return (u.tearState.x - 0.5) * u.height;
 }
@@ -79,17 +83,19 @@ static float tearTipY(constant FlipUniforms &u) {
 static float tearX(constant FlipUniforms &u, float y) {
     float t = y / u.height + 0.5;
     float seed = u.tearShape.z;
+    float k = tearZoom(u);
     return mix(u.tearLine.x, u.tearLine.y, t)
         + u.tearShape.x * sin(6.2832 * 0.7 * t + u.tearLine.z)
         + u.tearShape.y * sin(6.2832 * 2.1 * t + u.tearLine.w)
-        + 1.3 * tearNoise(y / 3.2, seed)
-        + 0.5 * tearNoise(y / 1.1, seed + 3.0);
+        + 1.3 * k * tearNoise(y / (3.2 * k), seed)
+        + 0.5 * k * tearNoise(y / (1.1 * k), seed + 3.0);
 }
 
 static float tearFuzz(constant FlipUniforms &u, float y, float side) {
-    float grown = smoothstep(0.0, 6.0, tearTipY(u) - y);
-    float fibre = max(0.0, tearNoise(y / 0.45, u.tearShape.z + (side > 0.0 ? 7.0 : 13.0)));
-    return 0.9 * fibre * fibre * grown;
+    float k = tearZoom(u);
+    float grown = smoothstep(0.0, 6.0 * k, tearTipY(u) - y);
+    float fibre = max(0.0, tearNoise(y / (0.45 * k), u.tearShape.z + (side > 0.0 ? 7.0 : 13.0)));
+    return 0.9 * k * fibre * fibre * grown;
 }
 
 static float3 tearOffset(constant FlipUniforms &u, float x, float y, float side) {
@@ -106,7 +112,7 @@ static float3 tearOffset(constant FlipUniforms &u, float x, float y, float side)
     float c = cos(phi);
     float s = sin(phi);
     float2 moved = pivot + float2(d.x * c - d.y * s, d.x * s + d.y * c) + slide;
-    return float3(moved - float2(x, y), -side * u.tearState.y * 70.0 * a * a);
+    return float3(moved - float2(x, y), -side * u.tearState.y * 70.0 * tearZoom(u) * a * a);
 }
 
 static bool tearKeeps(constant FlipUniforms &u, float2 p) {
@@ -123,10 +129,11 @@ static half3 tearBand(constant FlipUniforms &u, float2 p, bool isBack, half3 bas
     float side = u.tearState.w;
     float inward = side < 0.0 ? tearX(u, p.y) - p.x : p.x - tearX(u, p.y);
     bool wide = (side * u.tearShape.w > 0.0) != isBack;
-    float grown = smoothstep(0.0, 10.0, tip - p.y);
-    float width = (wide ? 1.9 : 0.45) * (0.7 + 0.3 * tearNoise(p.y / 2.4, u.tearShape.z + 21.0)) * grown;
-    float band = 1.0 - smoothstep(width * 0.55, width + 0.35, inward);
-    float streak = 0.9 + 0.1 * tearNoise(p.y / 0.3, u.tearShape.z + 5.0);
+    float k = tearZoom(u);
+    float grown = smoothstep(0.0, 10.0 * k, tip - p.y);
+    float width = (wide ? 1.9 : 0.45) * k * (0.7 + 0.3 * tearNoise(p.y / (2.4 * k), u.tearShape.z + 21.0)) * grown;
+    float band = 1.0 - smoothstep(width * 0.55, width + 0.35 * k, inward);
+    float streak = 0.9 + 0.1 * tearNoise(p.y / (0.3 * k), u.tearShape.z + 5.0);
     return mix(base, half3(0.97h, 0.96h, 0.93h) * half(streak), half(band));
 }
 
@@ -134,10 +141,11 @@ static half3 tearScar(constant FlipUniforms &u, float2 p, half3 base) {
     if (u.tearHeal.z <= 0.0) return base;
     float tip = u.tearState.x > 0.0 ? tearTipY(u) : -u.height * 0.5;
     float end = (u.tearHeal.z - 0.5) * u.height;
-    float along = smoothstep(tip - 1.0, tip + 3.0, p.y) * (1.0 - smoothstep(end - 10.0, end, p.y));
+    float k = tearZoom(u);
+    float along = smoothstep(tip - 1.0 * k, tip + 3.0 * k, p.y) * (1.0 - smoothstep(end - 10.0 * k, end, p.y));
     if (along <= 0.0) return base;
-    float across = p.x - tearX(u, p.y);
-    float broken = 0.65 + 0.35 * tearNoise(p.y / 2.0, u.tearShape.z + 31.0);
+    float across = (p.x - tearX(u, p.y)) / k;
+    float broken = 0.65 + 0.35 * tearNoise(p.y / (2.0 * k), u.tearShape.z + 31.0);
     float crease = exp(-across * across / 0.5) * along * broken;
     float lift = exp(-(across - 0.9) * (across - 0.9) / 0.4) * along * broken;
     half3 scarred = mix(base, base * 0.8h, half(crease * 0.55));
@@ -149,11 +157,12 @@ static half3 tearHealGlow(constant FlipUniforms &u, float2 p, half3 lit) {
     if (strength <= 0.001) return lit;
     float tip = tearTipY(u);
     float reach = (u.tearHeal.y - 0.5) * u.height;
-    float along = p.y - tip;
+    float k = tearZoom(u);
+    float along = (p.y - tip) / k;
     float head = exp(-along * along / 20.0);
-    float trail = step(0.0, along) * exp(-along / 26.0) * (1.0 - smoothstep(reach - 6.0, reach + 2.0, p.y));
+    float trail = step(0.0, along) * exp(-along / 26.0) * (1.0 - smoothstep(reach - 6.0 * k, reach + 2.0 * k, p.y));
     float body = max(head, trail * 0.55) * strength;
-    float across = abs(p.x - tearX(u, p.y));
+    float across = abs(p.x - tearX(u, p.y)) / k;
     float core = exp(-across * across / 2.0) * body;
     float halo = exp(-across * across / 60.0) * body;
     float glow = exp(-across * across / 220.0) * body;
@@ -235,8 +244,9 @@ vertex FlipVertex ticketFlipTearVertex(uint vid [[vertex_id]],
     float side = (vid & 1u) == 0u ? 1.0 : -1.0;
     float half_ = u.tearState.w;
     float y = mix(-u.height * 0.5, min(tearTipY(u), u.height * 0.5), k);
-    float x = tearX(u, y) + half_ * 0.1;
-    float slope = tearX(u, y + 0.5) - tearX(u, y - 0.5);
+    float zoom = tearZoom(u);
+    float x = tearX(u, y) + half_ * 0.1 * zoom;
+    float slope = (tearX(u, y + 0.5 * zoom) - tearX(u, y - 0.5 * zoom)) / zoom;
     float3 torn = tearOffset(u, x, y, half_);
 
     Placed placed = placePaper(u, x + torn.x, y + torn.y, side * u.thickness * 0.5 + torn.z);
@@ -265,7 +275,7 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
     if (isEdge && in.uv.x < -0.5) {
         float2 paperUV = in.paper / float2(u.width, u.height) + 0.5;
         if (frontTexture.sample(textureSampler, paperUV).a < 0.5h) { discard_fragment(); }
-        base = half3(0.95h, 0.94h, 0.9h) * half(0.92 + 0.08 * tearNoise(in.paper.y / 0.4, u.tearShape.z + 9.0));
+        base = half3(0.95h, 0.94h, 0.9h) * half(0.92 + 0.08 * tearNoise(in.paper.y / (0.4 * tearZoom(u)), u.tearShape.z + 9.0));
     } else if (!tearKeeps(u, in.paper)) {
         discard_fragment();
     }

@@ -122,7 +122,9 @@ struct TicketCurlRenderer: UIViewRepresentable {
 
         // MARK: Frame
 
-        nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+        nonisolated func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+            MainActor.assumeIsolated { view.isPaused = false }
+        }
 
         nonisolated func draw(in view: MTKView) {
             MainActor.assumeIsolated { self.render(in: view) }

@@ -8,9 +8,11 @@
 import SwiftUI
 
 struct FrameView: View {
+    var maxWidth: CGFloat = .infinity
+
     var body: some View {
         Color.clear
-            .frame(maxWidth: .infinity)
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: maxWidth)
     }
 }

@@ -24,6 +24,7 @@ final class ShareSheetModel: ObservableObject {
     private let panelHeights: [ShareFormat: CGFloat]
     @Published var sheetHeight: CGFloat?
     @Published var cardShape: ShareCardShape
+    @Published private(set) var stubWidth: CGFloat
     var presentActivity: ([Any]) -> Void = { _ in }
     var onFormatChange: (ShareFormat) -> Void = { _ in }
 
@@ -41,9 +42,17 @@ final class ShareSheetModel: ObservableObject {
         self.launch = launch
         self.posterURL = posterURL
         panelHeights = Dictionary(uniqueKeysWithValues: ShareFormat.allCases.map {
-            ($0, SharePanel.height(for: material, format: $0, width: WindowMetrics.size.width))
+            ($0, SharePanel.height(for: material, format: $0, width: material.roundSize.width))
         })
         cardShape = ShareCardShape(format: .story, panelHeight: panelHeights[.story] ?? 0)
+        stubWidth = material.stubWidth
+    }
+
+    func updateStubWidth(windowSize: CGSize) {
+        let edgeStyle = TicketEdgeStyle.stored
+        let opened = TicketStyle.cardWidth(in: material.roundSize, edgeStyle: edgeStyle)
+        guard opened > 0 else { return }
+        stubWidth = material.stubWidth * TicketStyle.cardWidth(in: windowSize, edgeStyle: edgeStyle) / opened
     }
 
     var tallestPanel: CGFloat { panelHeights.values.max() ?? 0 }
@@ -62,7 +71,8 @@ final class ShareSheetModel: ObservableObject {
 
     func layout(in size: CGSize) -> ShareSheetLayout {
         let target = min(size.height, sheetHeight ?? size.height)
-        return ShareSheetLayout(size: CGSize(width: size.width, height: target), shape: cardShape)
+        return ShareSheetLayout(size: CGSize(width: size.width, height: target), shape: cardShape,
+                                stubWidth: stubWidth)
             .offsetBy(dy: size.height - target)
     }
 
@@ -114,10 +124,8 @@ final class ShareSheetModel: ObservableObject {
     }
 
     private func renderHall(for mode: ShareMode) async -> UIImage? {
-        let frameHeight = ShareMaterial.cardFrame.height / material.cardScale
-        return await HallSnapshot.image(sample: material.light(for: mode), scene: HallScene(), size: material.roundSize,
-                                        frameTop: material.roundFrameTop,
-                                        frameBottom: material.roundFrameTop + frameHeight, scale: 3)
+        await HallSnapshot.image(sample: material.light(for: mode), scene: HallScene(), size: ShareMaterial.hallSize,
+                                 frameTop: ShareMaterial.cardFrame.minY, frameBottom: ShareMaterial.cardFrame.maxY, scale: 3)
     }
 
     private func loadPoster() async {

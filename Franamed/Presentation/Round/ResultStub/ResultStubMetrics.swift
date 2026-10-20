@@ -8,14 +8,8 @@
 import SwiftUI
 
 enum ResultStubMetrics {
-    @MainActor
-    static func height(edgeStyle: TicketEdgeStyle) -> CGFloat {
-        TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
-    }
-
-    @MainActor
-    static var width: CGFloat {
-        max(200, WindowMetrics.size.width - TicketStyle.screenInset * 2)
+    static func size(width: CGFloat, edgeStyle: TicketEdgeStyle) -> CGSize {
+        CGSize(width: width, height: TicketStubMetrics.height(width: width, edgeStyle: edgeStyle))
     }
 }
 
@@ -24,6 +18,7 @@ struct ResultStubPaper<Content: View>: View {
     @ViewBuilder let content: Content
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
+    @Environment(\.resultStubWidth) private var stubWidth
 
     var body: some View {
         let edgeStyle = TicketEdgeStyle(hasScallops: hasScallops)
@@ -31,9 +26,13 @@ struct ResultStubPaper<Content: View>: View {
         VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
             content
         }
-        .modifier(TicketStubFrame(width: ResultStubMetrics.width, edgeStyle: edgeStyle))
+        .modifier(TicketStubFrame(width: stubWidth, edgeStyle: edgeStyle))
         .background(TicketStyle.paper)
         .clipShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored))
         .environment(\.colorScheme, .light)
     }
+}
+
+extension EnvironmentValues {
+    @Entry var resultStubWidth = TicketStyle.referenceWidth
 }

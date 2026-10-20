@@ -16,7 +16,7 @@ struct ShareMaterial {
     let firstLight: HallFrameSample
     let answerLight: HallFrameSample
     var roundSize = CGSize(width: 393, height: 852)
-    var roundFrameTop: CGFloat = 103
+    var stubWidth = TicketStyle.referenceWidth
     var poster: UIImage?
     var isPosterPending = false
     var halls: [ShareMode: UIImage] = [:]
@@ -24,11 +24,7 @@ struct ShareMaterial {
 
     static let cardFrame = CGRect(x: 0, y: 0, width: ShareFormat.baseWidth, height: ShareFormat.baseWidth * 9 / 16)
 
-    var cardScale: CGFloat { ShareFormat.baseWidth / max(roundSize.width, 1) }
-
-    var hallRect: CGRect {
-        CGRect(x: 0, y: -roundFrameTop * cardScale, width: ShareFormat.baseWidth, height: roundSize.height * cardScale)
-    }
+    static let hallSize = CGSize(width: ShareFormat.baseWidth, height: ShareFormat.baseWidth * 16 / 9)
 
     func picture(for mode: ShareMode) -> UIImage? {
         mode.hidesAnswer ? firstFrame : answerFrame ?? firstFrame
@@ -83,6 +79,15 @@ struct ShareLaunch {
     var makeFlight: () -> FlipFlight? = { nil }
     var renderFace: (ResultStubContent) -> MTLTexture? = { _ in nil }
     var renderStub: (ResultStubContent) -> UIImage? = { _ in nil }
+    var stubFrame: () -> CGRect? = { nil }
+    var launchStubFrame: CGRect?
+
+    func currentSource() -> CGRect {
+        guard let base = launchStubFrame, base.width > 0, base.height > 0, let now = stubFrame() else { return source }
+        let sx = now.width / base.width, sy = now.height / base.height
+        return CGRect(x: now.minX + (source.minX - base.minX) * sx, y: now.minY + (source.minY - base.minY) * sy,
+                      width: source.width * sx, height: source.height * sy)
+    }
 }
 
 extension ShareLaunch {
@@ -93,7 +98,9 @@ extension ShareLaunch {
                   currentStub: { snapshotter.current() },
                   makeFlight: { snapshotter.flightRenderer() },
                   renderFace: { snapshotter.faceTexture(front: ResultStubFront(content: $0)) },
-                  renderStub: { snapshotter.render(front: ResultStubFront(content: $0)) })
+                  renderStub: { snapshotter.render(front: ResultStubFront(content: $0)) },
+                  stubFrame: { snapshotter.frameInWindow() },
+                  launchStubFrame: snapshotter.frameInWindow())
     }
 }
 

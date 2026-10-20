@@ -16,6 +16,10 @@ enum TicketEdgeStyle: Hashable {
     init(hasScallops: Bool) {
         self = hasScallops ? .scalloped : .straight
     }
+
+    static var stored: TicketEdgeStyle {
+        TicketEdgeStyle(hasScallops: UserDefaults.standard.bool(forKey: storageKey))
+    }
 }
 
 struct TicketPerforationShape: Shape {
@@ -24,8 +28,6 @@ struct TicketPerforationShape: Shape {
     var scallopedEdges: VerticalEdge.Set = .all
     var tearNotchEdges: VerticalEdge.Set = []
     var edgeStyle: TicketEdgeStyle = .scalloped
-
-    var tearNotchRadius: CGFloat = TicketStyle.tearNotchRadius
 
     struct Scallop {
         let x: CGFloat
@@ -93,7 +95,7 @@ struct TicketPerforationShape: Shape {
 
     private func base(in rect: CGRect) -> Path {
         guard edgeStyle == .straight else { return Path(rect) }
-        let radius = min(tearNotchRadius, rect.width / 2, rect.height / 2)
+        let radius = min(notchRadius(in: rect), rect.width / 2, rect.height / 2)
         let radii = RectangleCornerRadii(
             topLeading: scallopedEdges.contains(.top) ? radius : 0,
             bottomLeading: scallopedEdges.contains(.bottom) ? radius : 0,
@@ -127,8 +129,13 @@ struct TicketPerforationShape: Shape {
     }
 
     private func addTearNotches(to cuts: inout Path, in rect: CGRect, y: CGFloat) {
-        cuts.addCircle(x: rect.minX, y: y, radius: tearNotchRadius)
-        cuts.addCircle(x: rect.maxX, y: y, radius: tearNotchRadius)
+        let radius = notchRadius(in: rect)
+        cuts.addCircle(x: rect.minX, y: y, radius: radius)
+        cuts.addCircle(x: rect.maxX, y: y, radius: radius)
+    }
+
+    private func notchRadius(in rect: CGRect) -> CGFloat {
+        TicketStyle.notchRadius(forWidth: rect.width)
     }
 }
 

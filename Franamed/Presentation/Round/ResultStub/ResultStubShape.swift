@@ -37,7 +37,7 @@ struct ResultStubShape: Shape, Hashable {
 
     private func base(in rect: CGRect) -> Path {
         guard edgeStyle == .straight else { return Path(rect) }
-        let radius = min(TicketStyle.tearNotchRadius, rect.width / 2, rect.height / 2)
+        let radius = min(TicketStyle.notchRadius(forWidth: rect.width), rect.width / 2, rect.height / 2)
         return UnevenRoundedRectangle(
             cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: radius,
                                               bottomTrailing: radius, topTrailing: 0)
@@ -132,7 +132,7 @@ struct ResultStubShape: Shape, Hashable {
     // MARK: Ears and scallops
 
     private func earNotches(in rect: CGRect) -> [Path] {
-        let radius = TicketStyle.tearNotchRadius
+        let radius = TicketStyle.notchRadius(forWidth: rect.width)
         return [rect.minX, rect.maxX].map { x in
             Path(ellipseIn: CGRect(x: x - radius, y: rect.minY - radius,
                                    width: radius * 2, height: radius * 2))

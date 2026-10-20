@@ -25,9 +25,11 @@ struct ShareStub: View {
 struct ShareStubPose: ViewModifier {
     let placement: ShareStubPlacement
 
+    @Environment(\.resultStubWidth) private var stubWidth
+
     func body(content: Content) -> some View {
         content
-            .scaleEffect(placement.width / ResultStubMetrics.width)
+            .scaleEffect(placement.width / stubWidth)
             .rotationEffect(placement.angle)
             .position(placement.center)
     }

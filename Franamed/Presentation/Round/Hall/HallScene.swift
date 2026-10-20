@@ -14,6 +14,7 @@ struct HallScene: Hashable, Sendable {
     static let screenBottom: Float = 1.0
     static let frontRow: Float = 5
     static let rowArc: Float = 12
+    static let rowHalfAngle: Float = 0.5
 
     let rowPitch: Float = 1.6
     let rowRise: Float = 0.55

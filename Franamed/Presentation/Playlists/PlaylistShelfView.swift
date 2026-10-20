@@ -22,6 +22,7 @@ struct PlaylistShelfView: View {
     let onOpen: (String) -> Void
 
     @AppStorage(PlaylistSort.storageKey) private var sort = PlaylistSort.started
+    @State private var shelfWidth: CGFloat = 0
     @State private var isRevealed = false
     @State private var order: [String] = []
 
@@ -36,6 +37,7 @@ struct PlaylistShelfView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView { content.coordinateSpace(.named(PlaylistFlightState.shelfSpace)) }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { shelfWidth = $0 }
                 .onAppear {
                     guard !isRevealed else { return }
                     isRevealed = true
@@ -81,10 +83,11 @@ struct PlaylistShelfView: View {
     }
 
     private var grid: some View {
-        let columns = PlaylistStyle.shelfColumns
+        let layout = PlaylistStyle.shelfLayout(width: shelfWidth)
+        let columns = layout.columns
         let items = items
         let rows = stride(from: 0, to: items.count, by: columns).map { Array(items[$0..<min($0 + columns, items.count)]) }
-        return Grid(alignment: .top, horizontalSpacing: PlaylistStyle.shelfSpacing, verticalSpacing: 24) {
+        return Grid(alignment: .top, horizontalSpacing: layout.spacing, verticalSpacing: layout.spacing * 1.5) {
             ForEach(rows, id: \.first?.id) { row in
                 GridRow {
                     ForEach(row) { item($0) }
@@ -96,7 +99,7 @@ struct PlaylistShelfView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, PlaylistStyle.shelfInset)
         .padding(.vertical, 12)
         .animation(.snappy, value: items.map(\.id))
     }
