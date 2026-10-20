@@ -58,8 +58,9 @@ enum TicketSwipe {
         return (opposesFlight ? -tilt : tilt) * TicketMotion.flightTiltGain
     }
 
-    static func tiltDegrees(for translation: CGSize) -> Double {
+    static func tiltDegrees(for translation: CGSize, zoom: CGFloat) -> Double {
         let limit = TicketMotion.maxTiltDegrees
-        return Double(min(max(translation.width / TicketMotion.tiltDivisor, -limit), limit))
+        let reach = TicketMotion.tiltDivisor * limit * max(zoom, 0.1)
+        return Double(limit * tanh(translation.width / reach))
     }
 }

@@ -278,7 +278,7 @@ struct TicketView: View {
             isRasterized = true
         }
         cardOffset = pixelGrid.snapped(translation)
-        cardTilt = TicketSwipe.tiltDegrees(for: translation)
+        cardTilt = TicketSwipe.tiltDegrees(for: translation, zoom: TicketStyle.zoom(forWidth: ticketWidth))
     }
 
     private func dragEnded(translation: CGSize, velocity: CGSize) {
