@@ -19,8 +19,8 @@ struct SharePanel: View {
     private static let swatchSize: CGFloat = 36
     private static let swatchSlot = swatchSize + 8 + 20
     private static let swatchFade: CGFloat = 20
-    private static let swatchFocus = CGPoint(x: ShareFormat.baseWidth / 2, y: ShareMaterial.cardFrame.maxY - 12)
-    private static let swatchSpan: CGFloat = 200
+    private static let hallFocus = CGPoint(x: ShareFormat.baseWidth / 2, y: ShareMaterial.cardFrame.maxY - 12)
+    private static let hallSpan: CGFloat = 200
     private static let swatchRowHeight = swatchSize + 8 + swatchFade
 
     static func height(for material: ShareMaterial, format: ShareFormat, width: CGFloat) -> CGFloat {
@@ -119,17 +119,24 @@ struct SharePanel: View {
         .frame(maxWidth: .infinity)
     }
 
+    private static func swatchWindow(_ option: ShareBackground) -> (focus: CGPoint, span: CGFloat) {
+        guard option == .poster else { return (hallFocus, hallSpan) }
+        let card = ShareFormat.story.canvas
+        return (CGPoint(x: card.width / 2, y: card.height / 2), card.width)
+    }
+
     private var hidesTitle: Binding<Bool> {
         Binding { mode.hidesAnswer } set: { mode = $0 ? .riddle : .answer }
     }
 
     private func swatch(_ option: ShareBackground) -> some View {
-        let scale = Self.swatchSize / Self.swatchSpan
+        let (focus, span) = Self.swatchWindow(option)
+        let scale = Self.swatchSize / span
         return ShareCard(material: material, mode: mode, background: option, format: .story,
                          showsStub: false, showsOverlays: false)
             .scaleEffect(scale, anchor: .topLeading)
-            .offset(x: Self.swatchSize / 2 - Self.swatchFocus.x * scale,
-                    y: Self.swatchSize / 2 - Self.swatchFocus.y * scale)
+            .offset(x: Self.swatchSize / 2 - focus.x * scale,
+                    y: Self.swatchSize / 2 - focus.y * scale)
             .frame(width: Self.swatchSize, height: Self.swatchSize, alignment: .topLeading)
     }
 }
