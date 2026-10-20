@@ -76,6 +76,7 @@ struct ShareSheetLayout {
     private(set) var stub: CGRect
     let angle: Angle
 
+    static let coordinateSpace = "shareSheet"
     private static let bottomInset: CGFloat = 12
     private static let sheetCornerRadius: CGFloat = 42
     private static let regularTopInset: CGFloat = 24

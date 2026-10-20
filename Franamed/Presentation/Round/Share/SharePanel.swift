@@ -12,7 +12,9 @@ struct SharePanel: View {
     @Binding var mode: ShareMode
     @Binding var background: ShareBackground
     @Binding var format: ShareFormat
-    let onShare: () -> Void
+    let onShare: (CGRect) -> Void
+
+    @State private var shareFrame = CGRect.zero
 
     private static let swatchSize: CGFloat = 36
     private static let swatchSlot = swatchSize + 8 + 20
@@ -23,7 +25,7 @@ struct SharePanel: View {
 
     static func height(for material: ShareMaterial, format: ShareFormat, width: CGFloat) -> CGFloat {
         let panel = SharePanel(material: material, mode: .constant(.answer), background: .constant(.hall),
-                               format: .constant(format), onShare: {})
+                               format: .constant(format), onShare: { _ in })
         let host = UIHostingController(rootView: panel.environment(\.colorScheme, .dark))
         return ceil(host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height)
     }
@@ -48,7 +50,9 @@ struct SharePanel: View {
             .frame(maxWidth: .infinity)
             .padding(.bottom, 16)
 
-            Button(action: onShare) {
+            Button {
+                onShare(shareFrame)
+            } label: {
                 Text("Поделиться")
                     .font(.headline)
                     .foregroundStyle(.black)
@@ -57,6 +61,11 @@ struct SharePanel: View {
             .buttonStyle(.glassProminent)
             .tint(.white)
             .controlSize(.large)
+            .onGeometryChange(for: CGRect.self) {
+                $0.frame(in: .named(ShareSheetLayout.coordinateSpace))
+            } action: {
+                shareFrame = $0
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)

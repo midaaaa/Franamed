@@ -46,7 +46,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         modalPresentationStyle = .pageSheet
         configureDetent()
         model.prepareStub()
-        model.presentActivity = { [weak self] in self?.presentActivity($0) }
+        model.presentActivity = { [weak self] in self?.presentActivity($0, from: $1) }
         Publishers.Merge(model.$format.dropFirst().map { _ in }, model.$mode.dropFirst().map { _ in })
             .sink { [weak self] in self?.flight?.layer.removeAllAnimations() }
             .store(in: &subscriptions)
@@ -115,12 +115,14 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
 
     // MARK: Activity
 
-    private func presentActivity(_ items: [Any]) {
+    private func presentActivity(_ items: [Any], from source: CGRect) {
         guard presentedViewController == nil else { return }
         let activity = UIActivityViewController(activityItems: items, applicationActivities: nil)
         activity.completionWithItemsHandler = { [weak self] _, completed, _, _ in
             if completed { self?.dismiss(animated: true) }
         }
+        activity.popoverPresentationController?.sourceView = view
+        activity.popoverPresentationController?.sourceRect = source
         present(activity, animated: true)
     }
 

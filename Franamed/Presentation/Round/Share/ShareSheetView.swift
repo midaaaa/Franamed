@@ -22,6 +22,7 @@ struct ShareSheetView: View {
                     .allowsHitTesting(!model.isFlying)
                     .offset(y: ShareSheetLayout.panelTop(height: proxy.size.height, panelHeight: model.tallestPanel))
             }
+            .coordinateSpace(.named(ShareSheetLayout.coordinateSpace))
         }
         .ignoresSafeArea()
         .onChange(of: model.stubContent) { model.prepareStub() }

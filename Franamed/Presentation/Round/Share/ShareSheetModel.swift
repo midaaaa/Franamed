@@ -25,7 +25,7 @@ final class ShareSheetModel: ObservableObject {
     @Published var sheetHeight: CGFloat?
     @Published var cardShape: ShareCardShape
     @Published private(set) var stubWidth: CGFloat
-    var presentActivity: ([Any]) -> Void = { _ in }
+    var presentActivity: ([Any], CGRect) -> Void = { _, _ in }
     var onFormatChange: (ShareFormat) -> Void = { _ in }
 
     private let posterURL: URL?
@@ -140,9 +140,9 @@ final class ShareSheetModel: ObservableObject {
 
     // MARK: Send
 
-    func send() {
+    func send(from source: CGRect) {
         let card = ShareCard(material: material, mode: mode, background: shownBackground, format: format)
         guard let item = ShareExport.item(card: card) else { return }
-        presentActivity([item])
+        presentActivity([item], source)
     }
 }
