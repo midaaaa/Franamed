@@ -221,7 +221,9 @@ struct RoundView: View {
             guard let outcome = viewModel.outcome, let stats = roundStatsToShow else { return }
             await showPhoneStats(stats, for: outcome)
         }
-        .onChange(of: isAnswerFieldFocused) { _, focused in if focused { phone.stow() } else { phone.unstow() } }
+        .onChange(of: isAnswerFieldFocused) { _, focused in
+            if focused { phone.stow() } else if viewModel.outcome == nil { phone.unstow() } else { phone.forgetStow() }
+        }
         .onChange(of: isPhoneHeld || isShareLifted, initial: true) { _, locked in isDismissLocked = locked }
         .onAppear {
             phone.onHeldChange = { isPhoneHeld = $0 }

@@ -248,7 +248,6 @@ final class HallPhone: @unchecked Sendable {
     private var isRaised = false
     private var stowed: SIMD2<Float>?
     private var shownLayout: Layout?
-    private var _isLocked = false
     private var shown: SIMD2<Float>?
     private var twistSign: Float?
     private var dragStart: SIMD2<Float>?
@@ -277,17 +276,6 @@ final class HallPhone: @unchecked Sendable {
     }
 
     var isHeld: Bool { lock.withLock { isRaised } }
-
-    var isLocked: Bool {
-        get { lock.withLock { _isLocked } }
-        set {
-            lock.withLock {
-                _isLocked = newValue
-                if newValue { stowed = nil }
-            }
-            if newValue { lower() }
-        }
-    }
 
     nonisolated(unsafe) var onHeldChange: (@MainActor (Bool) -> Void)?
     nonisolated(unsafe) var onNoticeRewake: (@MainActor () -> Void)?
@@ -423,7 +411,7 @@ final class HallPhone: @unchecked Sendable {
 
     private func raise(_ destination: (Layout) -> SIMD2<Float>) {
         let raises = lock.withLock {
-            guard !_isLocked, let layout = currentLayout() else { return false }
+            guard let layout = currentLayout() else { return false }
             stowed = nil
             if !isRaised, raise.value.x < 0.05 {
                 let start = layout.state(at: rest ?? SIMD2(layout.view / 2))
@@ -508,6 +496,10 @@ final class HallPhone: @unchecked Sendable {
         }
         guard let target else { return }
         raise(state: target)
+    }
+
+    func forgetStow() {
+        lock.withLock { stowed = nil }
     }
 
     func drag(by translation: CGPoint) {
