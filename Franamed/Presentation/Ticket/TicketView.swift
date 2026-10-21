@@ -20,6 +20,7 @@ struct TicketView: View {
     @State private var filtersSheetMediaType: MediaType?
     @State private var playlistSheet: PlaylistSheetRoute?
     @State private var isShowingProfile = false
+    @State private var isRoundDismissLocked = false
     @State private var stubReturnToken = 0
     @State private var isCardLocked = false
     @State private var isStubAway = false
@@ -63,7 +64,7 @@ struct TicketView: View {
                     scheduleStubReturn()
                 }
                 .fullScreenCover(item: $coordinator.presentedRound, onDismiss: refreshPlayedPlaylist) { mediaType in
-                    NavigationStack {
+                    RoundNavigation {
                         RoundView(
                             mediaFacade: viewModel.mediaFacade,
                             mediaType: mediaType,
@@ -72,7 +73,8 @@ struct TicketView: View {
                             frameCount: viewModel.setup(for: mediaType).frameCount,
                             shuffle: viewModel.setup(for: mediaType).shuffle,
                             playlists: playlists,
-                            playlistID: viewModel.mode == .collection ? playlists.selectedID(for: mediaType) : nil
+                            playlistID: viewModel.mode == .collection ? playlists.selectedID(for: mediaType) : nil,
+                            isDismissLocked: $isRoundDismissLocked
                         )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
@@ -85,7 +87,8 @@ struct TicketView: View {
                             }
                         }
                     }
-                    .providesWindowGeometry()
+                    .ignoresSafeArea()
+                    .interactiveDismissDisabled(isRoundDismissLocked)
                     .environment(\.resultStubWidth, ticketWidth)
                     .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
                 }

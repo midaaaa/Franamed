@@ -50,6 +50,7 @@ struct RoundView: View {
     @State private var isFormDismissed = false
     @State private var formCollapse: CGFloat = 0
     @State private var isShareLifted = false
+    @Binding private var isDismissLocked: Bool
     private let mode: TicketGameMode
     @ObservedObject private var playlists: PlaylistsViewModel
     private let playlistID: String?
@@ -101,7 +102,8 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { window.safeAreaInsets.bottom }
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil, isDismissLocked: Binding<Bool> = .constant(false)) {
+        _isDismissLocked = isDismissLocked
         self.mode = mode
         self.playlists = playlists
         self.playlistID = playlistID
@@ -214,7 +216,7 @@ struct RoundView: View {
             await showPhoneStats(stats, for: outcome)
         }
         .onChange(of: isAnswerFieldFocused) { _, focused in if focused { phone.stow() } else { phone.unstow() } }
-        .interactiveDismissDisabled(isPhoneHeld || isShareLifted)
+        .onChange(of: isPhoneHeld || isShareLifted, initial: true) { _, locked in isDismissLocked = locked }
         .onAppear {
             phone.onHeldChange = { isPhoneHeld = $0 }
             phone.onNoticeRewake = { [phone] in
