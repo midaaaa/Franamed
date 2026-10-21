@@ -11,7 +11,7 @@ import UIKit
 
 @MainActor
 final class PlaylistFlightState: ObservableObject {
-    static let shelfSpace = "playlistShelf"
+    nonisolated static let shelfSpace = "playlistShelf"
 
     @Published var flyingID: String?
     @Published var openID: String?

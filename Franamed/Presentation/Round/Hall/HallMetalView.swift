@@ -89,7 +89,7 @@ final class HallLayerView: UIView {
     nonisolated(unsafe) private var clock: HallFrameClock?
     nonisolated(unsafe) private var lastFinder: (time: CFTimeInterval, draw: HallPhoneDraw)?
 
-    private static let slowFinderInterval: CFTimeInterval = 1.0 / 30 - 0.002
+    private nonisolated static let slowFinderInterval: CFTimeInterval = 1.0 / 30 - 0.002
     private static let fallbackCorner: CGFloat = 55
 
     private let displayProbe = UIView()

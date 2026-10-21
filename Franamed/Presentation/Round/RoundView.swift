@@ -58,7 +58,7 @@ struct RoundView: View {
     private let playlistID: String?
 
     private static let backgroundSpace = "roundBackground"
-    private static let contentSpace = "roundContent"
+    private nonisolated static let contentSpace = "roundContent"
     private static let formCollapsedSide: CGFloat = 44
     private static let formCollapseDuration = 0.32
     private static let formFadeDuration = 0.12
