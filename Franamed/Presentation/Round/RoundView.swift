@@ -35,6 +35,8 @@ struct RoundView: View {
     @State private var isMorphAnimating = false
     @State private var keyboardLift: CGFloat = 0
     @State private var keyboardHeight: CGFloat = 0
+    @State private var barBottom: CGFloat = 0
+    @State private var highestBarBottom: CGFloat = 0
     @State private var windowReference = WindowReference()
     @Environment(\.windowGeometry) private var window
     @Environment(\.displayScale) private var displayScale
@@ -56,6 +58,7 @@ struct RoundView: View {
     private let playlistID: String?
 
     private static let backgroundSpace = "roundBackground"
+    private static let contentSpace = "roundContent"
     private static let formCollapsedSide: CGFloat = 44
     private static let formCollapseDuration = 0.32
     private static let formFadeDuration = 0.12
@@ -89,9 +92,8 @@ struct RoundView: View {
     }
 
     private var suggestionsMaxHeight: CGFloat {
-        let barBottom = isAnswerFieldFocused && keyboardHeight > 0
-            ? fullHeight + homeIndicatorInset - keyboardHeight - Self.focusedBarInset
-            : fullHeight - (Self.restingBarInset - homeIndicatorInset)
+        let measured = highestBarBottom > 0 ? highestBarBottom : barBottom
+        let barBottom = measured > 0 ? measured : fullHeight - (Self.restingBarInset - homeIndicatorInset)
         let available = barBottom - suggestionRowHeight - Self.suggestionsTopMargin
         return max(suggestionsContentHeight(rows: minVisibleSuggestions), available.rounded(.down))
     }
@@ -135,10 +137,14 @@ struct RoundView: View {
                 }
                 .background {
                     Color.clear
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                            fullHeight = $0
+                            highestBarBottom = 0
+                        }
                         .ignoresSafeArea(.keyboard)
                 }
                 .overlay(alignment: .bottom) { bottomActionBar }
+                .coordinateSpace(.named(Self.contentSpace))
                 .navigationBarTitleDisplayMode(.inline)
                 #if DEBUG
                 .toolbar {
@@ -472,6 +478,10 @@ struct RoundView: View {
                 )
             }
             .frame(height: suggestionRowHeight)
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.contentSpace)).maxY } action: {
+            barBottom = $0
+            highestBarBottom = highestBarBottom > 0 ? min(highestBarBottom, $0) : $0
         }
         .background(alignment: .bottom) { stubAnchor }
         .padding(.horizontal, barInset)
