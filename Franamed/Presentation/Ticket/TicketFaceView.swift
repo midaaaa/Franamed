@@ -43,6 +43,9 @@ struct TicketFaceView: View, Equatable {
     var onStubAwayChange: ((Bool) -> Void)?
 
     @State private var posterImage: UIImage?
+    @Environment(\.displayScale) private var displayScale
+
+    private static let posterWidthStep: CGFloat = 256
 
     private var tearConfig: TicketTearConfig {
         var config = TicketTearConfig.ticket(width: width)
@@ -75,7 +78,7 @@ struct TicketFaceView: View, Equatable {
                    onStubAwayChange: onStubAwayChange) {
             ticket
         }
-        .task(id: posterURL) { await loadPoster() }
+        .task(id: posterSource) { await loadPoster() }
     }
 
     private var ticket: some View {
@@ -121,18 +124,37 @@ struct TicketFaceView: View, Equatable {
     }
 
     private func loadPoster() async {
-        guard let url = posterURL else {
+        guard let source = posterSource else {
             posterImage = nil
             return
         }
-        if let cached = ImageCache.shared.image(for: url) {
+        let cached = ImageCache.shared.image(for: source.url)
+        if let cached, cached.size.width * cached.scale >= source.pixelWidth {
             posterImage = cached
             return
         }
-        posterImage = TMDBImageSize.small(of: url).flatMap(ImageCache.shared.image(for:))
-        guard let image = await FrameDownloads.shared.image(for: url) else { return }
-        ImageCache.shared.store(image, for: url)
+        posterImage = cached
+            ?? posterURL.flatMap(ImageCache.shared.image(for:))
+            ?? posterURL.flatMap(TMDBImageSize.small(of:)).flatMap(ImageCache.shared.image(for:))
+        let fitting = source.pixelWidth > 0 ? source.pixelWidth : nil
+        guard let image = await FrameDownloads.shared.image(for: source.url, fittingPixelWidth: fitting) else { return }
+        ImageCache.shared.store(image, for: source.url)
         posterImage = image
+    }
+
+    private struct PosterSource: Hashable {
+        let url: URL
+        let pixelWidth: CGFloat
+    }
+
+    private var posterSource: PosterSource? {
+        guard let url = posterURL else { return nil }
+        let pixelWidth = width * displayScale
+        guard pixelWidth > TMDBImageSize.largePixelWidth, let original = TMDBImageSize.original(of: url) else {
+            return PosterSource(url: url, pixelWidth: 0)
+        }
+        let stepped = (pixelWidth / Self.posterWidthStep).rounded(.up) * Self.posterWidthStep
+        return PosterSource(url: original, pixelWidth: stepped)
     }
 
     private var posterURL: URL? {

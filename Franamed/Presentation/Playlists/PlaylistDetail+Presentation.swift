@@ -73,6 +73,8 @@ extension PlaylistEntry {
 enum TMDBImageSize {
     static let smallPath = "/t/p/w342"
     static let largePath = "/t/p/w780"
+    static let largePixelWidth: CGFloat = 780
+    static let originalPath = "/t/p/original"
 
     static func large(_ url: String) -> URL? {
         URL(string: url.replacingOccurrences(of: smallPath, with: largePath))
@@ -80,6 +82,12 @@ enum TMDBImageSize {
 
     static func small(of url: URL) -> URL? {
         URL(string: url.absoluteString.replacingOccurrences(of: largePath, with: smallPath))
+    }
+
+    static func original(of url: URL) -> URL? {
+        let link = url.absoluteString
+        guard link.contains(largePath) else { return nil }
+        return URL(string: link.replacingOccurrences(of: largePath, with: originalPath))
     }
 }
 
