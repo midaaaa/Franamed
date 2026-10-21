@@ -103,7 +103,8 @@ struct TicketFaceView: View, Equatable {
         .frame(width: width)
         .mask(TicketPerforationShape(tearLineOffset: posterHeight,
                                      tearLineSlots: TearPerforation(config: tearConfig, length: width),
-                                     edgeStyle: edgeStyle))
+                                     edgeStyle: edgeStyle,
+                                     designSize: CGSize(width: width, height: posterHeight + tearConfig.stubExtent)))
     }
 
     private var paper: Color { TicketStyle.paper }

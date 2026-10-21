@@ -28,6 +28,7 @@ struct TicketPerforationShape: Shape {
     var scallopedEdges: VerticalEdge.Set = .all
     var tearNotchEdges: VerticalEdge.Set = []
     var edgeStyle: TicketEdgeStyle = .scalloped
+    var designSize: CGSize?
 
     struct Scallop {
         let x: CGFloat
@@ -63,6 +64,15 @@ struct TicketPerforationShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
+        guard let designSize, designSize.width > 0, designSize.height > 0, rect.size != designSize else {
+            return cutPath(in: rect)
+        }
+        let transform = CGAffineTransform(translationX: rect.minX, y: rect.minY)
+            .scaledBy(x: rect.width / designSize.width, y: rect.height / designSize.height)
+        return cutPath(in: CGRect(origin: .zero, size: designSize)).applying(transform)
+    }
+
+    private func cutPath(in rect: CGRect) -> Path {
         var cuts = Path()
 
         if edgeStyle == .scalloped {
