@@ -175,7 +175,7 @@ inline CurlPoint curlPoint(float a, float b, constant CurlUniforms &u) {
     }
 
     float sinT = sin(theta);
-    float beta = atan2(b, da) / sinT;
+    float beta = precise::atan2(b, da) / sinT;
     float3 ruling = coneRuling(beta, theta);
     float3 dRulingDPhi = float3(-sin(beta) * sinT, cos(beta), sin(beta) * cos(theta));
     float3 nrm = normalize(cross(ruling, dRulingDPhi));
