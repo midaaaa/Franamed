@@ -420,14 +420,14 @@ struct RoundView: View {
               let presenter = launch.presenter() else { return }
         let answerIndex = outcome == .correct ? viewModel.attemptsMade - 1 : viewModel.currentFrameIndex
         let first = frameURLs.first, answer = frameURLs[safe: answerIndex]
-        var material = ShareMaterial(content: content, solvedAtFrame: outcome == .correct ? viewModel.attemptsMade : nil,
+        var material = ShareMaterial(content: content.withoutCursor(),
+                                     solvedAtFrame: outcome == .correct ? viewModel.attemptsMade : nil,
                                      firstFrame: first.flatMap { frames.image(for: $0) },
                                      answerFrame: answer.flatMap { frames.image(for: $0) },
                                      firstLight: first.flatMap { frames.light(for: $0) } ?? frames.hallLight,
                                      answerLight: answer.flatMap { frames.light(for: $0) } ?? frames.hallLight,
                                      roundSize: window.size)
         material.stubWidth = stubWidth
-        material.stubs[content] = launch.currentStub().map { ShareStubImage(face: $0) }
         let model = ShareSheetModel(material: material, launch: launch,
                                     posterPath: media.posterPath ?? viewModel.details?.posterPath)
         ShareSheetController.present(model: model, from: presenter, onLift: { isShareLifted = true },

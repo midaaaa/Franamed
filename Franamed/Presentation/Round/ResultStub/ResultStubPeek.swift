@@ -95,9 +95,9 @@ struct ResultStubPeek: View {
     private var content: ResultStubContent {
         ResultStubContent(item: item, mediaType: mediaType, details: details, outcome: outcome,
                           attemptsUsed: max(attemptsMade, 1), playedAt: playedAt,
-                          marks: ResultStubMark.live(frameCount: frameCount, attemptsMade: attemptsMade,
-                                                     revealedCount: revealedCount, outcome: outcome),
-                          currentFrame: currentFrame)
+                          progress: ResultStubProgress(frameCount: frameCount, attemptsMade: attemptsMade,
+                                                       revealedCount: revealedCount, outcome: outcome,
+                                                       currentFrame: currentFrame))
     }
 
     var body: some View {

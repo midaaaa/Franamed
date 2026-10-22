@@ -15,8 +15,7 @@ struct ResultStubContent: Hashable {
     let verdict: String
     let session: String
     let searchQuery: String
-    let marks: [ResultStubMark]
-    let currentFrame: Int?
+    private(set) var progress: ResultStubProgress
 
     init(item: MediaItem,
          mediaType: MediaType,
@@ -24,8 +23,7 @@ struct ResultStubContent: Hashable {
          outcome: RoundOutcome?,
          attemptsUsed: Int,
          playedAt: Date = .now,
-         marks: [ResultStubMark],
-         currentFrame: Int? = nil) {
+         progress: ResultStubProgress) {
         title = item.originalTitle
         credits = Self.credits(mediaType: mediaType, authors: details?.authors ?? [])
         meta = Self.meta(mediaType: mediaType, item: item, details: details)
@@ -37,8 +35,7 @@ struct ResultStubContent: Hashable {
         session = Self.session(playedAt)
         let year = item.releaseDate?.prefix(4) ?? ""
         searchQuery = year.isEmpty ? title : "\(title) \(year)"
-        self.marks = marks
-        self.currentFrame = currentFrame
+        self.progress = progress
     }
 
     private static func session(_ date: Date) -> String {
@@ -115,6 +112,12 @@ extension ResultStubContent {
         copy.title = "???"
         copy.credits = [" "]
         copy.meta = "????  ·  ? ч ?? мин"
+        return copy
+    }
+
+    func withoutCursor() -> ResultStubContent {
+        var copy = self
+        copy.progress = progress.withoutCursor()
         return copy
     }
 

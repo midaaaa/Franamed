@@ -34,7 +34,7 @@ struct ResultStubFront: View {
 
     private var serviceLine: some View {
         HStack(alignment: .center) {
-            ResultStubDots(marks: content.marks, current: content.currentFrame)
+            ResultStubDots(progress: content.progress)
             Spacer(minLength: 8)
             Text(content.session)
                 .font(TicketStyle.serial)
@@ -166,10 +166,9 @@ private struct ResultStubGallery: View {
                         ResultStubFront(content: ResultStubContent(
                             item: c.item, mediaType: c.item.mediaType, details: c.details,
                             outcome: c.outcome, attemptsUsed: max(c.attempts, 1),
-                            marks: ResultStubMark.live(frameCount: 6, attemptsMade: c.attempts,
-                                                       revealedCount: c.outcome == .correct ? 6 : c.attempts + 1,
-                                                       outcome: c.outcome),
-                            currentFrame: c.current),
+                            progress: ResultStubProgress(frameCount: 6, attemptsMade: c.attempts,
+                                                         revealedCount: c.outcome == .correct ? 6 : c.attempts + 1,
+                                                         outcome: c.outcome, currentFrame: c.current)),
                             hidesDetails: c.outcome == nil)
                     }
                 }

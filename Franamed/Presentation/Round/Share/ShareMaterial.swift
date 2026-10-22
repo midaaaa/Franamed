@@ -48,7 +48,7 @@ extension ShareMaterial {
 
     var challengeLine: String {
         switch solvedAtFrame {
-        case nil: "Мне не хватило \(Self.frames(content.marks.count))"
+        case nil: "Мне не хватило \(Self.frames(content.progress.frameCount))"
         case 1: "Мне хватило одного"
         case let frame?: "Мне хватило \(Self.frames(frame))"
         }
@@ -75,7 +75,6 @@ struct ShareLaunch {
     let source: CGRect
     let startsOnBack: Bool
     var presenter: () -> UIViewController? = { nil }
-    var currentStub: () -> UIImage? = { nil }
     var makeFlight: () -> FlipFlight? = { nil }
     var renderFace: (ResultStubContent) -> MTLTexture? = { _ in nil }
     var renderStub: (ResultStubContent) -> UIImage? = { _ in nil }
@@ -95,7 +94,6 @@ extension ShareLaunch {
     init(snapshotter: FlipSnapshotter, source: CGRect, startsOnBack: Bool) {
         self.init(source: source, startsOnBack: startsOnBack,
                   presenter: { snapshotter.hostController() },
-                  currentStub: { snapshotter.current() },
                   makeFlight: { snapshotter.flightRenderer() },
                   renderFace: { snapshotter.faceTexture(front: ResultStubFront(content: $0)) },
                   renderStub: { snapshotter.render(front: ResultStubFront(content: $0)) },
@@ -110,8 +108,7 @@ extension ShareMaterial {
                              originalTitle: "Blade Runner 2049", releaseDate: "2017-10-04", overview: nil)
         let details = MediaDetails(runtimeMinutes: 164, firstYear: 2017, certification: "18+", authors: ["Дени Вильнёв"])
         let content = ResultStubContent(item: item, mediaType: .movie, details: details, outcome: .correct, attemptsUsed: 2,
-                                        marks: ResultStubMark.live(frameCount: 6, attemptsMade: 2, revealedCount: 2,
-                                                                   outcome: .correct))
+                                        progress: .finished(frameCount: 6, attemptsMade: 2, outcome: .correct))
         return ShareMaterial(content: content, solvedAtFrame: 2, firstFrame: nil, answerFrame: nil,
                              firstLight: .dark, answerLight: .dark)
     }
