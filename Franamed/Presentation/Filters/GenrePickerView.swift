@@ -36,9 +36,10 @@ struct GenrePickerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Очистить") {
+                Button("Очистить", systemImage: "arrow.counterclockwise") {
                     viewModel.filters.genres = nil
                 }
+                .disabled(viewModel.filters.genres == nil)
             }
         }
         .task {

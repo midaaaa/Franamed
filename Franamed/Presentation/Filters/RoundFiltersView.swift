@@ -125,9 +125,10 @@ struct RoundFiltersView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            Button("Очистить") {
+            Button("Очистить", systemImage: "arrow.counterclockwise") {
                 viewModel.clearFilters()
             }
+            .disabled(!viewModel.hasFilters)
         }
     }
 
