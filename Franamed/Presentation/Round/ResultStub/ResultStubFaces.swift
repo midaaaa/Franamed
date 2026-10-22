@@ -10,6 +10,7 @@ import SwiftUI
 struct ResultStubFront: View {
     let content: ResultStubContent
     var hidesDetails = false
+    var clipsShape = true
 
     private static let creditsLines = 2
 
@@ -25,7 +26,7 @@ struct ResultStubFront: View {
     }
 
     var body: some View {
-        ResultStubPaper(mirrored: true) {
+        ResultStubPaper(mirrored: true, clipsShape: clipsShape) {
             serviceLine
             details
         }

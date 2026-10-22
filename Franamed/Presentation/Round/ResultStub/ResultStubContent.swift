@@ -121,12 +121,14 @@ extension ResultStubContent {
         return copy
     }
 
+    @MainActor
     func menuItems(onWebSearch: @escaping (String) -> Void, onShare: (() -> Void)? = nil) -> [FlipMenuItem] {
         var items = [
-            FlipMenuItem(title: "Скопировать название", systemImage: "doc.on.doc") {
+            FlipMenuItem(title: "Скопировать", systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = title
+                Haptics.shared.play(.menuSelect)
             },
-            FlipMenuItem(title: "Загуглить", systemImage: "magnifyingglass") {
+            FlipMenuItem(title: "Поиск", systemImage: "magnifyingglass") {
                 onWebSearch(searchQuery)
             }
         ]

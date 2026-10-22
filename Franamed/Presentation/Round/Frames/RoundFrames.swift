@@ -59,6 +59,12 @@ final class RoundFrames: ObservableObject {
         frameLights[url]
     }
 
+    func shareFrames(first: URL?, answer: URL?) -> ShareFrames {
+        ShareFrames(first: first.flatMap(image(for:)), answer: answer.flatMap(image(for:)),
+                    firstLight: first.flatMap(light(for:)) ?? hallLight,
+                    answerLight: answer.flatMap(light(for:)) ?? hallLight)
+    }
+
     func preload(_ urls: [URL]) async {
         let round = Set(urls)
         images = images.filter { round.contains($0.key) }
@@ -100,17 +106,12 @@ final class RoundFrames: ObservableObject {
 
     private func prepareLight(_ url: URL) async {
         guard frameLights[url] == nil, let image = images[url] else { return }
-        if let light = await Self.makeLight(image) { frameLights[url] = light }
+        if let light = await HallFrameSample.make(image) { frameLights[url] = light }
     }
 
     private func preparePicture(_ url: URL) async {
         guard pictures[url] == nil, let image = images[url] else { return }
         if let picture = await HallPicture.make(image) { pictures[url] = picture }
-    }
-
-    @concurrent
-    private nonisolated static func makeLight(_ image: UIImage) async -> HallFrameSample? {
-        HallFrameSample(image: image)
     }
 
     private func present(_ url: URL) {

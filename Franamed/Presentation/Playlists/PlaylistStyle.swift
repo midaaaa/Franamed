@@ -11,9 +11,8 @@ enum PlaylistStyle {
     static let hit = Color(red: 0.37, green: 0.75, blue: 0.53)
     static let miss = Color(red: 0.88, green: 0.39, blue: 0.30)
     static let gold = Color(red: 1.0, green: 0.78, blue: 0.28)
-
-    static let posterAspectRatio: CGFloat = 2.0 / 3.0
-    static let cellCornerRadius: CGFloat = 6
+    static let goldOnPaper = Color(red: 1.0, green: 0.72, blue: 0.0)
+    static let trackOnPaper = Color.black.opacity(0.18)
 
     static func title(zoom: CGFloat) -> Font {
         scaledFont(.title2, zoom: zoom, weight: .bold, design: .serif)
@@ -66,18 +65,63 @@ enum PlaylistStyle {
     }
 }
 
-struct PlaylistSealStamp: View {
+struct PlaylistSealStamp: View, Animatable {
     var isGold = false
+    var progress: Double = 1
 
-    private var ink: Color { isGold ? .black : Accent.reward }
+    private static let size: CGFloat = 34
+    private static let bleed: CGFloat = 4
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
 
     var body: some View {
+        let size = Self.size
+        let radius = size / 2
+        let fold = -radius + CGFloat(min(max(progress, 0), 1)) * size
+        let laid = min(max(fold + radius, 0), size)
+        let lifted = size - laid
+        let bleed = Self.bleed
+        let full = size + bleed * 2
+        ZStack {
+            face
+                .padding(bleed)
+                .rotationEffect(.degrees(-45))
+                .mask(alignment: .leading) {
+                    Rectangle().frame(width: laid == 0 ? 0 : laid + bleed + (lifted == 0 ? bleed : 0))
+                }
+            backing
+                .padding(bleed)
+                .rotationEffect(.degrees(-45))
+                .mask(alignment: .trailing) {
+                    Rectangle().frame(width: lifted == 0 ? 0 : lifted + bleed + (laid == 0 ? bleed : 0))
+                }
+                .scaleEffect(x: -1, y: 1, anchor: UnitPoint(x: (laid + bleed) / full, y: 0.5))
+                .shadow(color: .black.opacity(0.35 * min(1, lifted / radius)), radius: 2, x: 1.5, y: 1.5)
+        }
+        .frame(width: full, height: full)
+        .rotationEffect(.degrees(45))
+        .padding(-bleed)
+        .opacity(min(1, progress * 5))
+    }
+
+    private var face: some View {
         Image(systemName: "checkmark.seal")
             .font(.system(size: 14, weight: .heavy))
-            .foregroundStyle(ink)
-            .frame(width: 34, height: 34)
-            .background(isGold ? PlaylistStyle.gold : .black.opacity(0.5), in: Circle())
-            .overlay(Circle().stroke(ink, lineWidth: 1.5))
-            .overlay(Circle().inset(by: 3.5).stroke(ink.opacity(0.6), lineWidth: 0.75))
+            .foregroundStyle(.black)
+            .frame(width: Self.size, height: Self.size)
+            .background(isGold ? PlaylistStyle.gold : .white, in: Circle())
+            .overlay(Circle().stroke(.black, lineWidth: 1.5))
+            .overlay(Circle().inset(by: 3.5).stroke(.black.opacity(0.6), lineWidth: 0.75))
+    }
+
+    private var backing: some View {
+        Circle()
+            .fill(LinearGradient(colors: [Color(white: 0.97), Color(white: 0.78)],
+                                 startPoint: .trailing, endPoint: .leading))
+            .overlay(Circle().stroke(.black.opacity(0.5), lineWidth: 1))
+            .frame(width: Self.size, height: Self.size)
     }
 }

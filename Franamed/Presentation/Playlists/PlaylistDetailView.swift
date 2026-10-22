@@ -11,31 +11,73 @@ struct PlaylistDetailView: View {
     @ObservedObject var playlists: PlaylistsViewModel
     let playlistID: String
     @ObservedObject var flight: PlaylistFlightState
+    var onLightbox: (AnyView?) -> Void = { _ in }
 
-    @State private var focusedKey: String?
     @State private var contentWidth: CGFloat = 0
+    @State private var isLightboxOpen = false
+    @StateObject private var lightboxGrid = PlaylistLightboxGrid()
+    @StateObject private var loader = PlaylistTicketLoader()
 
-    private static let cardMaxWidth: CGFloat = 420
+    private static let closeSettleDelay = Duration.milliseconds(32)
 
     private var zoom: CGFloat { PlaylistStyle.pageZoom(forWidth: contentWidth) }
 
     var body: some View {
         if let playlist = playlists.playlist(id: playlistID) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    header(playlist)
-                    grid(playlist)
-                    if playlist.availableCount == 0 {
-                        Text("Фильмы появятся, когда для них наберутся кадры")
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        header(playlist)
+                        grid(playlist)
+                        if playlist.availableCount == 0 {
+                            Text("Фильмы появятся, когда для них наберутся кадры")
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
+                    .padding(.horizontal, PlaylistStyle.pageInset(forWidth: contentWidth))
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, PlaylistStyle.pageInset(forWidth: contentWidth))
-                .padding(.bottom, 24)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+                .onGeometryChange(for: CGRect.self) { geometry in
+                    geometry.frame(in: .global).inset(by: UIEdgeInsets(top: geometry.safeAreaInsets.top, left: 0,
+                                                                        bottom: geometry.safeAreaInsets.bottom, right: 0))
+                } action: { [lightboxGrid] visible in
+                    lightboxGrid.visible = visible
+                }
+                .onChange(of: lightboxGrid.scrollTarget) { _, target in
+                    guard let target else { return }
+                    if target.isAnimated {
+                        withAnimation(PlaylistLightboxGrid.scrollAnimation) { proxy.scrollTo(target.key, anchor: .center) }
+                    } else {
+                        proxy.scrollTo(target.key, anchor: .center)
+                    }
+                    lightboxGrid.didScroll()
+                }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+        }
+    }
+
+    private func openLightbox(_ key: String, in playlist: PlaylistDetail) {
+        guard !isLightboxOpen else { return }
+        isLightboxOpen = true
+        let scrolls = lightboxGrid.reveal(key, isAnimated: true)
+        let lightbox = PlaylistTicketLightbox(playlist: playlist, startKey: key,
+                                              ticket: playlists.ticket(id: playlist.id), loader: loader,
+                                              grid: lightboxGrid, onClosed: closeLightbox)
+        Task {
+            if scrolls { try? await Task.sleep(for: PlaylistLightboxGrid.scrollDuration) }
+            onLightbox(AnyView(lightbox))
+        }
+    }
+
+    private func closeLightbox() {
+        lightboxGrid.hide(nil)
+        Task {
+            try? await Task.sleep(for: Self.closeSettleDelay)
+            isLightboxOpen = false
+            onLightbox(nil)
         }
     }
 
@@ -78,122 +120,25 @@ struct PlaylistDetailView: View {
     // MARK: Grid
 
     private func grid(_ playlist: PlaylistDetail) -> some View {
-        let columns = PlaylistStyle.gridColumns(width: contentWidth)
-        let entries = playlist.playableItems
-        let rows = stride(from: 0, to: entries.count, by: columns).map { start in
-            Array(start..<min(start + columns, entries.count))
-        }
-        return Grid(horizontalSpacing: PlaylistStyle.gridSpacing, verticalSpacing: PlaylistStyle.gridSpacing) {
-            ForEach(rows, id: \.first) { row in
-                GridRow {
-                    ForEach(0..<columns, id: \.self) { column in
-                        if column < row.count {
-                            cell(playlist, entry: entries[row[column]], number: row[column] + 1)
-                        } else {
-                            Color.clear.aspectRatio(PlaylistStyle.posterAspectRatio, contentMode: .fit)
-                        }
-                    }
-                }
+        let columns = Array(repeating: GridItem(.flexible(), spacing: PlaylistStyle.gridSpacing),
+                            count: PlaylistStyle.gridColumns(width: contentWidth))
+        return LazyVGrid(columns: columns, spacing: PlaylistStyle.gridSpacing) {
+            ForEach(Array(playlist.playableItems.enumerated()), id: \.element.key) { index, entry in
+                cell(playlist, entry: entry, number: index + 1)
             }
         }
     }
 
     private func cell(_ playlist: PlaylistDetail, entry: PlaylistEntry, number: Int) -> some View {
-        let display = playlist.display(of: entry)
-        return PlaylistEntryCell(display: display, number: number, posterURL: entry.posterImageURL,
-                                 isNew: playlists.isNew(entry.key, in: playlist.id))
+        PlaylistEntryTicket(entry: entry, display: playlist.display(of: entry), number: number,
+                            isNew: playlists.isNew(entry.key, in: playlist.id))
+            .opacity(lightboxGrid.hiddenKey == entry.key ? 0 : 1)
             .contentShape(Rectangle())
-            .onTapGesture { focusedKey = entry.key }
-            .popover(isPresented: focusBinding(entry.key), arrowEdge: .bottom) {
-                PlaylistEntryCard(entry: entry, display: display, number: number)
-                    .frame(maxWidth: min(Self.cardMaxWidth, contentWidth - 32), alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .presentationCompactAdaptation(.popover)
+            .onTapGesture { openLightbox(entry.key, in: playlist) }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { [lightboxGrid] frame in
+                lightboxGrid.frames[entry.key] = frame
             }
-            .modifier(PlaylistPosterPreview(entry: entry, zoom: zoom))
-    }
-
-    private func focusBinding(_ key: String) -> Binding<Bool> {
-        Binding {
-            focusedKey == key
-        } set: { isPresented in
-            if !isPresented, focusedKey == key { focusedKey = nil }
-        }
-    }
-}
-
-private struct PlaylistEntryCard: View {
-    let entry: PlaylistEntry
-    let display: PlaylistEntryDisplay
-    let number: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(isAnswered ? entry.title : "Фильм \(number)")
-                .font(.system(.headline, design: .serif))
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                if let color = resultColor {
-                    Circle().fill(color).frame(width: 7, height: 7)
-                }
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-    }
-
-    private var isAnswered: Bool { entry.state == .completed }
-
-    private var resultColor: Color? {
-        switch display {
-        case .guessed: PlaylistStyle.hit
-        case .missed: PlaylistStyle.miss
-        case .next, .upcoming: nil
-        }
-    }
-
-    private var detail: String {
-        let result = switch display {
-        case .guessed(let frame): "угадан с \(frame)-го кадра"
-        case .missed: "не угадан"
-        case .next: "следующий"
-        case .upcoming: "впереди"
-        }
-        guard isAnswered, let year = entry.releaseYear else { return result }
-        return "\(year) · \(result)"
-    }
-}
-
-private struct PlaylistPosterPreview: ViewModifier {
-    let entry: PlaylistEntry
-    let zoom: CGFloat
-
-    private static let width: CGFloat = 280
-
-    func body(content: Content) -> some View {
-        if entry.state == .completed {
-            content.contextMenu {
-                Button("Скопировать название", systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = entry.title
-                }
-            } preview: {
-                VStack(alignment: .leading, spacing: 8) {
-                    Color.clear
-                        .aspectRatio(PlaylistStyle.posterAspectRatio, contentMode: .fit)
-                        .overlay { CachedRemoteImage(url: entry.largePosterImageURL) }
-                        .clipped()
-                    Text(entry.title)
-                        .font(.system(.headline, design: .serif))
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 12)
-                }
-                .frame(width: Self.width * zoom)
-            }
-        } else {
-            content
-        }
+            .id(entry.key)
     }
 }
 

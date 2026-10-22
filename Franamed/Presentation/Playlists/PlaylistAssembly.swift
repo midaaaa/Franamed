@@ -19,7 +19,8 @@ enum PlaylistAssembly {
             var items = playlist.items
                 .map { item in
                     entry(item, answer: answered[item.key], isPlayable: playableKeys?.contains(item.key) ?? true,
-                          imageBaseURL: imageBaseURL)
+                          imageBaseURL: imageBaseURL,
+                          tearSeed: contents.uid.map { FlipTear.seed(uid: $0, playlistID: playlist.id, mediaKey: item.key) })
                 }
                 .filter { $0.isPlayable || $0.state == .completed }
             if !playlist.orderByCurator, let uid = contents.uid {
@@ -46,11 +47,12 @@ enum PlaylistAssembly {
     }
 
     private static func entry(_ item: PlaylistsSnapshot.Item, answer: PlaylistAnswers.Answer?, isPlayable: Bool,
-                              imageBaseURL: String) -> PlaylistEntry {
+                              imageBaseURL: String, tearSeed: UInt64?) -> PlaylistEntry {
         PlaylistEntry(key: item.key, title: item.title, releaseYear: item.releaseYear,
                       posterURL: image(item.posterURL, base: imageBaseURL), approvedImages: isPlayable ? PlaylistDetail.frameCount : 0,
                       state: answer == nil ? .notStarted : .completed, attemptsUsed: answer?.attemptsUsed ?? 0,
-                      wasCorrect: answer?.wasCorrect, playable: isPlayable, addedAt: item.addedAt)
+                      wasCorrect: answer?.wasCorrect, playable: isPlayable, addedAt: item.addedAt,
+                      playedAt: answer?.updatedAt, tearSeed: tearSeed)
     }
 
     private static func image(_ path: String?, base: String) -> String? {

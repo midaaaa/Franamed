@@ -18,6 +18,8 @@ struct PlaylistEntry: Codable, Sendable, Identifiable, Equatable {
     let wasCorrect: Bool?
     var playable: Bool? = nil
     var addedAt: Double? = nil
+    var playedAt: Double? = nil
+    var tearSeed: UInt64? = nil
 
     var id: String { key }
 }

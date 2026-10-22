@@ -8,20 +8,26 @@
 import SwiftUI
 
 struct PlaylistProgressRing: View {
-    let playlist: PlaylistDetail
+    let total: Int
+    let correct: Int
+    let missed: Int
+    let completion: PlaylistCompletion
     var zoom: CGFloat = 1
+    var stampScale: CGFloat = 1
+    var stampProgress: Double = 1
+    var hasWhiteStamp = false
+
+    @Environment(\.colorScheme) private var colorScheme
 
     private var lineWidth: CGFloat { 6 * zoom }
-
-    private var total: Int { playlist.availableCount }
-    private var correct: Int { playlist.playableItems.filter { $0.wasCorrect == true }.count }
-    private var missed: Int { playlist.playableItems.filter { $0.state == .completed && $0.wasCorrect == false }.count }
-    private var isPerfect: Bool { playlist.completion == .perfect }
+    private var isPerfect: Bool { completion == .perfect }
+    private var isOnPaper: Bool { colorScheme == .light }
+    private var gold: Color { isOnPaper ? PlaylistStyle.goldOnPaper : PlaylistStyle.gold }
 
     var body: some View {
         ZStack {
-            Circle().stroke(.fill.tertiary, lineWidth: lineWidth)
-            arc(from: 0, to: share(correct), color: isPerfect ? PlaylistStyle.gold : PlaylistStyle.hit)
+            Circle().stroke(isOnPaper ? AnyShapeStyle(PlaylistStyle.trackOnPaper) : AnyShapeStyle(.fill.tertiary), lineWidth: lineWidth)
+            arc(from: 0, to: share(correct), color: isPerfect ? gold : PlaylistStyle.hit)
             arc(from: share(correct), to: share(correct + missed), color: PlaylistStyle.miss)
             count
                 .padding(lineWidth + 4)
@@ -29,10 +35,15 @@ struct PlaylistProgressRing: View {
         .padding(lineWidth / 2)
         .aspectRatio(1, contentMode: .fit)
         .overlay(alignment: .bottomTrailing) {
-            if playlist.completion != .inProgress {
-                PlaylistSealStamp(isGold: isPerfect)
-                    .scaleEffect(0.6 * zoom)
-                    .offset(x: 8 * zoom, y: 8 * zoom)
+            if completion != .inProgress {
+                ZStack {
+                    if hasWhiteStamp && isPerfect {
+                        PlaylistSealStamp()
+                    }
+                    PlaylistSealStamp(isGold: isPerfect, progress: stampProgress)
+                }
+                .scaleEffect(stampScale * zoom)
+                .offset(x: 8 * zoom, y: 8 * zoom)
             }
         }
     }
@@ -45,7 +56,7 @@ struct PlaylistProgressRing: View {
                 .font(PlaylistStyle.scaledFont(.caption1, zoom: zoom, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.secondary)
         }
-        .foregroundStyle(isPerfect ? PlaylistStyle.gold : .primary)
+        .foregroundStyle(isPerfect && !isOnPaper ? PlaylistStyle.gold : .primary)
         .minimumScaleFactor(0.5)
         .lineLimit(1)
     }
@@ -59,6 +70,27 @@ struct PlaylistProgressRing: View {
             .trim(from: start, to: end)
             .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
             .rotationEffect(.degrees(-90))
+    }
+}
+
+extension PlaylistProgressRing {
+    init(playlist: PlaylistDetail, zoom: CGFloat = 1) {
+        let items = playlist.playableItems
+        self.init(total: playlist.availableCount,
+                  correct: items.filter { $0.wasCorrect == true }.count,
+                  missed: items.filter { $0.state == .completed && $0.wasCorrect == false }.count,
+                  completion: playlist.completion,
+                  zoom: zoom)
+    }
+
+    init(ticket: PlaylistTicket, stampScale: CGFloat) {
+        self.init(total: ticket.total,
+                  correct: ticket.correct,
+                  missed: ticket.answered - ticket.correct,
+                  completion: ticket.isFinished ? (ticket.isPerfect ? .perfect : .passed) : .inProgress,
+                  stampScale: stampScale,
+                  stampProgress: ticket.stampProgress,
+                  hasWhiteStamp: ticket.hasWhiteStamp)
     }
 }
 

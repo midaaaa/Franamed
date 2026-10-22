@@ -18,7 +18,7 @@ extension PlaylistTicket {
         let correct = min(self.correct + (isCorrect ? 1 : 0), total)
         return PlaylistTicket(id: id, title: title, coverURL: coverURL, total: total, answered: answered,
                               correct: correct, isFinished: answered >= total, stampProgress: stampProgress,
-                              isStampGold: isStampGold)
+                              isStampGold: isStampGold, uid: uid)
     }
 
     var correctPercent: Int {

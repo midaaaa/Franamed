@@ -84,6 +84,7 @@ extension EnvironmentValues {
     @Entry var flipLighting = FlipLighting.neutral
     @Entry var flipRecordingLighting: FlipLighting?
     @Entry var flipTear = FlipTear.none
+    @Entry var flipTearSnaps = false
 }
 
 struct FlipRenderer: UIViewRepresentable {
@@ -98,6 +99,7 @@ struct FlipRenderer: UIViewRepresentable {
     let tilt: Double
     let isProtected: Bool
     var tear = FlipTear.none
+    var snapsTear = false
     let providesSnapshot: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
@@ -164,6 +166,7 @@ struct FlipRenderer: UIViewRepresentable {
         coordinator.lighting = lighting
         coordinator.tilt = tilt
         let tearChanged = coordinator.setTear(tear)
+        if tearChanged, snapsTear { coordinator.snapTear() }
         if needsFrame || coordinator.outlineChanged || lightChanged || tearChanged {
             coordinator.view?.isPaused = false
         }
@@ -207,6 +210,8 @@ struct FlipRenderer: UIViewRepresentable {
         var isTearHealing: Bool { tear.isHealing }
 
         func setTear(_ tear: FlipTear) -> Bool { self.tear.setTarget(tear) }
+
+        func snapTear() { tear.snap() }
 
         func setOutline(size: CGSize, edgeStyle: TicketEdgeStyle) {
             outlineChanged = size.width > 1 && (size != outlineSize || edgeStyle != outlineStyle)

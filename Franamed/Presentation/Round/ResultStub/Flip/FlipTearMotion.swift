@@ -40,6 +40,15 @@ struct FlipTearMotion {
         return true
     }
 
+    mutating func snap() {
+        state = target.state
+        strain = target.strain
+        healStart = nil
+        healGlow = 0
+        healReach = 0
+        tick = nil
+    }
+
     mutating func step(now: TimeInterval) -> Bool {
         let dt = min(now - (tick ?? now), 1.0 / 30.0)
         tick = now

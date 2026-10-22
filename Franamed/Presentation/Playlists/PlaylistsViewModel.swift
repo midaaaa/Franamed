@@ -18,6 +18,8 @@ struct PlaylistTicket: Hashable {
     let isFinished: Bool
     var stampProgress: Double
     var isStampGold = false
+    var hasWhiteStamp = false
+    var uid: String?
 
     var isPerfect: Bool { correct >= total }
 }
@@ -54,6 +56,7 @@ final class PlaylistsViewModel: ObservableObject {
     @Published private(set) var loadState = LoadState.idle
 
     private var openedIDs: Set<String> = []
+    private var uid: String?
     private let store: PlaylistsStore
     private let catalogIndex: CatalogIndexStore
     private let imageBaseURL: String
@@ -127,7 +130,8 @@ final class PlaylistsViewModel: ObservableObject {
         return PlaylistTicket(id: playlist.id, title: playlist.title, coverURL: playlist.largeCoverURL,
                               total: playlist.availableCount, answered: playlist.answeredCount,
                               correct: playlist.correctCount, isFinished: playlist.isFinished,
-                              stampProgress: stamps[id] == nil ? 0 : 1, isStampGold: stamps[id] ?? false)
+                              stampProgress: hasPendingStamp(id) ? 0 : 1, isStampGold: stamps[id] ?? false,
+                              hasWhiteStamp: stamps[id] == false, uid: uid)
     }
 
     // MARK: Actions
@@ -188,6 +192,7 @@ final class PlaylistsViewModel: ObservableObject {
     }
 
     private func show(_ contents: PlaylistsStore.Contents, index: CatalogIndex?) {
+        uid = contents.uid
         apply(PlaylistAssembly.details(from: contents, index: index, imageBaseURL: imageBaseURL))
         if loadState != .loaded { loadState = .loaded }
     }

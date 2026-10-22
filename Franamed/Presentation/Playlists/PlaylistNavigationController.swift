@@ -16,6 +16,7 @@ final class PlaylistNavigationController: UINavigationController {
     private let flight = PlaylistFlightState()
     private let query = PlaylistShelfQuery()
     private var popInteraction: UIPercentDrivenInteractiveTransition?
+    private var lightboxHost: UIViewController?
     private var trackLink: CADisplayLink?
     private var sampleFlight: (() -> PlaylistFlightSample)?
     private(set) var isTransitioning = false {
@@ -62,6 +63,11 @@ final class PlaylistNavigationController: UINavigationController {
         view.addGestureRecognizer(popPan)
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if presentedViewController == nil { lightboxHost = nil }
+    }
+
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
         let systemBottom = view.safeAreaInsets.bottom - additionalSafeAreaInsets.bottom
@@ -91,7 +97,7 @@ final class PlaylistNavigationController: UINavigationController {
         host.view.backgroundColor = .clear
         host.clampsScroll = true
         let item = host.navigationItem
-        item.title = "Подборки"
+        item.backButtonTitle = "Подборки"
         item.largeTitleDisplayMode = .never
         item.backButtonDisplayMode = .minimal
         item.leftBarButtonItem = sortItem()
@@ -109,7 +115,9 @@ final class PlaylistNavigationController: UINavigationController {
     private func makeDetail(_ id: String) -> UIViewController {
         playlists.noteOpened(id)
         let flight = flight
-        let root = PlaylistDetailView(playlists: playlists, playlistID: id, flight: flight)
+        let root = PlaylistDetailView(playlists: playlists, playlistID: id, flight: flight) { [weak self] lightbox in
+            self?.showLightbox(lightbox)
+        }
         let host = PlaylistHost(rootView: AnyView(root))
         host.playlistID = id
         host.view.backgroundColor = .clear
@@ -117,6 +125,18 @@ final class PlaylistNavigationController: UINavigationController {
         host.navigationItem.rightBarButtonItem = closeItem()
         host.pinnedToolbarItems = selectItems(for: id)
         return host
+    }
+
+    private func showLightbox(_ content: AnyView?) {
+        lightboxHost?.dismiss(animated: false)
+        lightboxHost = nil
+        popPan.isEnabled = content == nil
+        guard let content else { return }
+        let host = UIHostingController(rootView: content)
+        host.view.backgroundColor = .clear
+        host.modalPresentationStyle = .overFullScreen
+        present(host, animated: false)
+        lightboxHost = host
     }
 
     private func selectItems(for id: String) -> [UIBarButtonItem] {

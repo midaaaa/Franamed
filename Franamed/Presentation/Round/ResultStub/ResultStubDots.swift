@@ -52,6 +52,8 @@ struct ResultStubDots: View {
     private static let spacing: CGFloat = 3
     private static let compactSpacing: CGFloat = 5
 
+    static let compactHeight = dotSize
+
     var body: some View {
         let marks = progress.marks
         return HStack(spacing: reservesRing ? Self.spacing : Self.compactSpacing) {

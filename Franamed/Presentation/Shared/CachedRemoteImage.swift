@@ -12,6 +12,11 @@ struct CachedRemoteImage: View {
 
     @State private var image: UIImage?
 
+    init(url: URL?) {
+        self.url = url
+        _image = State(initialValue: url.flatMap(ImageCache.shared.image(for:)))
+    }
+
     var body: some View {
         ZStack {
             Rectangle().fill(.fill.tertiary)

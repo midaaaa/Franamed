@@ -113,6 +113,20 @@ final class ShareSheetModel: ObservableObject {
         _ = await (hall, poster)
     }
 
+    func apply(_ frames: ShareFrames?) async {
+        guard let frames else {
+            material.isFramePending = false
+            return
+        }
+        material.frames.firstLight = frames.firstLight
+        material.frames.answerLight = frames.answerLight
+        await loadHall()
+        withAnimation(Self.reveal) {
+            material.frames = frames
+            material.isFramePending = false
+        }
+    }
+
     private func loadHall() async {
         async let answer = renderHall(for: .answer)
         async let riddle = renderHall(for: .riddle)

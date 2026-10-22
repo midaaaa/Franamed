@@ -346,7 +346,7 @@ struct RoundView: View {
 
     // MARK: Playlist
 
-    private static let stampSteps: [Double] = [0.12, 0.3, 0.52, 0.76, 1]
+    private static let stampSteps: [Double] = (1...16).map { 0.5 - cos(Double($0) / 16 * .pi) / 2 }
     private static let stampStepDelay = Duration.milliseconds(28)
     private static let stampBackDelay = Duration.milliseconds(220)
 
@@ -419,13 +419,9 @@ struct RoundView: View {
         guard !isShareLifted, let outcome = viewModel.outcome, let media = viewModel.mediaItemWithBackdrops,
               let presenter = launch.presenter() else { return }
         let answerIndex = outcome == .correct ? viewModel.attemptsMade - 1 : viewModel.currentFrameIndex
-        let first = frameURLs.first, answer = frameURLs[safe: answerIndex]
         var material = ShareMaterial(content: content.withoutCursor(),
                                      solvedAtFrame: outcome == .correct ? viewModel.attemptsMade : nil,
-                                     firstFrame: first.flatMap { frames.image(for: $0) },
-                                     answerFrame: answer.flatMap { frames.image(for: $0) },
-                                     firstLight: first.flatMap { frames.light(for: $0) } ?? frames.hallLight,
-                                     answerLight: answer.flatMap { frames.light(for: $0) } ?? frames.hallLight,
+                                     frames: frames.shareFrames(first: frameURLs.first, answer: frameURLs[safe: answerIndex]),
                                      roundSize: window.size)
         material.stubWidth = stubWidth
         let model = ShareSheetModel(material: material, launch: launch,

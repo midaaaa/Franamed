@@ -25,6 +25,11 @@ struct HallFrameSample: Sendable, Equatable {
         self.blurredInterleaved = blurredInterleaved
     }
 
+    @concurrent
+    nonisolated static func make(_ image: UIImage) async -> HallFrameSample? {
+        HallFrameSample(image: image)
+    }
+
     nonisolated init?(image: UIImage) {
         guard let cgImage = image.cgImage,
               let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) else { return nil }

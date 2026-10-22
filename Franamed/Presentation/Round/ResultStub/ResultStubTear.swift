@@ -12,6 +12,10 @@ extension FlipTear {
         UInt64(bitPattern: Int64(itemID)) &+ UInt64(playedAt.timeIntervalSince1970)
     }
 
+    static func seed(uid: String, playlistID: String, mediaKey: String) -> UInt64 {
+        PlaylistSeed.hash("\(uid):\(playlistID):\(mediaKey)")
+    }
+
     static func isLastLife(misses: Int, frameCount: Int) -> Bool {
         misses >= frameCount - 1
     }
@@ -39,5 +43,11 @@ extension FlipTear {
         guard misses > 0 else { return FlipTear(seed: seed) }
         let share = Float(misses) / Float(max(frameCount - 1, 1))
         return FlipTear(seed: seed, progress: 0.14 + 0.42 * pow(share, 1.6), opening: 0.005 + 0.012 * share)
+    }
+}
+
+extension PlaylistTicket {
+    func tearSeed(for mediaKey: String) -> UInt64? {
+        uid.map { FlipTear.seed(uid: $0, playlistID: id, mediaKey: mediaKey) }
     }
 }

@@ -82,6 +82,11 @@ final class MediaFacade: MediaFacadeProtocol {
         return payload.asMediaItemWithBackdrops(imageBaseURL: backend.configuration.imageBaseURL)
     }
 
+    func fetchPlaylistEntry(playlistId: String, mediaKey: String, frameCount: Int) async throws -> MediaItemWithBackdrops {
+        let payload = try await backend.round.nextPlaylistRound(playlistId: playlistId, pick: .next, mediaKey: mediaKey, frameCount: frameCount)
+        return payload.asMediaItemWithBackdrops(imageBaseURL: backend.configuration.imageBaseURL)
+    }
+
     func finishRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?, playlistId: String?) async -> RoundStats? {
         let mediaKey = "\(mediaType.rawValue)_\(tmdbId)"
         let playedAt = Date.now

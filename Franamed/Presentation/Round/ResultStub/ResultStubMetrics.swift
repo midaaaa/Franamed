@@ -15,6 +15,7 @@ enum ResultStubMetrics {
 
 struct ResultStubPaper<Content: View>: View {
     var mirrored = false
+    var clipsShape = true
     @ViewBuilder let content: Content
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
@@ -28,7 +29,7 @@ struct ResultStubPaper<Content: View>: View {
         }
         .modifier(TicketStubFrame(width: stubWidth, edgeStyle: edgeStyle))
         .background(TicketStyle.paper)
-        .clipShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored))
+        .clipShape(clipsShape ? AnyShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored)) : AnyShape(Rectangle()))
         .environment(\.colorScheme, .light)
     }
 }

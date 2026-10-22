@@ -16,6 +16,7 @@ protocol MediaFacadeProtocol {
     func fetchResultsCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int
 
     func fetchPlaylistRound(playlistId: String, frameCount: Int) async throws -> MediaItemWithBackdrops
+    func fetchPlaylistEntry(playlistId: String, mediaKey: String, frameCount: Int) async throws -> MediaItemWithBackdrops
     func finishRound(mediaType: MediaType, tmdbId: Int, frameCount: Int, solvedAtFrame: Int?, playlistId: String?) async -> RoundStats?
     func resetPlayedTitles() async throws
     func fetchCuratedCount(mediaType: MediaType, filters: MediaFilters) async throws -> Int

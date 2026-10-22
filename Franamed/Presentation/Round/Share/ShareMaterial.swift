@@ -11,10 +11,8 @@ import SwiftUI
 struct ShareMaterial {
     let content: ResultStubContent
     let solvedAtFrame: Int?
-    let firstFrame: UIImage?
-    let answerFrame: UIImage?
-    let firstLight: HallFrameSample
-    let answerLight: HallFrameSample
+    var frames: ShareFrames
+    var isFramePending = false
     var roundSize = CGSize(width: 393, height: 852)
     var stubWidth = TicketStyle.referenceWidth
     var poster: UIImage?
@@ -27,12 +25,21 @@ struct ShareMaterial {
     static let hallSize = CGSize(width: ShareFormat.baseWidth, height: ShareFormat.baseWidth * 16 / 9)
 
     func picture(for mode: ShareMode) -> UIImage? {
-        mode.hidesAnswer ? firstFrame : answerFrame ?? firstFrame
+        mode.hidesAnswer ? frames.first : frames.answer ?? frames.first
     }
 
     func light(for mode: ShareMode) -> HallFrameSample {
-        mode.hidesAnswer || answerFrame == nil ? firstLight : answerLight
+        mode.hidesAnswer || frames.answer == nil ? frames.firstLight : frames.answerLight
     }
+}
+
+struct ShareFrames {
+    var first: UIImage?
+    var answer: UIImage?
+    var firstLight: HallFrameSample
+    var answerLight: HallFrameSample
+
+    static let dark = ShareFrames(firstLight: .dark, answerLight: .dark)
 }
 
 // MARK: Challenge
@@ -91,12 +98,16 @@ struct ShareLaunch {
 
 extension ShareLaunch {
     @MainActor
-    init(snapshotter: FlipSnapshotter, source: CGRect, startsOnBack: Bool) {
+    init(snapshotter: FlipSnapshotter, source: CGRect, startsOnBack: Bool, stubWidth: CGFloat) {
         self.init(source: source, startsOnBack: startsOnBack,
                   presenter: { snapshotter.hostController() },
                   makeFlight: { snapshotter.flightRenderer() },
-                  renderFace: { snapshotter.faceTexture(front: ResultStubFront(content: $0)) },
-                  renderStub: { snapshotter.render(front: ResultStubFront(content: $0)) },
+                  renderFace: {
+                      snapshotter.faceTexture(front: ResultStubFront(content: $0).environment(\.resultStubWidth, stubWidth))
+                  },
+                  renderStub: {
+                      snapshotter.render(front: ResultStubFront(content: $0).environment(\.resultStubWidth, stubWidth))
+                  },
                   stubFrame: { snapshotter.frameInWindow() },
                   launchStubFrame: snapshotter.frameInWindow())
     }
@@ -109,7 +120,6 @@ extension ShareMaterial {
         let details = MediaDetails(runtimeMinutes: 164, firstYear: 2017, certification: "18+", authors: ["Дени Вильнёв"])
         let content = ResultStubContent(item: item, mediaType: .movie, details: details, outcome: .correct, attemptsUsed: 2,
                                         progress: .finished(frameCount: 6, attemptsMade: 2, outcome: .correct))
-        return ShareMaterial(content: content, solvedAtFrame: 2, firstFrame: nil, answerFrame: nil,
-                             firstLight: .dark, answerLight: .dark)
+        return ShareMaterial(content: content, solvedAtFrame: 2, frames: .dark)
     }
 }

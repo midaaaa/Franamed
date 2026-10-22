@@ -39,6 +39,7 @@ struct FlipCanvas: View {
 
     @Environment(\.flipTilt) private var tilt
     @Environment(\.flipTear) private var tear
+    @Environment(\.flipTearSnaps) private var snapsTear
 
     var body: some View {
         FlipRenderer(
@@ -51,6 +52,7 @@ struct FlipCanvas: View {
             tilt: tilt,
             isProtected: isProtected,
             tear: tear,
+            snapsTear: snapsTear,
             providesSnapshot: providesSnapshot
         )
         .frame(width: size.width + FlipLook.canvasPadding(forStubWidth: size.width) * 2,

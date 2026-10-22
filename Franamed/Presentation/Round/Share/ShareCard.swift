@@ -42,6 +42,11 @@ struct ShareCard: View {
                         .frame(width: size.width, height: size.height)
                     if background == .hall {
                         hallPicture
+                        if material.isFramePending {
+                            ProgressView()
+                                .tint(.white)
+                                .position(x: ShareMaterial.cardFrame.midX, y: ShareMaterial.cardFrame.midY)
+                        }
                     }
                     if showsOverlays {
                         overlays
@@ -136,7 +141,7 @@ struct ShareCard: View {
 
     private var riddleScrim: Double {
         let luminance: Float = switch background {
-        case .hall: simd_dot(material.firstLight.mean, SIMD3(0.2126, 0.7152, 0.0722))
+        case .hall: simd_dot(material.frames.firstLight.mean, SIMD3(0.2126, 0.7152, 0.0722))
         case .poster: Float(SharePosterBackdrop.targetLuminance)
         case .black: 0
         }

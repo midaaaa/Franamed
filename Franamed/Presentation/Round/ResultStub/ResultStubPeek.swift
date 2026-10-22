@@ -168,13 +168,18 @@ struct ResultStubPeek: View {
     private func shareAction(_ content: ResultStubContent) -> (() -> Void)? {
         guard let onShare, outcome != nil else { return nil }
         return {
-            onShare(content, ShareLaunch(snapshotter: snapshotter, source: globalFrame, startsOnBack: !isFrontVisible))
+            onShare(content, ShareLaunch(snapshotter: snapshotter, source: globalFrame, startsOnBack: !isFrontVisible,
+                                         stubWidth: stubWidth))
         }
     }
 
     private var tear: FlipTear {
-        FlipTear.round(seed: FlipTear.seed(itemID: item.id, playedAt: playedAt), attemptsMade: attemptsMade,
+        FlipTear.round(seed: tearSeed, attemptsMade: attemptsMade,
                        frameCount: frameCount, outcome: outcome, hasLanded: hasLanded)
+    }
+
+    private var tearSeed: UInt64 {
+        playlist?.tearSeed(for: "\(mediaType.rawValue)_\(item.id)") ?? FlipTear.seed(itemID: item.id, playedAt: playedAt)
     }
 
     private func followKeyboard() {
