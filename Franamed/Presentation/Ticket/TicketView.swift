@@ -137,7 +137,8 @@ struct TicketView: View {
             let posterHeight = pixelGrid.evenAligned(width * TicketStyle.posterAspectRatio)
             let cardHeight = posterHeight + TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
             let centerY = Self.cardCenterY(containerHeight: geo.size.height, cardHeight: cardHeight)
-            let overscan = max(geo.size.width - width, geo.size.height - cardHeight) / 2 + Self.tearOverscanMargin
+            let overscan = pixelGrid.aligned(max(geo.size.width - width, geo.size.height - cardHeight) / 2
+                                             + Self.tearOverscanMargin, rule: .up)
 
             cardView(width: width, posterHeight: posterHeight, tearOverscan: overscan)
                 .frame(width: width)
