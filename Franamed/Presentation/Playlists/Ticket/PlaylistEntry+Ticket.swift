@@ -41,10 +41,15 @@ extension PlaylistEntry {
 
     func stubCut(_ display: PlaylistEntryDisplay) -> PlaylistStubCut {
         switch display {
-        case .guessed: .detached
+        case .guessed: .detached(seed: stubTearSeed, scar: stubScar)
         case .missed: .ripped(seed: stubTearSeed)
         case .next, .upcoming: .attached
         }
+    }
+
+    private var stubScar: Float {
+        FlipTear.round(seed: stubTearSeed, attemptsMade: attemptsUsed, frameCount: PlaylistDetail.frameCount,
+                       outcome: .correct, hasLanded: true).scar
     }
 
     func progress(_ display: PlaylistEntryDisplay) -> ResultStubProgress {

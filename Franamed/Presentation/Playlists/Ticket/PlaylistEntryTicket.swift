@@ -17,9 +17,11 @@ struct PlaylistEntryTicket: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
     private static let width = TicketStyle.referenceWidth
-    private static let numberSize: CGFloat = 52
-    private static let dotsScale: CGFloat = 4.3
     private static let nextOutline: CGFloat = 6
+
+    private static var bleed: CGFloat {
+        PlaylistTicketGeometry.ripSeparation(width: width) + nextOutline
+    }
 
     private var edgeStyle: TicketEdgeStyle { TicketEdgeStyle(hasScallops: hasScallops) }
 
@@ -28,9 +30,14 @@ struct PlaylistEntryTicket: View {
             .aspectRatio(PlaylistTicketGeometry.aspectRatio(edgeStyle: edgeStyle), contentMode: .fit)
             .overlay(alignment: .topLeading) {
                 GeometryReader { proxy in
-                    canvas.scaleEffect(proxy.size.width / Self.width, anchor: .topLeading)
+                    let scale = proxy.size.width / Self.width
+                    let bleed = Self.bleed * scale
+                    canvas.scaleEffect(scale, anchor: .topLeading)
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+                        .padding(bleed)
+                        .modifier(Rasterize(isActive: rasterizes))
+                        .padding(-bleed)
                 }
-                .modifier(Rasterize(isActive: rasterizes))
             }
     }
 
@@ -70,35 +77,21 @@ struct PlaylistEntryTicket: View {
     }
 
     private var stub: some View {
-        VStack(spacing: TicketStyle.stubSpacing) {
-            PlaylistTicketDots(progress: entry.progress(display), scale: Self.dotsScale)
-            Spacer(minLength: 0)
-            PlaylistTicketNumber(number: number, display: display, size: Self.numberSize)
-        }
-        .foregroundStyle(Color.black)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-struct PlaylistTicketDots: View {
-    let progress: ResultStubProgress
-    let scale: CGFloat
-
-    var body: some View {
-        ResultStubDots(progress: progress, reservesRing: false)
-            .scaleEffect(scale, anchor: .topLeading)
-            .frame(maxWidth: .infinity, minHeight: ResultStubDots.compactHeight * scale, alignment: .topLeading)
+        PlaylistTicketNumber(number: number, display: display)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
 struct PlaylistTicketNumber: View {
     let number: Int
     let display: PlaylistEntryDisplay
-    let size: CGFloat
+
+    private static let size: CGFloat = 64
+    private static let longSize: CGFloat = 48
 
     var body: some View {
         Text(number, format: .number.precision(.integerLength(2)))
-            .font(.system(size: size, weight: display == .next ? .heavy : .semibold, design: .monospaced))
+            .font(.system(size: number < 100 ? Self.size : Self.longSize, weight: .semibold, design: .monospaced))
             .foregroundStyle(display == .upcoming ? TicketStyle.placeholderInk : Color.black)
     }
 }

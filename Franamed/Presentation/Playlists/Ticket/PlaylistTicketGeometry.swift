@@ -52,7 +52,7 @@ enum PlaylistTicketGeometry {
 
 enum PlaylistStubCut: Equatable {
     case attached
-    case detached
+    case detached(seed: UInt64, scar: Float)
     case ripped(seed: UInt64)
 }
 
@@ -102,8 +102,10 @@ struct PlaylistStubPiece<Paper: View>: View {
             paper.mask(alignment: .bottom) {
                 PlaylistTicketGeometry.outline(width: width, edgeStyle: edgeStyle)
             }
-        case .detached:
-            detached
+        case .detached(let seed, let scar):
+            detached.overlay {
+                if scar > 0 { PlaylistStubScar(seed: seed, reach: scar) }
+            }
         case .ripped(let seed):
             let separation = PlaylistTicketGeometry.ripSeparation(width: width)
             ZStack {
@@ -130,25 +132,94 @@ struct PlaylistStubTearShape: Shape {
     private static let samples = 96
 
     func path(in rect: CGRect) -> Path {
-        let (line, shape) = FlipTear(seed: seed).shape(width: rect.width)
-        let k = Float(TicketStyle.zoom(forWidth: rect.width))
-        let height = Float(rect.height)
+        let line = PlaylistTearLine(seed: seed, rect: rect)
         let edge = side == .leading ? rect.minX - 1 : rect.maxX + 1
         var path = Path()
         path.move(to: CGPoint(x: edge, y: rect.minY))
         for index in 0...Self.samples {
-            let y = (Float(index) / Float(Self.samples) - 0.5) * height
-            let t = y / height + 0.5
-            let x = line.x + (line.y - line.x) * t
-                + shape.x * sin(6.2832 * 0.7 * t + line.z)
-                + shape.y * sin(6.2832 * 2.1 * t + line.w)
-                + 1.3 * k * Self.noise(y / (3.2 * k), seed: shape.z)
-                + 0.5 * k * Self.noise(y / (1.1 * k), seed: shape.z + 3)
-            path.addLine(to: CGPoint(x: rect.midX + CGFloat(x), y: rect.midY + CGFloat(y)))
+            let y = rect.minY + rect.height * CGFloat(index) / CGFloat(Self.samples)
+            path.addLine(to: CGPoint(x: line.x(at: y), y: y))
         }
         path.addLine(to: CGPoint(x: edge, y: rect.maxY))
         path.closeSubpath()
         return path
+    }
+}
+
+struct PlaylistStubScar: View {
+    let seed: UInt64
+    let reach: Float
+
+    private static let creaseWidth: CGFloat = 1.8
+    private static let creaseInk = Color.black.opacity(0.22)
+    private static let liftWidth: CGFloat = 1.4
+    private static let liftOffset: CGFloat = 1.3
+    private static let liftInk = Color.white.opacity(0.5)
+    private static let fadeLength: CGFloat = 10
+
+    var body: some View {
+        GeometryReader { proxy in
+            let k = TicketStyle.zoom(forWidth: proxy.size.width)
+            let shape = PlaylistStubScarShape(seed: seed, reach: CGFloat(reach))
+            let end = CGFloat(reach)
+            let fade = min(Self.fadeLength * k / max(proxy.size.height, 1), end)
+            ZStack {
+                shape.stroke(Self.liftInk, style: StrokeStyle(lineWidth: Self.liftWidth * k, lineJoin: .round))
+                    .offset(x: Self.liftOffset * k)
+                shape.stroke(Self.creaseInk, style: StrokeStyle(lineWidth: Self.creaseWidth * k, lineJoin: .round))
+            }
+            .mask {
+                LinearGradient(stops: [.init(color: .black, location: 0),
+                                       .init(color: .black, location: end - fade),
+                                       .init(color: .clear, location: end)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+struct PlaylistStubScarShape: Shape {
+    let seed: UInt64
+    let reach: CGFloat
+
+    private static let samples = 48
+
+    func path(in rect: CGRect) -> Path {
+        let line = PlaylistTearLine(seed: seed, rect: rect)
+        let end = rect.minY + rect.height * reach
+        var path = Path()
+        for index in 0...Self.samples {
+            let y = rect.minY + (end - rect.minY) * CGFloat(index) / CGFloat(Self.samples)
+            let point = CGPoint(x: line.x(at: y), y: y)
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        return path
+    }
+}
+
+struct PlaylistTearLine {
+    private let line: SIMD4<Float>
+    private let shape: SIMD4<Float>
+    private let k: Float
+    private let rect: CGRect
+
+    init(seed: UInt64, rect: CGRect) {
+        (line, shape) = FlipTear(seed: seed).shape(width: rect.width)
+        k = Float(TicketStyle.zoom(forWidth: rect.width))
+        self.rect = rect
+    }
+
+    func x(at y: CGFloat) -> CGFloat {
+        let height = Float(rect.height)
+        let local = Float(y - rect.midY)
+        let t = local / height + 0.5
+        let x = line.x + (line.y - line.x) * t
+            + shape.x * sin(6.2832 * 0.7 * t + line.z)
+            + shape.y * sin(6.2832 * 2.1 * t + line.w)
+            + 1.3 * k * Self.noise(local / (3.2 * k), seed: shape.z)
+            + 0.5 * k * Self.noise(local / (1.1 * k), seed: shape.z + 3)
+        return rect.midX + CGFloat(x)
     }
 
     private static func hash(_ n: Float) -> Float {

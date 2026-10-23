@@ -148,8 +148,8 @@ static half3 tearScar(constant FlipUniforms &u, float2 p, half3 base) {
     float broken = 0.65 + 0.35 * tearNoise(p.y / (2.0 * k), u.tearShape.z + 31.0);
     float crease = exp(-across * across / 0.5) * along * broken;
     float lift = exp(-(across - 0.9) * (across - 0.9) / 0.4) * along * broken;
-    half3 scarred = mix(base, base * 0.8h, half(crease * 0.55));
-    return mix(scarred, half3(0.98h, 0.97h, 0.94h), half(lift * 0.35));
+    half3 scarred = mix(base, base * 0.7h, half(crease * 0.75));
+    return mix(scarred, half3(0.98h, 0.97h, 0.94h), half(lift * 0.5));
 }
 
 static half3 tearHealGlow(constant FlipUniforms &u, float2 p, half3 lit) {

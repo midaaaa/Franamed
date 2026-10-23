@@ -21,8 +21,6 @@ struct PlaylistBigTicket: View {
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @State private var isMetalSettled = false
 
-    private static let numberSize: CGFloat = 52
-    private static let dotsScale: CGFloat = 2
     private static let labelSize: CGFloat = 20
     private static let labelTracking: CGFloat = 3
     private static let metalWarmup = Duration.milliseconds(400)
@@ -99,16 +97,15 @@ struct PlaylistBigTicket: View {
     private var pendingStub: some View {
         PlaylistStubPiece(width: width, edgeStyle: edgeStyle, cut: .attached) {
             let zoom = TicketStyle.zoom(forWidth: width)
-            VStack(spacing: TicketStyle.stubSpacing) {
-                PlaylistTicketDots(progress: entry.progress(display), scale: Self.dotsScale * zoom)
+            VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
+                PlaylistTicketNumber(number: number, display: display)
                 Spacer(minLength: 0)
-                PlaylistTicketNumber(number: number, display: display, size: Self.numberSize)
                 Text(display == .next ? "СЛЕДУЮЩИЙ" : "ВПЕРЕДИ")
                     .font(.system(size: Self.labelSize * zoom, weight: .heavy))
                     .tracking(Self.labelTracking * zoom)
                     .foregroundStyle(TicketStyle.placeholderInk)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .modifier(TicketStubFrame(width: width, edgeStyle: edgeStyle))
             .background(TicketStyle.paper)
         }
