@@ -25,7 +25,8 @@ struct PlaylistTicketLightbox: View {
     @State private var webSearch: WebSearchLink?
     @State private var snapshotters = PlaylistSnapshotters()
     @State private var isShareLifted = false
-    @State private var stageSize = CGSize.zero
+    @State private var stageFrame = CGRect.zero
+    @State private var closingFrame: CGRect?
 
     private static let dim = 0.2
     private static let peek: CGFloat = 18
@@ -101,17 +102,18 @@ struct PlaylistTicketLightbox: View {
         GeometryReader { proxy in
             let entries = playlist.playableItems
             let focusIndex = entries.firstIndex { $0.key == focusKey } ?? 0
-            let width = ticketWidth(in: proxy.size)
-            let spacing = pageSpacing(in: proxy.size.width, ticketWidth: width)
-            let inset = (proxy.size.width - width) / 2
-            let target = proxy.frame(in: .global)
+            let live = proxy.frame(in: .global)
+            let target = closingFrame ?? live
+            let width = ticketWidth(in: target.size)
+            let spacing = pageSpacing(in: target.width, ticketWidth: width)
+            let inset = (target.width - width) / 2
             ScrollViewReader { reader in
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: spacing) {
                         ForEach(Array(entries.enumerated()), id: \.element.key) { index, entry in
                             page(entry, number: index + 1, width: width, target: target,
                                  side: index == focusIndex ? 0 : (index < focusIndex ? -1 : 1))
-                                .frame(width: width, height: proxy.size.height)
+                                .frame(width: width, height: target.height)
                                 .scrollTransition(.interactive, axis: .horizontal) { [shrink = Self.sideShrink] content, phase in
                                     content.scaleEffect(1 - shrink * min(abs(phase.value), 1))
                                 }
@@ -123,6 +125,8 @@ struct PlaylistTicketLightbox: View {
                 .scrollClipDisabled()
                 .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
                 .safeAreaPadding(.horizontal, inset)
+                .frame(width: target.width, height: target.height)
+                .offset(x: target.minX - live.minX, y: target.minY - live.minY)
                 .scrollPosition(id: $currentKey)
                 .scrollDisabled(!hasLanded || isClosing)
                 .onTapGesture(perform: close)
@@ -137,7 +141,7 @@ struct PlaylistTicketLightbox: View {
                     }
                 }
             }
-            .onChange(of: proxy.size, initial: true) { _, size in stageSize = size }
+            .onChange(of: live, initial: true) { _, frame in stageFrame = frame }
         }
     }
 
@@ -214,6 +218,7 @@ struct PlaylistTicketLightbox: View {
 
     private func close() {
         guard areControlsReady, !isClosing else { return }
+        closingFrame = stageFrame
         isClosing = true
         grid.reveal(focusKey, isAnimated: false)
         grid.hide(focusKey)
@@ -267,12 +272,12 @@ struct PlaylistTicketLightbox: View {
         let snapshotter = snapshotters[entry.key]
         guard display.isPlayed, let presenter = snapshotter.hostController(),
               let source = snapshotter.frameInWindow() else { return }
-        let width = ticketWidth(in: stageSize)
+        let width = ticketWidth(in: stageFrame.size)
         let cached = loader.cachedShareFrames(entry.key)
         var material = ShareMaterial(content: entry.stubContent(display: display, details: loader.details[entry.key])
                                          .withoutCursor(),
                                      solvedAtFrame: entry.wasCorrect == true ? max(entry.attemptsUsed, 1) : nil,
-                                     frames: cached ?? .dark, roundSize: stageSize)
+                                     frames: cached ?? .dark, roundSize: stageFrame.size)
         material.stubWidth = width
         material.isFramePending = cached == nil
         let launch = ShareLaunch(snapshotter: snapshotter, source: source,
