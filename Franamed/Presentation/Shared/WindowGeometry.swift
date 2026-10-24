@@ -11,6 +11,12 @@ import UIKit
 struct WindowGeometry: Equatable {
     var size: CGSize = .zero
     var safeAreaInsets = EdgeInsets()
+
+    func shiftToCenter(fromMidX midX: CGFloat, room: CGFloat) -> CGFloat {
+        guard size.width > 0 else { return 0 }
+        let limit = max(0, room)
+        return min(max(size.width / 2 - midX, -limit), limit)
+    }
 }
 
 extension EnvironmentValues {

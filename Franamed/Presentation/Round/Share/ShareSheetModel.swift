@@ -19,10 +19,15 @@ final class ShareSheetModel: ObservableObject {
     }
     @Published var showsStub = false
     @Published var isFlying = false
+    @Published var usesBar = false {
+        didSet { if usesBar != oldValue { cardShape = cardShape(for: format) } }
+    }
 
     let launch: ShareLaunch
     private let panelHeights: [ShareFormat: CGFloat]
+    private let barPanelHeights: [ShareFormat: CGFloat]
     @Published var sheetHeight: CGFloat?
+    var contentFrame = CGRect.zero
     @Published var cardShape: ShareCardShape
     @Published private(set) var stubWidth: CGFloat
     var presentActivity: ([Any], CGRect) -> Void = { _, _ in }
@@ -44,6 +49,10 @@ final class ShareSheetModel: ObservableObject {
         panelHeights = Dictionary(uniqueKeysWithValues: ShareFormat.allCases.map {
             ($0, SharePanel.height(for: material, format: $0, width: material.roundSize.width))
         })
+        barPanelHeights = Dictionary(uniqueKeysWithValues: ShareFormat.allCases.map {
+            ($0, SharePanel.height(for: material, format: $0, width: material.roundSize.width,
+                                    showsShareButton: false))
+        })
         cardShape = ShareCardShape(format: .story, panelHeight: panelHeights[.story] ?? 0)
         stubWidth = material.stubWidth
     }
@@ -55,10 +64,10 @@ final class ShareSheetModel: ObservableObject {
         stubWidth = material.stubWidth * TicketStyle.cardWidth(in: windowSize, edgeStyle: edgeStyle) / opened
     }
 
-    var tallestPanel: CGFloat { panelHeights.values.max() ?? 0 }
+    var tallestPanel: CGFloat { (usesBar ? barPanelHeights : panelHeights).values.max() ?? 0 }
 
     func panelHeight(for format: ShareFormat) -> CGFloat {
-        panelHeights[format] ?? 0
+        (usesBar ? barPanelHeights : panelHeights)[format] ?? 0
     }
 
     func cardShape(for format: ShareFormat) -> ShareCardShape {

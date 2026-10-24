@@ -66,8 +66,18 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
 
     // MARK: Lifecycle
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        if #available(iOS 27.1, *) {
+            registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) { (self: Self, _) in
+                self.updateBarMode()
+            }
+        }
+    }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        updateBarMode()
         guard isBeingPresented else { return }
         onLift()
         startFlight(entering: true)
@@ -113,6 +123,14 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         removeFlight()
     }
 
+    private func updateBarMode() {
+        guard #available(iOS 27.1, *) else { return }
+        let usesBar = traitCollection.verticalBarEdge != .unspecified
+        guard usesBar != model.usesBar else { return }
+        model.usesBar = usesBar
+        sheetPresentationController?.invalidateDetents()
+    }
+
     // MARK: Activity
 
     private func presentActivity(_ items: [Any], from source: CGRect) {
@@ -122,7 +140,7 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
             if completed { self?.dismiss(animated: true) }
         }
         activity.popoverPresentationController?.sourceView = view
-        activity.popoverPresentationController?.sourceRect = source
+        activity.popoverPresentationController?.sourceRect = source.offsetBy(dx: contentLeft, dy: 0)
         present(activity, animated: true)
     }
 
@@ -145,10 +163,21 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     private var safeBottom: CGFloat { safeArea.bottom }
 
     private func targetDetent(for format: ShareFormat, maximum: CGFloat) -> CGFloat {
-        let width = isViewLoaded && view.bounds.width > 0 ? view.bounds.width : model.material.roundSize.width
+        let width = isViewLoaded && view.bounds.width > 0 ? contentWidth(of: view.bounds.width)
+                                                          : model.material.roundSize.width
         let fitted = ShareSheetLayout.fittedHeight(width: width, panelHeight: model.panelHeight(for: format),
                                                    format: format, stubWidth: model.stubWidth)
         return min(maximum, fitted - safeBottom)
+    }
+
+    private func contentWidth(of width: CGFloat) -> CGFloat {
+        guard model.contentFrame.width > 0 else { return width - view.safeAreaInsets.left - view.safeAreaInsets.right }
+        return model.contentFrame.width
+    }
+
+    private var contentLeft: CGFloat {
+        guard model.contentFrame.width > 0 else { return view.safeAreaInsets.left }
+        return model.contentFrame.minX - view.convert(CGPoint.zero, to: nil).x
     }
 
     private func resizeSheet(to format: ShareFormat) {
@@ -227,7 +256,9 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
         let top = sheetTop() ?? window.bounds.height
         let travel = max(window.bounds.height - restTop, 1)
         let progress = 1 - min(max((top - restTop) / travel, 0), 1)
-        let layout = model.layout(in: view.layer.presentation()?.bounds.size ?? view.bounds.size)
+        let size = view.layer.presentation()?.bounds.size ?? view.bounds.size
+        let layout = model.layout(in: CGSize(width: contentWidth(of: size.width), height: size.height))
+            .offsetBy(dx: contentLeft, dy: 0)
         let target = onScreen(layout.stub) ?? layout.stub.offsetBy(dx: 0, dy: top)
         flight.update(progress: progress, source: model.launch.currentSource(), target: target,
                       angle: CGFloat(layout.angle.radians), turnsFromBack: model.launch.startsOnBack)

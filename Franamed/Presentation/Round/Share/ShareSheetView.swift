@@ -11,20 +11,35 @@ struct ShareSheetView: View {
     @ObservedObject var model: ShareSheetModel
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topLeading) {
-                ShareCardFrame(canvas: model.layout(in: proxy.size).canvas, stickerness: model.cardShape.stickerness,
-                               model: model)
+        NavigationStack {
+            GeometryReader { proxy in
+                ZStack(alignment: .topLeading) {
+                    ShareCardFrame(canvas: model.layout(in: proxy.size).canvas,
+                                   stickerness: model.cardShape.stickerness, model: model)
 
-                SharePanel(material: model.material, mode: $model.mode, background: $model.background,
-                           format: $model.format, onShare: model.send)
-                    .frame(width: proxy.size.width, height: model.tallestPanel, alignment: .bottom)
-                    .allowsHitTesting(!model.isFlying)
-                    .offset(y: ShareSheetLayout.panelTop(height: proxy.size.height, panelHeight: model.tallestPanel))
+                    SharePanel(material: model.material, mode: $model.mode, background: $model.background,
+                               format: $model.format, showsShareButton: !model.usesBar, onShare: model.send)
+                        .frame(width: proxy.size.width, height: model.tallestPanel, alignment: .bottom)
+                        .allowsHitTesting(!model.isFlying)
+                        .offset(y: ShareSheetLayout.panelTop(height: proxy.size.height,
+                                                             panelHeight: model.tallestPanel))
+                }
+                .coordinateSpace(.named(ShareSheetLayout.coordinateSpace))
             }
-            .coordinateSpace(.named(ShareSheetLayout.coordinateSpace))
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.contentFrame = $0 }
+            .ignoresSafeArea(edges: .vertical)
+            .toolbar {
+                if model.usesBar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Поделиться", systemImage: "square.and.arrow.up") { model.send(from: .zero) }
+                            .disabled(model.isFlying)
+                    }
+                }
+            }
+            .toolbarVisibility(model.usesBar ? .visible : .hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
+            .containerBackground(.clear, for: .navigation)
         }
-        .ignoresSafeArea()
         .onChange(of: model.stubContent) { model.prepareStub() }
         .task { await model.loadExtras() }
     }

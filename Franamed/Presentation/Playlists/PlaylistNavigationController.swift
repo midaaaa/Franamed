@@ -61,6 +61,16 @@ final class PlaylistNavigationController: UINavigationController {
         setToolbarHidden(false, animated: false)
         popPan.delegate = self
         view.addGestureRecognizer(popPan)
+        if #available(iOS 27.1, *) {
+            registerForTraitChanges(UITraitCollection.systemTraitsAffectingVerticalBarEdge) { (self: Self, _) in
+                self.refreshSelectItems()
+            }
+        }
+    }
+
+    override func viewIsAppearing(_ animated: Bool) {
+        super.viewIsAppearing(animated)
+        refreshSelectItems()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -139,9 +149,24 @@ final class PlaylistNavigationController: UINavigationController {
         lightboxHost = host
     }
 
+    private var usesVerticalBar: Bool {
+        guard #available(iOS 27.1, *) else { return false }
+        return traitCollection.verticalBarEdge != .unspecified
+    }
+
+    private func refreshSelectItems() {
+        for case let host as PlaylistHost in viewControllers {
+            guard let id = host.playlistID else { continue }
+            let items = selectItems(for: id)
+            host.pinnedToolbarItems = items
+            host.setToolbarItems(items, animated: false)
+        }
+    }
+
     private func selectItems(for id: String) -> [UIBarButtonItem] {
         guard let playlist = playlists.playlist(id: id) else { return [] }
         let isSelected = playlists.isSelected(id)
+        if usesVerticalBar { return [verticalSelectItem(for: id, isSelected: isSelected, playlist: playlist)] }
         var configuration = isSelected ? UIButton.Configuration.glass() : UIButton.Configuration.prominentGlass()
         configuration.title = isSelected ? "Выбрана" : "Выбрать"
         if isSelected {
@@ -173,6 +198,20 @@ final class PlaylistNavigationController: UINavigationController {
         let item = UIBarButtonItem(customView: button)
         item.hidesSharedBackground = true
         return [.flexibleSpace(), item, .flexibleSpace()]
+    }
+
+    private func verticalSelectItem(for id: String, isSelected: Bool, playlist: PlaylistDetail) -> UIBarButtonItem {
+        let item = UIBarButtonItem(title: isSelected ? "Выбрана" : "Выбрать",
+                                   image: UIImage(systemName: "checkmark"),
+                                   primaryAction: UIAction { [weak self] _ in
+                                       self?.playlists.select(id)
+                                       self?.onDone()
+                                   })
+        item.style = isSelected ? .plain : .prominent
+        item.tintColor = isSelected ? nil : UIColor(Accent.action)
+        item.isEnabled = !isSelected && playlist.availableCount > 0
+        if #available(iOS 27.1, *) { item.axisBehavior = .verticalPreferred }
+        return item
     }
 
     private func closeItem() -> UIBarButtonItem {

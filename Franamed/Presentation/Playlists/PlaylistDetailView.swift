@@ -14,6 +14,7 @@ struct PlaylistDetailView: View {
     var onLightbox: (AnyView?) -> Void = { _ in }
 
     @State private var contentWidth: CGFloat = 0
+    @Environment(\.displayScale) private var displayScale
     @State private var isLightboxOpen = false
     @StateObject private var lightboxGrid = PlaylistLightboxGrid()
     @StateObject private var loader = PlaylistTicketLoader()
@@ -39,7 +40,9 @@ struct PlaylistDetailView: View {
                     .padding(.horizontal, PlaylistStyle.pageInset(forWidth: contentWidth))
                     .padding(.bottom, 24)
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+                .onGeometryChange(for: CGFloat.self) { [grid = PixelGrid(displayScale: displayScale)] in
+                    grid.snapped($0.size.width)
+                } action: { contentWidth = $0 }
                 .onGeometryChange(for: CGRect.self) { geometry in
                     geometry.frame(in: .global).inset(by: UIEdgeInsets(top: geometry.safeAreaInsets.top, left: 0,
                                                                         bottom: geometry.safeAreaInsets.bottom, right: 0))

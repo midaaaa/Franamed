@@ -14,6 +14,7 @@ struct HallMetalView: UIViewRepresentable {
     let size: CGSize
     let frameTop: CGFloat
     let frameBottom: CGFloat
+    let frameMidX: CGFloat?
     let picture: HallPicture?
     let isWaiting: Bool
     let motion: HallMotion
@@ -27,7 +28,7 @@ struct HallMetalView: UIViewRepresentable {
         view.motion = motion
         view.phone = phone
         view.key = HallLayerView.Key(sample: sample, scene: scene, size: size, frameTop: frameTop,
-                                     frameBottom: frameBottom, picture: picture,
+                                     frameBottom: frameBottom, frameMidX: frameMidX, picture: picture,
                                      isWaiting: isWaiting)
     }
 
@@ -44,6 +45,7 @@ final class HallLayerView: UIView {
         let size: CGSize
         let frameTop: CGFloat
         let frameBottom: CGFloat
+        let frameMidX: CGFloat?
         let picture: HallPicture?
         let isWaiting: Bool
     }
@@ -160,7 +162,7 @@ final class HallLayerView: UIView {
         guard let renderer = HallRenderer.shared, let prepared = lock.withLock({ prepared }) else { return false }
         let key = prepared.key
         var args = HallShaderArgs(scene: key.scene, sample: key.sample, size: key.size, frameTop: key.frameTop,
-                                  frameBottom: key.frameBottom, sway: prepared.motion?.sway ?? .zero,
+                                  frameBottom: key.frameBottom, frameMidX: key.frameMidX, sway: prepared.motion?.sway ?? .zero,
                                   scale: prepared.pixelScale, picture: key.picture,
                                   spinnerTime: key.isWaiting ? Float(time.truncatingRemainder(dividingBy: 1000)) : nil)
         prepared.phone?.setGeometry(HallPhone.Geometry(

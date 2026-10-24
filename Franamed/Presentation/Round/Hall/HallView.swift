@@ -18,6 +18,7 @@ struct LiveHallView: View {
     let size: CGSize
     let frameTop: CGFloat
     let frameBottom: CGFloat
+    var frameMidX: CGFloat?
     var picture: HallPicture?
     var isWaiting = false
     var phone: HallPhone?
@@ -32,7 +33,7 @@ struct LiveHallView: View {
 
     var body: some View {
         HallMetalView(sample: sample, scene: scene, size: size, frameTop: frameTop, frameBottom: frameBottom,
-                      picture: picture, isWaiting: isWaiting, motion: motion, phone: phone)
+                      frameMidX: frameMidX, picture: picture, isWaiting: isWaiting, motion: motion, phone: phone)
             .frame(width: size.width, height: size.height)
             .onAppear { updateMotion() }
             .onDisappear { motion.stop() }
@@ -56,7 +57,7 @@ struct LiveHallView: View {
         let eye = scene.eye
         let arm = HallPhoneDraw.armPoint(eye: eye, seatPitch: scene.seatPitch,
                                          armTop: scene.rowRise * Float(scene.rowsInFront) + scene.armrestHeight)
-        let center = SIMD2(Float(size.width / 2), Float(camera.principalY))
+        let center = SIMD2(Float(frameMidX ?? size.width / 2), Float(camera.principalY))
         let rest = HallPhoneDraw.project(arm, eye: eye, focal: Float(camera.focal), center: center)
         return CGPoint(x: CGFloat(rest.x), y: CGFloat(rest.y))
     }
@@ -92,11 +93,12 @@ struct HallShaderArgs {
     var glow: SIMD4<Float> = .zero
 
     init(scene: HallScene, sample: HallFrameSample, size: CGSize, frameTop: CGFloat, frameBottom: CGFloat,
-         sway: SIMD2<Float>, scale: CGFloat, picture: HallPicture? = nil, spinnerTime: Float? = nil) {
+         frameMidX: CGFloat? = nil, sway: SIMD2<Float>, scale: CGFloat, picture: HallPicture? = nil, spinnerTime: Float? = nil) {
         let camera = HallCamera(scene: scene, frameTop: frameTop, frameBottom: frameBottom)
         let eye = scene.eye + SIMD3(sway.x, sway.y, 0)
         let focal = Float(camera.focal)
-        let centerX = Float(size.width / 2) + focal * sway.x / eye.z
+        let midX = Float(frameMidX ?? size.width / 2)
+        let centerX = midX + focal * sway.x / eye.z
         let principalY = Float(camera.principalY) - focal * sway.y / eye.z
         let s = Float(scale)
 
@@ -109,7 +111,7 @@ struct HallShaderArgs {
         mean = SIMD4(sample.mean, 0)
         let frameWidth = min(Float(size.width),
                              Float(frameBottom - frameTop) * HallScene.screenWidth / HallScene.screenHeight)
-        let frameLeft = (Float(size.width) - frameWidth) / 2
+        let frameLeft = midX - frameWidth / 2
         frame = SIMD4((Float(frameTop) * s).rounded(), (Float(frameBottom) * s).rounded(),
                       (frameLeft * s).rounded(), ((frameLeft + frameWidth) * s).rounded())
         self.picture = SIMD4(picture?.aspect ?? 0, picture == nil ? 0 : 1, frameWidth, spinnerTime ?? -1)

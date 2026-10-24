@@ -22,6 +22,7 @@ struct PlaylistShelfView: View {
     let onOpen: (String) -> Void
 
     @AppStorage(PlaylistSort.storageKey) private var sort = PlaylistSort.started
+    @Environment(\.displayScale) private var displayScale
     @State private var shelfWidth: CGFloat = 0
     @State private var isRevealed = false
     @State private var order: [String] = []
@@ -37,7 +38,9 @@ struct PlaylistShelfView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView { content.coordinateSpace(.named(PlaylistFlightState.shelfSpace)) }
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { shelfWidth = $0 }
+                .onGeometryChange(for: CGFloat.self) { [grid = PixelGrid(displayScale: displayScale)] in
+                    grid.snapped($0.size.width)
+                } action: { shelfWidth = $0 }
                 .onAppear {
                     guard !isRevealed else { return }
                     isRevealed = true

@@ -33,7 +33,9 @@ struct PlaylistTicketLightbox: View {
     private static let sideShrink: CGFloat = 0.14
     private static let neighborSlide: CGFloat = 70
     private static let sideInset: CGFloat = 72
-    private static let heightShare: CGFloat = 0.6
+    private static let heightShare: CGFloat = 0.8
+    private static let galleryThreshold: CGFloat = 0.25
+    private static let galleryGap: CGFloat = 24
     private static let prefetchRadius = 2
     private static let openDelay = Duration.milliseconds(50)
     private static let controlsDelay = Duration.milliseconds(280)
@@ -46,7 +48,6 @@ struct PlaylistTicketLightbox: View {
     private static let dragFadeDistance: CGFloat = 500
     private static let dragShrinkDistance: CGFloat = 1500
     private static let maxDragShrink: CGFloat = 0.1
-    private static let controlsHideDistance: CGFloat = 60
 
     init(playlist: PlaylistDetail, startKey: String, ticket: PlaylistTicket?, loader: PlaylistTicketLoader,
          grid: PlaylistLightboxGrid, onClosed: @escaping () -> Void) {
@@ -65,16 +66,16 @@ struct PlaylistTicketLightbox: View {
 
     private var dragScale: CGFloat { 1 - min(abs(drag) / Self.dragShrinkDistance, Self.maxDragShrink) }
 
-    private var showsControls: Bool {
-        areControlsReady && !isClosing && !isShareLifted && abs(drag) < Self.controlsHideDistance
-    }
-
     private var focusedEntry: PlaylistEntry? { playlist.playableItems.first { $0.key == focusKey } }
 
     var body: some View {
-        ZStack {
+        NavigationStack {
             stage
-            controls
+                .toolbar { controls }
+                .toolbarVisibility(isClosing ? .hidden : .visible, for: .navigationBar, .bottomBar)
+                .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
+                .navigationBarTitleDisplayMode(.inline)
+                .containerBackground(.clear, for: .navigation)
         }
         .sheet(item: $webSearch) { link in
             SafariSheet(url: link.url).ignoresSafeArea()
@@ -82,57 +83,61 @@ struct PlaylistTicketLightbox: View {
     }
 
     private var stage: some View {
-        GeometryReader { proxy in
-            let entries = playlist.playableItems
-            let focusIndex = entries.firstIndex { $0.key == focusKey } ?? 0
-            let width = ticketWidth(in: proxy.size)
-            let inset = (proxy.size.width - width) / 2
-            let spacing = max(inset - Self.peek - width * Self.sideShrink / 2, Self.minSpacing)
-            let target = proxy.frame(in: .global)
-            ZStack {
-                PlaylistLightboxBackdrop(progress: flight * dragFade, dim: Self.dim)
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: close)
-                ScrollViewReader { reader in
-                    ScrollView(.horizontal) {
-                        LazyHStack(spacing: spacing) {
-                            ForEach(Array(entries.enumerated()), id: \.element.key) { index, entry in
-                                page(entry, number: index + 1, width: width, target: target,
-                                     side: index == focusIndex ? 0 : (index < focusIndex ? -1 : 1))
-                                    .frame(width: width, height: proxy.size.height)
-                                    .scrollTransition(.interactive, axis: .horizontal) { [shrink = Self.sideShrink] content, phase in
-                                        content.scaleEffect(1 - shrink * min(abs(phase.value), 1))
-                                    }
-                            }
-                        }
-                        .scrollTargetLayout()
-                    }
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
-                    .safeAreaPadding(.horizontal, inset)
-                    .scrollPosition(id: $currentKey)
-                    .scrollDisabled(!hasLanded || isClosing)
-                    .onTapGesture(perform: close)
-                    .onScrollPhaseChange { _, phase in
-                        if phase == .idle, hasLanded, !isClosing { settle() }
-                    }
-                    .onAppear {
-                        reader.scrollTo(focusKey, anchor: .center)
-                        Task {
-                            try? await Task.sleep(for: Self.openDelay)
-                            open()
-                        }
-                    }
-                }
-            }
-            .gesture(PlaylistLightboxPan(onChange: dragChanged, onEnd: dragEnded))
-            .onChange(of: proxy.size, initial: true) { _, size in stageSize = size }
+        ZStack {
+            PlaylistLightboxBackdrop(progress: flight * dragFade, dim: Self.dim)
+                .ignoresSafeArea()
+                .onTapGesture(perform: close)
+            pages
         }
-        .ignoresSafeArea()
+        .gesture(PlaylistLightboxPan(onChange: dragChanged, onEnd: dragEnded))
         .onChange(of: currentKey) { _, key in
             guard let key, key != focusKey else { return }
             focusKey = key
             prefetch()
+        }
+    }
+
+    private var pages: some View {
+        GeometryReader { proxy in
+            let entries = playlist.playableItems
+            let focusIndex = entries.firstIndex { $0.key == focusKey } ?? 0
+            let width = ticketWidth(in: proxy.size)
+            let spacing = pageSpacing(in: proxy.size.width, ticketWidth: width)
+            let inset = (proxy.size.width - width) / 2
+            let target = proxy.frame(in: .global)
+            ScrollViewReader { reader in
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: spacing) {
+                        ForEach(Array(entries.enumerated()), id: \.element.key) { index, entry in
+                            page(entry, number: index + 1, width: width, target: target,
+                                 side: index == focusIndex ? 0 : (index < focusIndex ? -1 : 1))
+                                .frame(width: width, height: proxy.size.height)
+                                .scrollTransition(.interactive, axis: .horizontal) { [shrink = Self.sideShrink] content, phase in
+                                    content.scaleEffect(1 - shrink * min(abs(phase.value), 1))
+                                }
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
+                .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
+                .safeAreaPadding(.horizontal, inset)
+                .scrollPosition(id: $currentKey)
+                .scrollDisabled(!hasLanded || isClosing)
+                .onTapGesture(perform: close)
+                .onScrollPhaseChange { _, phase in
+                    if phase == .idle, hasLanded, !isClosing { settle() }
+                }
+                .onAppear {
+                    reader.scrollTo(focusKey, anchor: .center)
+                    Task {
+                        try? await Task.sleep(for: Self.openDelay)
+                        open()
+                    }
+                }
+            }
+            .onChange(of: proxy.size, initial: true) { _, size in stageSize = size }
         }
     }
 
@@ -167,9 +172,17 @@ struct PlaylistTicketLightbox: View {
                           byHeight))
     }
 
+    private func pageSpacing(in stageWidth: CGFloat, ticketWidth width: CGFloat) -> CGFloat {
+        let peekSpacing = (stageWidth - width) / 2 - Self.peek - width * Self.sideShrink / 2
+        guard peekSpacing <= width * Self.galleryThreshold else {
+            return Self.galleryGap * TicketStyle.zoom(forWidth: width)
+        }
+        return max(peekSpacing, Self.minSpacing)
+    }
+
     // MARK: Controls
 
-    private var controls: some View {
+    private var controls: some ToolbarContent {
         let entry = focusedEntry
         let display = entry.map(playlist.display(of:))
         let actions = entry.flatMap { entry in
@@ -178,9 +191,9 @@ struct PlaylistTicketLightbox: View {
                     .menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) }, onShare: share)
             }
         } ?? []
-        return PlaylistLightboxControls(showsClose: showsControls,
-                                        showsActions: showsControls && display?.isPlayed == true,
-                                        actions: actions, onClose: close)
+        return PlaylistLightboxControls(actions: actions,
+                                        areActionsEnabled: areControlsReady && display?.isPlayed == true,
+                                        onClose: close)
     }
 
     // MARK: Flow

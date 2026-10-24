@@ -361,11 +361,11 @@ final class HallRenderer: @unchecked Sendable {
 @MainActor
 enum HallSnapshot {
     static func image(sample: HallFrameSample, scene: HallScene, size: CGSize, frameTop: CGFloat,
-                      frameBottom: CGFloat, scale: CGFloat) async -> UIImage? {
+                      frameBottom: CGFloat, frameMidX: CGFloat? = nil, scale: CGFloat) async -> UIImage? {
         guard let renderer = HallRenderer.shared,
               let meshes = await HallMeshStore.shared.meshes(for: scene) else { return nil }
         let args = HallShaderArgs(scene: scene, sample: sample, size: size, frameTop: frameTop,
-                                  frameBottom: frameBottom, sway: .zero, scale: scale)
+                                  frameBottom: frameBottom, frameMidX: frameMidX, sway: .zero, scale: scale)
         let frame = HallRenderer.Frame(sample: sample, scene: scene, args: args, meshes: meshes)
         let width = Int((size.width * scale).rounded()), height = Int((size.height * scale).rounded())
         return await renderer.snapshot(frame, width: width, height: height).map { UIImage(cgImage: $0, scale: scale, orientation: .up) }

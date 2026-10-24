@@ -35,6 +35,7 @@ struct TicketView: View {
     @State private var isTransitioning = false
     @State private var isRasterized = false
     @State private var isDraggingCard = false
+    @State private var hasVerticalToolbar = false
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
@@ -136,16 +137,19 @@ struct TicketView: View {
             let width = pixelGrid.evenAligned(TicketStyle.cardWidth(in: geo.size, edgeStyle: edgeStyle))
             let posterHeight = pixelGrid.evenAligned(width * TicketStyle.posterAspectRatio)
             let cardHeight = posterHeight + TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
-            let centerY = Self.cardCenterY(containerHeight: geo.size.height, cardHeight: cardHeight)
-            let overscan = pixelGrid.aligned(max(geo.size.width - width, geo.size.height - cardHeight) / 2
+            let centerY = Self.cardCenterY(containerHeight: geo.size.height, cardHeight: cardHeight,
+                                           lift: centerLift(containerMidY: geo.frame(in: .global).midY))
+            let shiftX = centerShift(containerMidX: geo.frame(in: .global).midX, room: (geo.size.width - width) / 2)
+            let overscan = pixelGrid.aligned(max(geo.size.width - width + abs(shiftX) * 2, geo.size.height - cardHeight) / 2
                                              + Self.tearOverscanMargin, rule: .up)
 
             cardView(width: width, posterHeight: posterHeight, tearOverscan: overscan)
                 .frame(width: width)
-                .position(x: pixelGrid.snapped(geo.size.width / 2), y: pixelGrid.snapped(centerY))
+                .position(x: pixelGrid.snapped(geo.size.width / 2 + shiftX), y: pixelGrid.snapped(centerY))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
         }
         .ignoresSafeArea(.keyboard)
+        .readsVerticalToolbar($hasVerticalToolbar)
         .task { await viewModel.loadGenreNames() }
         .task { await playlists.load() }
     }
@@ -313,10 +317,10 @@ struct TicketView: View {
     private static let navigationBarHeight: CGFloat = 44
     private static let tearOverscanMargin: CGFloat = 48
 
-    private static func cardCenterY(containerHeight: CGFloat, cardHeight: CGFloat) -> CGFloat {
+    private static func cardCenterY(containerHeight: CGFloat, cardHeight: CGFloat, lift: CGFloat) -> CGFloat {
         guard containerHeight > cardHeight else { return containerHeight / 2 }
         let half = cardHeight / 2
-        return min(max(containerHeight / 2 - navigationBarHeight / 2, half), containerHeight - half)
+        return min(max(containerHeight / 2 - lift, half), containerHeight - half)
     }
 
     private var edgeStyle: TicketEdgeStyle { TicketEdgeStyle(hasScallops: hasScallops) }
@@ -326,9 +330,20 @@ struct TicketView: View {
         return width > 0 ? pixelGrid.evenAligned(width) : TicketStyle.referenceWidth
     }
 
+    private func centerLift(containerMidY: CGFloat) -> CGFloat {
+        guard hasVerticalToolbar, window.size.height > 0 else { return Self.navigationBarHeight / 2 }
+        return containerMidY - window.size.height / 2
+    }
+
+    private func centerShift(containerMidX: CGFloat, room: CGFloat) -> CGFloat {
+        hasVerticalToolbar ? window.shiftToCenter(fromMidX: containerMidX, room: room) : 0
+    }
+
     private var restingCardFrame: CGRect {
-        CGRect(x: containerFrame.midX - cardSize.width / 2,
-               y: containerFrame.minY + Self.cardCenterY(containerHeight: containerFrame.height, cardHeight: cardSize.height)
+        CGRect(x: containerFrame.midX - cardSize.width / 2
+               + centerShift(containerMidX: containerFrame.midX, room: (containerFrame.width - cardSize.width) / 2),
+               y: containerFrame.minY + Self.cardCenterY(containerHeight: containerFrame.height, cardHeight: cardSize.height,
+                                                      lift: centerLift(containerMidY: containerFrame.midY))
                    - cardSize.height / 2,
                width: cardSize.width, height: cardSize.height)
     }

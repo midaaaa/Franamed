@@ -28,6 +28,7 @@ struct ResultStubPeek: View {
     let genreNames: [String]
     let isTucked: Bool
     let keyboardLift: CGFloat
+    var foldTop: CGFloat?
     let restOffset: CGFloat
     let formWidth: CGFloat
     var playlist: PlaylistTicket?
@@ -70,6 +71,10 @@ struct ResultStubPeek: View {
         let playlist: PlaylistTicket?
     }
 
+    static func peekHeight(stubWidth: CGFloat) -> CGFloat {
+        peekHeight * TicketStyle.zoom(forWidth: stubWidth)
+    }
+
     private var size: CGSize {
         ResultStubMetrics.size(width: stubWidth, edgeStyle: TicketEdgeStyle(hasScallops: hasScallops))
     }
@@ -81,7 +86,10 @@ struct ResultStubPeek: View {
     private var isHidden: Bool { isTucked || !hasEntered }
 
     private var hiddenOffset: CGFloat {
-        guard isHidden else { return size.height - suggestionRowHeight - Self.peekHeight * TicketStyle.zoom(forWidth: stubWidth) }
+        guard isHidden else {
+            if let foldTop { return size.height + foldTop }
+            return size.height - suggestionRowHeight - Self.peekHeight(stubWidth: stubWidth)
+        }
         switch placement {
         case .behindForm: return size.height + Self.screenEdgeGap + keyboardLift
         case .clippedByForm: return size.height - suggestionRowHeight
@@ -132,6 +140,7 @@ struct ResultStubPeek: View {
         .modifier(FormClip(isActive: placement == .clippedByForm, formWidth: formWidth))
         .opacity(isLifted ? 0 : 1)
         .animation(Self.tuckAnimation, value: isHidden)
+        .animation(Self.tuckAnimation, value: foldTop)
         .sheet(item: $webSearch) { link in
             SafariSheet(url: link.url).ignoresSafeArea()
         }

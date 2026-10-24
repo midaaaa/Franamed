@@ -127,7 +127,13 @@ private struct FlipInteractionView: UIViewRepresentable {
         tap.delegate = context.coordinator
         view.addGestureRecognizer(tap)
 
-        view.addInteraction(UIContextMenuInteraction(delegate: context.coordinator))
+        let menu = UIContextMenuInteraction(delegate: context.coordinator)
+        view.addInteraction(menu)
+        if #available(iOS 27.1, *) {
+            view.addInteraction(UIHingeInteraction { [weak coordinator = context.coordinator, weak menu] _, update in
+                coordinator?.hingeChanged(to: update.hinge?.status.rawValue, menu: menu)
+            })
+        }
         return view
     }
 
@@ -155,6 +161,7 @@ private struct FlipInteractionView: UIViewRepresentable {
 
         private var isMenuActive = false
         private var didDisplayMenu = false
+        private var hingeStatus: Int?
         private weak var litView: UIView?
         private var previewView: UIView?
         private var tearPreview: (plain: UIImage, lit: UIImage?)?
@@ -197,6 +204,12 @@ private struct FlipInteractionView: UIViewRepresentable {
         }
 
         // MARK: Menu
+
+        func hingeChanged(to status: Int?, menu: UIContextMenuInteraction?) {
+            defer { hingeStatus = status }
+            guard hingeStatus != nil, status != hingeStatus, isMenuActive else { return }
+            menu?.dismissMenu()
+        }
 
         func contextMenuInteraction(_ interaction: UIContextMenuInteraction,
                                     configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {

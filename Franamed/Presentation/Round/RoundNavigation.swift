@@ -38,6 +38,19 @@ private final class RoundHost: UIHostingController<AnyView> {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        let barTop = isBarCollapsed ? (view.window?.safeAreaInsets.top ?? 0) - systemTop : 0
+        if additionalSafeAreaInsets.top != barTop { additionalSafeAreaInsets.top = barTop }
+    }
+
+    private var systemTop: CGFloat { view.safeAreaInsets.top - additionalSafeAreaInsets.top }
+
+    private var isBarCollapsed: Bool {
+        guard let bar = navigationController?.navigationBar, !bar.isHidden else { return false }
+        return bar.frame.height == 0
+    }
+
     @objc private func keyboardWillChangeFrame(_ note: Notification) {
         guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
               !frame.isEmpty, let screen = note.object as? UIScreen else { return }

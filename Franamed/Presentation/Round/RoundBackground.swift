@@ -10,6 +10,7 @@ import SwiftUI
 struct RoundBackground: View {
     let light: HallFrameSample
     let frameHeight: CGFloat
+    let frameMidX: CGFloat
     let picture: HallPicture?
     let isWaiting: Bool
     let phone: HallPhone
@@ -31,13 +32,15 @@ struct RoundBackground: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let origin = proxy.frame(in: .named(coordinateSpace)).minY
+            let bounds = proxy.frame(in: .named(coordinateSpace))
+            let origin = bounds.minY
+            let midX = frameMidX - bounds.minX
             ZStack(alignment: .topLeading) {
                 if isProtected {
-                    captureLayer(size: proxy.size, origin: origin)
+                    captureLayer(size: proxy.size, origin: origin, midX: midX)
                 }
                 ProtectedContent(isProtected: isProtected) {
-                    liveLayer(size: proxy.size, origin: origin)
+                    liveLayer(size: proxy.size, origin: origin, midX: midX)
                 }
             }
         }
@@ -64,14 +67,14 @@ struct RoundBackground: View {
                            screenBloom: Float(screenBloom))
     }
 
-    private func liveLayer(size: CGSize, origin: CGFloat) -> some View {
+    private func liveLayer(size: CGSize, origin: CGFloat, midX: CGFloat) -> some View {
         LiveHallView(sample: light, scene: HallScene(), size: size,
-                     frameTop: -origin, frameBottom: frameHeight - origin, picture: picture,
+                     frameTop: -origin, frameBottom: frameHeight - origin, frameMidX: midX, picture: picture,
                      isWaiting: isWaiting, phone: phone)
     }
 
-    private func captureLayer(size: CGSize, origin: CGFloat) -> some View {
-        let key = BackdropKey(size: size, origin: origin, frameHeight: frameHeight,
+    private func captureLayer(size: CGSize, origin: CGFloat, midX: CGFloat) -> some View {
+        let key = BackdropKey(size: size, origin: origin, midX: midX, frameHeight: frameHeight,
                               light: showsCaptureBanner ? nil : light)
         return Group {
             if let backdrop, backdrop.key == key {
@@ -89,7 +92,8 @@ struct RoundBackground: View {
         guard backdrop?.key != key,
               let hall = await HallSnapshot.image(sample: key.light ?? CaptureWarningBanner.hallLight,
                                                   scene: HallScene(), size: key.size, frameTop: -key.origin,
-                                                  frameBottom: frameHeight - key.origin, scale: displayScale)
+                                                  frameBottom: frameHeight - key.origin, frameMidX: key.midX,
+                                                  scale: displayScale)
         else { return }
         let renderer = ImageRenderer(content: backdropContent(hall: hall, size: key.size, origin: key.origin))
         renderer.scale = displayScale
@@ -113,6 +117,7 @@ struct RoundBackground: View {
 private struct BackdropKey: Equatable {
     let size: CGSize
     let origin: CGFloat
+    let midX: CGFloat
     let frameHeight: CGFloat
     let light: HallFrameSample?
 }

@@ -28,6 +28,7 @@ struct RoundView: View {
     @FocusState private var isAnswerFieldFocused: Bool
     @State private var fullHeight: CGFloat = 0
     @State private var frameHeight: CGFloat = 0
+    @State private var frameMidX: CGFloat = 0
     @State private var frameWidth: CGFloat = 0
     @State private var answerBarHeight: CGFloat = 44
     @State private var pendingAnimatedHeightCatchUp = false
@@ -36,6 +37,8 @@ struct RoundView: View {
     @State private var keyboardLift: CGFloat = 0
     @State private var keyboardHeight: CGFloat = 0
     @State private var barBottom: CGFloat = 0
+    @State private var contentHeight: CGFloat = 0
+    @State private var fold: ClosedRange<CGFloat>?
     @State private var highestBarBottom: CGFloat = 0
     @State private var windowReference = WindowReference()
     @Environment(\.windowGeometry) private var window
@@ -65,6 +68,7 @@ struct RoundView: View {
 
     private static let focusedBarInset: CGFloat = 6
     private static let restingBarInset: CGFloat = 24
+    private static let foldGap: CGFloat = 12
     private static let stubBarGap: CGFloat = 32
 
     private var barInset: CGFloat { isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset }
@@ -104,6 +108,21 @@ struct RoundView: View {
 
     private var homeIndicatorInset: CGFloat { window.safeAreaInsets.bottom }
 
+    private var foldLift: CGFloat {
+        guard let fold, contentHeight > 0 else { return 0 }
+        let bottom = contentHeight - barBottomInset
+        let top = bottom - suggestionRowHeight
+        guard top < fold.upperBound + Self.foldGap, bottom > fold.lowerBound - Self.foldGap else { return 0 }
+        return max(0, bottom - (fold.lowerBound - Self.foldGap))
+    }
+
+    private var centerShift: CGFloat {
+        let insets = window.safeAreaInsets
+        let safeWidth = window.size.width - insets.leading - insets.trailing
+        return window.shiftToCenter(fromMidX: insets.leading + safeWidth / 2,
+                                    room: (safeWidth - max(frameWidth, formOuterWidth)) / 2)
+    }
+
     init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil, isDismissLocked: Binding<Bool> = .constant(false)) {
         _isDismissLocked = isDismissLocked
         self.mode = mode
@@ -119,18 +138,26 @@ struct RoundView: View {
             } else {
                 VStack(spacing: 0) {
                     FrameView(maxWidth: frameMaxWidth)
+                    .fixedSize(horizontal: false, vertical: true)
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
                         frameWidth = width
                         frames.displayPixelWidth = width * displayScale
                     }
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frameHeight = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.backgroundSpace)).midX } action: {
+                        frameMidX = $0
+                    }
                     .layoutPriority(1)
 
                     Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
+                .offset(x: centerShift)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                .readsHorizontalFold($fold)
                 .overlay {
-                    HallPhoneSurface(phone: phone, frameHeight: frameHeight, isNewGestures: isNewPhoneGestures,
+                    HallPhoneSurface(phone: phone, frameHeight: frameHeight, frameMidX: frameMidX,
+                                     isNewGestures: isNewPhoneGestures,
                                      onToggleOrientation: { isPhonePortrait.toggle() },
                                      onTapPrevious: { viewModel.showPreviousFrame() },
                                      onTapNext: { viewModel.showNextFrame() })
@@ -143,7 +170,7 @@ struct RoundView: View {
                         }
                         .ignoresSafeArea(.keyboard)
                 }
-                .overlay(alignment: .bottom) { bottomActionBar }
+                .overlay(alignment: .bottom) { bottomActionBar.offset(x: centerShift) }
                 .coordinateSpace(.named(Self.contentSpace))
                 .navigationBarTitleDisplayMode(.inline)
                 #if DEBUG
@@ -204,7 +231,8 @@ struct RoundView: View {
         }
         .background {
             if frameHeight > 0 {
-                RoundBackground(light: frames.hallLight, frameHeight: frameHeight, picture: frames.picture,
+                RoundBackground(light: frames.hallLight, frameHeight: frameHeight, frameMidX: frameMidX,
+                                picture: frames.picture,
                                 isWaiting: frames.isWaiting && frames.picture == nil, phone: phone,
                                 isProtected: isFrameProtected, showsCaptureBanner: showsCaptureBanner,
                                 coordinateSpace: Self.backgroundSpace)
@@ -484,7 +512,7 @@ struct RoundView: View {
         .background(alignment: .bottom) { stubAnchor }
         .padding(.horizontal, barInset)
         .frame(maxWidth: formOuterWidth)
-        .padding(.bottom, barBottomInset)
+        .padding(.bottom, barBottomInset + foldLift)
         .animation(.smooth(duration: 0.25), value: isAnswerFieldFocused)
         .disabled(isInputBlocked)
     }
@@ -508,6 +536,7 @@ struct RoundView: View {
                            genreNames: viewModel.genreNames,
                            isTucked: isStubTucked,
                            keyboardLift: keyboardLift,
+                           foldTop: foldStubTop,
                            restOffset: stubRestOffset,
                            formWidth: formOuterWidth - barInset * 2,
                            playlist: playlistTicket,
@@ -528,7 +557,12 @@ struct RoundView: View {
     }
 
     private var isStubTucked: Bool {
-        viewModel.outcome == nil && answerBarHeight > suggestionRowHeight + 1
+        viewModel.outcome == nil && foldStubTop == nil && answerBarHeight > suggestionRowHeight + 1
+    }
+
+    private var foldStubTop: CGFloat? {
+        guard foldLift > 0, viewModel.outcome == nil, let fold, barBottom > 0 else { return nil }
+        return max(0, fold.upperBound - barBottom - ResultStubPeek.peekHeight(stubWidth: stubWidth))
     }
 
     private var stubRestOffset: CGFloat {

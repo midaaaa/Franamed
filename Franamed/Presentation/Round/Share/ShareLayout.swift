@@ -136,10 +136,10 @@ struct ShareSheetLayout {
         angle = placement.angle
     }
 
-    func offsetBy(dy: CGFloat) -> ShareSheetLayout {
+    func offsetBy(dx: CGFloat = 0, dy: CGFloat) -> ShareSheetLayout {
         var layout = self
-        layout.canvas = canvas.offsetBy(dx: 0, dy: dy)
-        layout.stub = stub.offsetBy(dx: 0, dy: dy)
+        layout.canvas = canvas.offsetBy(dx: dx, dy: dy)
+        layout.stub = stub.offsetBy(dx: dx, dy: dy)
         return layout
     }
 }

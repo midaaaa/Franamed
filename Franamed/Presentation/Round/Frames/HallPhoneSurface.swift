@@ -12,6 +12,7 @@ struct HallPhoneSurface: UIViewRepresentable {
     let phone: HallPhone
     var frameTop: CGFloat = 0
     let frameHeight: CGFloat
+    var frameMidX: CGFloat = 0
     var isNewGestures = false
     let onToggleOrientation: () -> Void
     let onTapPrevious: () -> Void
@@ -70,7 +71,11 @@ struct HallPhoneSurface: UIViewRepresentable {
         private var phone: HallPhone { surface.phone }
 
         private func home(in view: UIView) -> CGPoint {
-            view.convert(CGPoint(x: view.bounds.midX, y: surface.frameTop + surface.frameHeight * 0.8), to: nil)
+            view.convert(CGPoint(x: frameMidX(in: view), y: surface.frameTop + surface.frameHeight * 0.8), to: nil)
+        }
+
+        private func frameMidX(in view: UIView) -> CGFloat {
+            surface.frameMidX > 0 ? surface.frameMidX : view.bounds.midX
         }
 
         func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -98,7 +103,7 @@ struct HallPhoneSurface: UIViewRepresentable {
 
         @objc func frameTapped(_ gesture: UITapGestureRecognizer) {
             guard let view = gesture.view else { return }
-            if gesture.location(in: view).x < view.bounds.midX { surface.onTapPrevious() } else { surface.onTapNext() }
+            if gesture.location(in: view).x < frameMidX(in: view) { surface.onTapPrevious() } else { surface.onTapNext() }
         }
 
         @objc func phoneTapped(_ gesture: UITapGestureRecognizer) {

@@ -12,6 +12,7 @@ struct SharePanel: View {
     @Binding var mode: ShareMode
     @Binding var background: ShareBackground
     @Binding var format: ShareFormat
+    var showsShareButton = true
     let onShare: (CGRect) -> Void
 
     @State private var shareFrame = CGRect.zero
@@ -23,9 +24,9 @@ struct SharePanel: View {
     private static let hallSpan: CGFloat = 200
     private static let swatchRowHeight = swatchSize + 8 + swatchFade
 
-    static func height(for material: ShareMaterial, format: ShareFormat, width: CGFloat) -> CGFloat {
+    static func height(for material: ShareMaterial, format: ShareFormat, width: CGFloat, showsShareButton: Bool = true) -> CGFloat {
         let panel = SharePanel(material: material, mode: .constant(.answer), background: .constant(.hall),
-                               format: .constant(format), onShare: { _ in })
+                               format: .constant(format), showsShareButton: showsShareButton, onShare: { _ in })
         let host = UIHostingController(rootView: panel.environment(\.colorScheme, .dark))
         return ceil(host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height)
     }
@@ -48,29 +49,35 @@ struct SharePanel: View {
             .toggleStyle(.button)
             .tint(.white)
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 16)
+            .padding(.bottom, showsShareButton ? 16 : 0)
 
-            Button {
-                onShare(shareFrame)
-            } label: {
-                Text("Поделиться")
-                    .font(.headline)
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.white)
-            .controlSize(.large)
-            .onGeometryChange(for: CGRect.self) {
-                $0.frame(in: .named(ShareSheetLayout.coordinateSpace))
-            } action: {
-                shareFrame = $0
+            if showsShareButton {
+                shareButton
             }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
         .animation(.snappy, value: format)
         .animation(.snappy, value: mode)
+    }
+
+    private var shareButton: some View {
+        Button {
+            onShare(shareFrame)
+        } label: {
+            Text("Поделиться")
+                .font(.headline)
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(.white)
+        .controlSize(.large)
+        .onGeometryChange(for: CGRect.self) {
+            $0.frame(in: .named(ShareSheetLayout.coordinateSpace))
+        } action: {
+            shareFrame = $0
+        }
     }
 
     private var formats: some View {
