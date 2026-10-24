@@ -19,6 +19,8 @@ struct PlaylistProgressRing: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    private static let diagonal = CGFloat(0.5).squareRoot()
+
     private var lineWidth: CGFloat { 6 * zoom }
     private var isPerfect: Bool { completion == .perfect }
     private var isOnPaper: Bool { colorScheme == .light }
@@ -34,16 +36,19 @@ struct PlaylistProgressRing: View {
         }
         .padding(lineWidth / 2)
         .aspectRatio(1, contentMode: .fit)
-        .overlay(alignment: .bottomTrailing) {
+        .overlay {
             if completion != .inProgress {
-                ZStack {
-                    if hasWhiteStamp && isPerfect {
-                        PlaylistSealStamp()
+                GeometryReader { proxy in
+                    let reach = proxy.size.width / 2 * Self.diagonal
+                    ZStack {
+                        if hasWhiteStamp && isPerfect {
+                            PlaylistSealStamp()
+                        }
+                        PlaylistSealStamp(isGold: isPerfect, progress: stampProgress)
                     }
-                    PlaylistSealStamp(isGold: isPerfect, progress: stampProgress)
+                    .scaleEffect(stampScale * zoom)
+                    .position(x: proxy.size.width / 2 + reach, y: proxy.size.height / 2 + reach)
                 }
-                .scaleEffect(stampScale * zoom)
-                .offset(x: 8 * zoom, y: 8 * zoom)
             }
         }
     }
