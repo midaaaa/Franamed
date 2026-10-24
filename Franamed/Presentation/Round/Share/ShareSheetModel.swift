@@ -28,6 +28,7 @@ final class ShareSheetModel: ObservableObject {
     private let barPanelHeights: [ShareFormat: CGFloat]
     @Published var sheetHeight: CGFloat?
     var contentFrame = CGRect.zero
+    var rootFrame = CGRect.zero
     @Published var cardShape: ShareCardShape
     @Published private(set) var stubWidth: CGFloat
     var presentActivity: ([Any], CGRect) -> Void = { _, _ in }

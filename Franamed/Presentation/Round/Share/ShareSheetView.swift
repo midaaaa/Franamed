@@ -40,6 +40,11 @@ struct ShareSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .containerBackground(.clear, for: .navigation)
         }
+        .background {
+            Color.clear
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { model.rootFrame = $0 }
+                .ignoresSafeArea()
+        }
         .onChange(of: model.stubContent) { model.prepareStub() }
         .task { await model.loadExtras() }
     }

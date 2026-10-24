@@ -171,13 +171,18 @@ final class ShareSheetController: UIHostingController<ShareSheetView> {
     }
 
     private func contentWidth(of width: CGFloat) -> CGFloat {
-        guard model.contentFrame.width > 0 else { return width - view.safeAreaInsets.left - view.safeAreaInsets.right }
-        return model.contentFrame.width
+        guard let scale = contentScale(width) else { return width - view.safeAreaInsets.left - view.safeAreaInsets.right }
+        return model.contentFrame.width * scale
     }
 
     private var contentLeft: CGFloat {
-        guard model.contentFrame.width > 0 else { return view.safeAreaInsets.left }
-        return model.contentFrame.minX - view.convert(CGPoint.zero, to: nil).x
+        guard let scale = contentScale(view.bounds.width) else { return view.safeAreaInsets.left }
+        return (model.contentFrame.minX - model.rootFrame.minX) * scale
+    }
+
+    private func contentScale(_ width: CGFloat) -> CGFloat? {
+        guard model.contentFrame.width > 0, model.rootFrame.width > 0 else { return nil }
+        return width / model.rootFrame.width
     }
 
     private func resizeSheet(to format: ShareFormat) {
