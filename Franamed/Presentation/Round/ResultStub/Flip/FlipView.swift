@@ -14,7 +14,7 @@ struct FlipView<Front: View, Back: View>: View {
     let contentID: AnyHashable
     let menuItems: [FlipMenuItem]
     var snapshotter: FlipSnapshotter?
-    var allowsDrag = true
+    var allowsRotation = true
     @ViewBuilder let front: () -> Front
     @ViewBuilder let back: () -> Back
     var onFrontVisibleChange: (Bool) -> Void = { _ in }
@@ -47,7 +47,7 @@ struct FlipView<Front: View, Back: View>: View {
                 backImage: faces.backImage,
                 edgeStyle: edgeStyle,
                 menuItems: menuItems,
-                allowsDrag: allowsDrag
+                allowsRotation: allowsRotation
             )
         }
         .frame(width: size.width, height: size.height)
@@ -106,7 +106,7 @@ private struct FlipInteractionView: UIViewRepresentable {
     let backImage: UIImage?
     let edgeStyle: TicketEdgeStyle
     let menuItems: [FlipMenuItem]
-    let allowsDrag: Bool
+    let allowsRotation: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -120,11 +120,12 @@ private struct FlipInteractionView: UIViewRepresentable {
         pan.onTouchSample = { [weak coordinator = context.coordinator] time, x in
             coordinator?.engine?.recordTouch(time: time, x: x)
         }
-        pan.isEnabled = allowsDrag
+        pan.isEnabled = allowsRotation
         view.addGestureRecognizer(pan)
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))
         tap.delegate = context.coordinator
+        tap.isEnabled = allowsRotation
         view.addGestureRecognizer(tap)
 
         let menu = UIContextMenuInteraction(delegate: context.coordinator)

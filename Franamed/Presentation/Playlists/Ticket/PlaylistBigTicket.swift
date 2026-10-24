@@ -77,7 +77,7 @@ struct PlaylistBigTicket: View {
                         contentID: FacesID(content: content, width: width, playlist: playlist),
                         menuItems: [],
                         snapshotter: snapshotter,
-                        allowsDrag: false) {
+                        allowsRotation: false) {
             ResultStubFront(content: content)
         } back: {
             ResultStubSetupBack(card: TicketCard(mediaType: entry.mediaType, posterPath: nil, mode: .collection,
