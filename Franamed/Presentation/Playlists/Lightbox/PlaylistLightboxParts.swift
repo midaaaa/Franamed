@@ -72,19 +72,40 @@ struct PlaylistLightboxPageMotion: ViewModifier {
     let target: CGRect
     let width: CGFloat
     let drag: CGFloat
-    let dragScale: CGFloat
+    let shrinkDistance: CGFloat
+    let maxShrink: CGFloat
     let neighborShift: CGFloat
 
     func body(content: Content) -> some View {
         content
-            .offset(y: isFocused ? drag : 0)
-            .scaleEffect(isFocused ? dragScale : 1)
+            .modifier(PlaylistDragEffect(drag: isFocused ? drag : 0, shrinkDistance: shrinkDistance,
+                                         maxShrink: maxShrink))
             .modifier(PlaylistFlightEffect(progress: isFocused ? flight : 1,
                                            offset: source.map { CGSize(width: $0.midX - target.midX,
                                                                        height: $0.midY - target.midY) } ?? .zero,
                                            scale: source.map { $0.width / width } ?? 1))
             .offset(x: neighborShift * (1 - flight))
             .opacity(isFocused && source != nil ? 1 : flight)
+    }
+}
+
+private struct PlaylistDragEffect: GeometryEffect {
+    var drag: CGFloat
+    let shrinkDistance: CGFloat
+    let maxShrink: CGFloat
+
+    var animatableData: CGFloat {
+        get { drag }
+        set { drag = newValue }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let scale = 1 - min(abs(drag) / shrinkDistance, maxShrink)
+        let transform = CGAffineTransform.identity
+            .translatedBy(x: size.width / 2, y: size.height / 2)
+            .scaledBy(x: scale, y: scale)
+            .translatedBy(x: -size.width / 2, y: -size.height / 2 + drag)
+        return ProjectionTransform(transform)
     }
 }
 

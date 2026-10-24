@@ -43,7 +43,9 @@ struct PlaylistTicketLightbox: View {
     private static let controlsDelay = Duration.milliseconds(280)
     private static let gridSettleDelay = Duration.milliseconds(34)
     private static let openAnimation = Animation.spring(response: 0.46, dampingFraction: 1)
-    private static let closeAnimation = Animation.spring(response: 0.36, dampingFraction: 0.94)
+    private static let closeDuration = 0.36
+    private static let closeBounce = 0.06
+    private static let closeAnimation = Animation.spring(duration: closeDuration, bounce: closeBounce)
     private static let dragReturnAnimation = Animation.spring(duration: 0.3)
     private static let closeDistance: CGFloat = 110
     private static let closeVelocity: CGFloat = 800
@@ -51,6 +53,7 @@ struct PlaylistTicketLightbox: View {
     private static let dragShrinkDistance: CGFloat = 1500
     private static let maxDragShrink: CGFloat = 0.1
     private static let controlsHideDistance: CGFloat = 60
+    private static let maxReleaseSpeed: CGFloat = 2500
 
     init(playlist: PlaylistDetail, startKey: String, ticket: PlaylistTicket?, loader: PlaylistTicketLoader,
          grid: PlaylistLightboxGrid, onClosed: @escaping () -> Void) {
@@ -66,8 +69,6 @@ struct PlaylistTicketLightbox: View {
     private var edgeStyle: TicketEdgeStyle { TicketEdgeStyle(hasScallops: hasScallops) }
 
     private var dragFade: CGFloat { 1 - min(abs(drag) / Self.dragFadeDistance, 1) * 0.6 }
-
-    private var dragScale: CGFloat { 1 - min(abs(drag) / Self.dragShrinkDistance, Self.maxDragShrink) }
 
     private var focusedEntry: PlaylistEntry? { playlist.playableItems.first { $0.key == focusKey } }
 
@@ -187,7 +188,7 @@ struct PlaylistTicketLightbox: View {
                                  isLive: hasLanded || isFocused, snapshotter: snapshotters[entry.key],
                                  isStubLifted: isFocused && isShareLifted)
             .overlay {
-                if isFocused, flight < 1 {
+                if isFocused, flight < 1 || drag != 0 {
                     PlaylistEntryTicket(entry: entry, display: display, number: number, rasterizes: false)
                         .opacity(min(1, (1 - flight) * (isClosing ? 3 : 2)))
                         .allowsHitTesting(false)
@@ -195,7 +196,8 @@ struct PlaylistTicketLightbox: View {
             }
             .onTapGesture {}
             .modifier(PlaylistLightboxPageMotion(flight: flight, isFocused: isFocused, source: source, target: target,
-                                                 width: width, drag: drag, dragScale: dragScale,
+                                                 width: width, drag: drag, shrinkDistance: Self.dragShrinkDistance,
+                                                 maxShrink: Self.maxDragShrink,
                                                  neighborShift: side * Self.neighborSlide))
     }
 
@@ -244,19 +246,36 @@ struct PlaylistTicketLightbox: View {
     }
 
     private func close() {
+        close(releaseSpeed: 0)
+    }
+
+    private func close(releaseSpeed: CGFloat) {
         guard areControlsReady, !isClosing else { return }
         closingFrame = stageFrame
         isClosing = true
-        grid.reveal(focusKey, isAnimated: false)
+        let scrolls = grid.reveal(focusKey, isAnimated: false)
         grid.hide(focusKey)
+        guard scrolls else {
+            flyHome(releaseSpeed: releaseSpeed)
+            return
+        }
         Task {
             try? await Task.sleep(for: Self.gridSettleDelay)
-            withAnimation(Self.closeAnimation) {
-                flight = 0
-                drag = 0
-            } completion: {
-                onClosed()
-            }
+            flyHome(releaseSpeed: releaseSpeed)
+        }
+    }
+
+    private func flyHome(releaseSpeed: CGFloat) {
+        let speed = min(max(releaseSpeed, -Self.maxReleaseSpeed), Self.maxReleaseSpeed)
+        let progressSpeed = abs(drag) > 1 ? -speed / drag : 0
+        withAnimation(.interpolatingSpring(duration: Self.closeDuration, bounce: Self.closeBounce,
+                                           initialVelocity: progressSpeed)) {
+            drag = 0
+        }
+        withAnimation(Self.closeAnimation) {
+            flight = 0
+        } completion: {
+            onClosed()
         }
     }
 
@@ -273,7 +292,7 @@ struct PlaylistTicketLightbox: View {
     private func dragEnded(_ translation: CGFloat, _ velocity: CGFloat) {
         guard hasLanded, !isClosing else { return }
         if abs(translation) > Self.closeDistance || abs(velocity) > Self.closeVelocity {
-            close()
+            close(releaseSpeed: velocity)
         } else {
             withAnimation(Self.dragReturnAnimation) { drag = 0 }
         }
