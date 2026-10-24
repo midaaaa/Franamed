@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct PlaylistLightboxControls: ToolbarContent {
+struct PlaylistLightboxToolbar: ToolbarContent {
     let actions: [FlipMenuItem]
     let areActionsEnabled: Bool
     let onClose: () -> Void
@@ -24,5 +24,91 @@ struct PlaylistLightboxControls: ToolbarContent {
             }
         }
         ToolbarSpacer(.flexible, placement: .bottomBar)
+    }
+}
+
+struct PlaylistLightboxCloseButton: View {
+    let isShown: Bool
+    let onClose: () -> Void
+
+    private static let size: CGFloat = 44
+
+    var body: some View {
+        Button(action: onClose) {
+            Image(systemName: "xmark")
+                .font(.system(size: 17, weight: .regular))
+                .imageScale(.large)
+                .frame(width: Self.size, height: Self.size)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel("Закрыть")
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.horizontal, 16)
+        .modifier(Reveal(isShown: isShown, slide: -Reveal.slide))
+    }
+}
+
+struct PlaylistLightboxButtons: View {
+    let actions: [FlipMenuItem]
+    let isShown: Bool
+    let width: CGFloat
+
+    private static let size: CGFloat = 56
+    private static let iconSize: CGFloat = 20
+    private static let placeholder = FlipMenuItem(title: " ", systemImage: "circle", action: {})
+
+    var body: some View {
+        ZStack {
+            button(Self.placeholder).hidden()
+            HStack(alignment: .top) {
+                ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+                    if index > 0 { Spacer(minLength: 0) }
+                    button(action)
+                }
+            }
+            .frame(width: width)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 8)
+        .modifier(Reveal(isShown: isShown, slide: Reveal.slide))
+    }
+
+    private func button(_ action: FlipMenuItem) -> some View {
+        VStack(spacing: 6) {
+            Button(action: action.action) {
+                Image(systemName: action.systemImage)
+                    .font(.system(size: Self.iconSize, weight: .regular))
+                    .frame(width: Self.size, height: Self.size)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel(action.title)
+            Text(action.title)
+                .font(.footnote)
+                .lineLimit(1)
+                .fixedSize()
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+private struct Reveal: ViewModifier {
+    let isShown: Bool
+    let slide: CGFloat
+
+    static let slide: CGFloat = 24
+    private static let animation = Animation.spring(response: 0.34, dampingFraction: 0.82)
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: isShown ? 0 : slide)
+            .opacity(isShown ? 1 : 0)
+            .allowsHitTesting(isShown)
+            .animation(Self.animation, value: isShown)
+            .foregroundStyle(.white)
+            .environment(\.colorScheme, .dark)
     }
 }

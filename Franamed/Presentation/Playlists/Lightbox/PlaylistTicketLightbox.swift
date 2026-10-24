@@ -18,6 +18,7 @@ struct PlaylistTicketLightbox: View {
     @State private var currentKey: String?
     @State private var focusKey: String
     @State private var flight: CGFloat = 0
+    @State private var hasStarted = false
     @State private var hasLanded = false
     @State private var areControlsReady = false
     @State private var isClosing = false
@@ -49,6 +50,7 @@ struct PlaylistTicketLightbox: View {
     private static let dragFadeDistance: CGFloat = 500
     private static let dragShrinkDistance: CGFloat = 1500
     private static let maxDragShrink: CGFloat = 0.1
+    private static let controlsHideDistance: CGFloat = 60
 
     init(playlist: PlaylistDetail, startKey: String, ticket: PlaylistTicket?, loader: PlaylistTicketLoader,
          grid: PlaylistLightboxGrid, onClosed: @escaping () -> Void) {
@@ -69,17 +71,43 @@ struct PlaylistTicketLightbox: View {
 
     private var focusedEntry: PlaylistEntry? { playlist.playableItems.first { $0.key == focusKey } }
 
+    private var showsButtons: Bool {
+        areControlsReady && !isClosing && !isShareLifted && abs(drag) < Self.controlsHideDistance
+    }
+
     var body: some View {
-        NavigationStack {
-            stage
-                .toolbar { controls }
-                .toolbarVisibility(isClosing ? .hidden : .visible, for: .navigationBar, .bottomBar)
-                .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
-                .navigationBarTitleDisplayMode(.inline)
-                .containerBackground(.clear, for: .navigation)
+        VerticalToolbarSwitch { hasVerticalToolbar in
+            lightbox(hasVerticalToolbar: hasVerticalToolbar)
         }
         .sheet(item: $webSearch) { link in
             SafariSheet(url: link.url).ignoresSafeArea()
+        }
+    }
+
+    private func lightbox(hasVerticalToolbar: Bool) -> some View {
+        NavigationStack {
+            stage
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if !hasVerticalToolbar { PlaylistLightboxCloseButton(isShown: showsButtons, onClose: close) }
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !hasVerticalToolbar {
+                        PlaylistLightboxButtons(actions: actions, isShown: showsButtons && isFocusedPlayed,
+                                                width: ticketWidth(in: (closingFrame ?? stageFrame).size))
+                    }
+                }
+                .toolbar {
+                    if hasVerticalToolbar {
+                        PlaylistLightboxToolbar(actions: actions,
+                                                areActionsEnabled: areControlsReady && isFocusedPlayed,
+                                                onClose: close)
+                    }
+                }
+                .toolbarVisibility(hasVerticalToolbar && !isClosing ? .visible : .hidden,
+                                   for: .navigationBar, .bottomBar)
+                .toolbarColorScheme(.dark, for: .navigationBar, .bottomBar)
+                .navigationBarTitleDisplayMode(.inline)
+                .containerBackground(.clear, for: .navigation)
         }
     }
 
@@ -125,8 +153,6 @@ struct PlaylistTicketLightbox: View {
                 .scrollClipDisabled()
                 .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
                 .safeAreaPadding(.horizontal, inset)
-                .frame(width: target.width, height: target.height)
-                .offset(x: target.minX - live.minX, y: target.minY - live.minY)
                 .scrollPosition(id: $currentKey)
                 .scrollDisabled(!hasLanded || isClosing)
                 .onTapGesture(perform: close)
@@ -134,12 +160,17 @@ struct PlaylistTicketLightbox: View {
                     if phase == .idle, hasLanded, !isClosing { settle() }
                 }
                 .onAppear {
-                    reader.scrollTo(focusKey, anchor: .center)
                     Task {
                         try? await Task.sleep(for: Self.openDelay)
                         open()
                     }
                 }
+                .onChange(of: target.size, initial: true) { _, size in
+                    if size.width > 0 { reader.scrollTo(focusKey, anchor: .center) }
+                }
+                .frame(width: target.width, height: target.height)
+                .opacity(hasStarted ? 1 : 0)
+                .offset(x: target.minX - live.minX, y: target.minY - live.minY)
             }
             .onChange(of: live, initial: true) { _, frame in stageFrame = frame }
         }
@@ -186,18 +217,13 @@ struct PlaylistTicketLightbox: View {
 
     // MARK: Controls
 
-    private var controls: some ToolbarContent {
-        let entry = focusedEntry
-        let display = entry.map(playlist.display(of:))
-        let actions = entry.flatMap { entry in
-            display.map { display in
-                entry.stubContent(display: display, details: loader.details[entry.key])
-                    .menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) }, onShare: share)
-            }
-        } ?? []
-        return PlaylistLightboxControls(actions: actions,
-                                        areActionsEnabled: areControlsReady && display?.isPlayed == true,
-                                        onClose: close)
+    private var isFocusedPlayed: Bool { focusedEntry.map { playlist.display(of: $0).isPlayed } ?? false }
+
+    private var actions: [FlipMenuItem] {
+        guard let entry = focusedEntry else { return [] }
+        let display = playlist.display(of: entry)
+        return entry.stubContent(display: display, details: loader.details[entry.key])
+            .menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) }, onShare: share)
     }
 
     // MARK: Flow
@@ -205,6 +231,7 @@ struct PlaylistTicketLightbox: View {
     private func open() {
         prefetch()
         grid.hide(focusKey)
+        hasStarted = true
         withAnimation(Self.openAnimation, completionCriteria: .removed) {
             flight = 1
         } completion: {
