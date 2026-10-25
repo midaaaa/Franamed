@@ -28,6 +28,7 @@ struct PlaylistTicketLightbox: View {
     @State private var isShareLifted = false
     @State private var stageFrame = CGRect.zero
     @State private var closingFrame: CGRect?
+    @State private var scrollFreezer = PlaylistScrollFreezer()
 
     private static let dim = 0.2
     private static let peek: CGFloat = 18
@@ -47,6 +48,7 @@ struct PlaylistTicketLightbox: View {
     private static let closeBounce = 0.06
     private static let closeAnimation = Animation.spring(duration: closeDuration, bounce: closeBounce)
     private static let dragReturnAnimation = Animation.spring(duration: 0.3)
+    private static let recenterAnimation = Animation.smooth(duration: 0.5)
     private static let closeDistance: CGFloat = 110
     private static let closeVelocity: CGFloat = 800
     private static let dragFadeDistance: CGFloat = 500
@@ -71,6 +73,8 @@ struct PlaylistTicketLightbox: View {
     private var dragFade: CGFloat { 1 - min(abs(drag) / Self.dragFadeDistance, 1) * 0.6 }
 
     private var focusedEntry: PlaylistEntry? { playlist.playableItems.first { $0.key == focusKey } }
+
+    private var isPresenting: Bool { isShareLifted || webSearch != nil }
 
     private var showsButtons: Bool {
         areControlsReady && !isClosing && !isShareLifted && abs(drag) < Self.controlsHideDistance
@@ -119,9 +123,9 @@ struct PlaylistTicketLightbox: View {
                 .onTapGesture(perform: close)
             pages
         }
-        .gesture(PlaylistLightboxPan(onChange: dragChanged, onEnd: dragEnded))
+        .gesture(PlaylistLightboxPan(isEnabled: !isPresenting, onChange: dragChanged, onEnd: dragEnded))
         .onChange(of: currentKey) { _, key in
-            guard let key, key != focusKey else { return }
+            guard let key, key != focusKey, !isClosing else { return }
             focusKey = key
             prefetch()
         }
@@ -149,15 +153,17 @@ struct PlaylistTicketLightbox: View {
                         }
                     }
                     .scrollTargetLayout()
+                    .background { PlaylistScrollFreezerAnchor(freezer: scrollFreezer) }
                 }
                 .scrollIndicators(.hidden)
                 .scrollClipDisabled()
-                .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
+                .scrollTargetBehavior(PlaylistLightboxScrollBehavior(freezer: scrollFreezer))
                 .safeAreaPadding(.horizontal, inset)
                 .scrollPosition(id: $currentKey)
                 .scrollDisabled(!hasLanded || isClosing)
                 .onTapGesture(perform: close)
                 .onScrollPhaseChange { _, phase in
+                    if !scrollFreezer.isAligned, !isClosing, phase != .interacting { recenter(reader) }
                     if phase == .idle, hasLanded, !isClosing { settle() }
                 }
                 .onAppear {
@@ -165,6 +171,12 @@ struct PlaylistTicketLightbox: View {
                         try? await Task.sleep(for: Self.openDelay)
                         open()
                     }
+                }
+                .onChange(of: isClosing) { _, isClosing in
+                    if isClosing { withAnimation(Self.closeAnimation) { reader.scrollTo(focusKey, anchor: .center) } }
+                }
+                .onChange(of: isPresenting) { _, isPresenting in
+                    if isPresenting, !scrollFreezer.cancelTouch() { recenter(reader) }
                 }
                 .onChange(of: target.size, initial: true) { _, size in
                     if size.width > 0 { reader.scrollTo(focusKey, anchor: .center) }
@@ -251,6 +263,7 @@ struct PlaylistTicketLightbox: View {
 
     private func close(releaseSpeed: CGFloat) {
         guard areControlsReady, !isClosing else { return }
+        scrollFreezer.stop()
         closingFrame = stageFrame
         isClosing = true
         let scrolls = grid.reveal(focusKey, isAnimated: false)
@@ -279,13 +292,18 @@ struct PlaylistTicketLightbox: View {
         }
     }
 
+    private func recenter(_ reader: ScrollViewProxy) {
+        scrollFreezer.align()
+        withAnimation(Self.recenterAnimation) { reader.scrollTo(focusKey, anchor: .center) }
+    }
+
     private func settle() {
         grid.hide(focusKey, isAnimated: true)
         grid.reveal(focusKey, isAnimated: true)
     }
 
     private func dragChanged(_ translation: CGFloat) {
-        guard hasLanded, !isClosing else { return }
+        guard hasLanded, !isClosing, !isPresenting else { return }
         drag = translation
     }
 

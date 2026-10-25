@@ -131,6 +131,7 @@ private struct PlaylistFlightEffect: GeometryEffect {
 }
 
 struct PlaylistLightboxPan: UIGestureRecognizerRepresentable {
+    let isEnabled: Bool
     let onChange: (CGFloat) -> Void
     let onEnd: (CGFloat, CGFloat) -> Void
 
@@ -140,6 +141,10 @@ struct PlaylistLightboxPan: UIGestureRecognizerRepresentable {
         let pan = UIPanGestureRecognizer()
         pan.delegate = context.coordinator
         return pan
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        recognizer.isEnabled = isEnabled
     }
 
     func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
@@ -167,6 +172,82 @@ struct PlaylistLightboxPan: UIGestureRecognizerRepresentable {
                                shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
             guard let view = gestureRecognizer.view, let otherView = other.view, otherView !== view else { return false }
             return view.isDescendant(of: otherView)
+        }
+    }
+}
+
+final class PlaylistScrollFreezer {
+    fileprivate weak var scrollView: UIScrollView?
+    private(set) var isAligned = true
+
+    func cancelTouch() -> Bool {
+        guard let pan = scrollView?.panGestureRecognizer, pan.state == .began || pan.state == .changed else { return false }
+        stop()
+        return true
+    }
+
+    func stop() {
+        guard let scrollView else { return }
+        isAligned = false
+        scrollView.panGestureRecognizer.isEnabled = false
+        scrollView.panGestureRecognizer.isEnabled = true
+        scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+    }
+
+    func align() {
+        isAligned = true
+    }
+}
+
+struct PlaylistLightboxScrollBehavior: ScrollTargetBehavior {
+    let freezer: PlaylistScrollFreezer
+    private let aligned = ViewAlignedScrollTargetBehavior(limitBehavior: .alwaysByOne)
+
+    init(freezer: PlaylistScrollFreezer) {
+        self.freezer = freezer
+    }
+
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        guard freezer.isAligned else { return }
+        aligned.updateTarget(&target, context: context)
+    }
+
+    func properties(context: PropertiesContext) -> Properties {
+        aligned.properties(context: context)
+    }
+
+    func _updateEnvironment(_ env: inout EnvironmentValues, context: _ScrollTargetBehaviorEnvironmentContext) {
+        aligned._updateEnvironment(&env, context: context)
+    }
+
+    static func _makeInputs(_ behavior: _GraphValue<Self>, inputs: inout _ViewInputs) {
+        ViewAlignedScrollTargetBehavior._makeInputs(behavior[\.aligned], inputs: &inputs)
+    }
+}
+
+struct PlaylistScrollFreezerAnchor: UIViewRepresentable {
+    let freezer: PlaylistScrollFreezer
+
+    func makeUIView(context: Context) -> AnchorView { AnchorView(freezer: freezer) }
+
+    func updateUIView(_ view: AnchorView, context: Context) {}
+
+    final class AnchorView: UIView {
+        private let freezer: PlaylistScrollFreezer
+
+        init(freezer: PlaylistScrollFreezer) {
+            self.freezer = freezer
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var ancestor = superview
+            while let current = ancestor, !(current is UIScrollView) { ancestor = current.superview }
+            freezer.scrollView = ancestor as? UIScrollView
         }
     }
 }
