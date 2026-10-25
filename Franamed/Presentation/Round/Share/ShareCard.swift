@@ -184,8 +184,10 @@ struct ShareCard: View {
 
     // MARK: Export
 
+    static let exportScale: CGFloat = 3
+
     @MainActor
-    func image(scale: CGFloat = 3) -> UIImage? {
+    func image(scale: CGFloat = exportScale) -> UIImage? {
         let bleed = format == .sticker ? ShareStubShadow.padding : 0
         let renderer = ImageRenderer(content: self.padding(bleed).environment(\.colorScheme, .dark))
         renderer.scale = scale

@@ -149,7 +149,7 @@ struct FlipRenderer: UIViewRepresentable {
             engine.litSnapshot = { [weak coordinator = context.coordinator] in coordinator?.snapshot() }
             engine.tearSnapshot = { [weak coordinator = context.coordinator] in coordinator?.tearSnapshot() }
             engine.isTearHealing = { [weak coordinator = context.coordinator] in coordinator?.isTearHealing ?? false }
-            engine.plainSnapshot = { [weak coordinator = context.coordinator] in coordinator?.plainSnapshot(front: $0) }
+            engine.plainSnapshot = { [weak coordinator = context.coordinator] in coordinator?.plainSnapshot(front: $0, scale: $1) }
             engine.hostController = { [weak coordinator = context.coordinator] in coordinator?.hostController() }
             engine.flightRenderer = { [weak coordinator = context.coordinator] in coordinator?.makeFlight() }
             engine.frameInWindow = { [weak coordinator = context.coordinator] in coordinator?.frameInWindow() }
@@ -329,7 +329,7 @@ struct FlipRenderer: UIViewRepresentable {
             return snapshot(margin: Self.tearMargin(forStubWidth: stubSize.width)).map { ($0, lit) }
         }
 
-        func plainSnapshot(front: CGImage?) -> UIImage? {
+        func plainSnapshot(front: CGImage?, scale: CGFloat) -> UIImage? {
             let saved = (frontTexture, lighting, tilt)
             if let front, let texture = TicketSnapshot.texture(from: front) { frontTexture = texture }
             angleOverride = 0
@@ -339,7 +339,7 @@ struct FlipRenderer: UIViewRepresentable {
                 (frontTexture, lighting, tilt) = saved
                 angleOverride = nil
             }
-            return snapshot(margin: Self.tearMargin(forStubWidth: stubSize.width))
+            return snapshot(margin: Self.tearMargin(forStubWidth: stubSize.width), scale: scale)
         }
 
         func makeFlight() -> FlipFlight {
@@ -370,10 +370,11 @@ struct FlipRenderer: UIViewRepresentable {
             return controller
         }
 
-        func snapshot(margin: CGFloat = 0) -> UIImage? {
-            guard let view, let device, view.drawableSize.width > 0 else { return nil }
-            let width = Int(view.drawableSize.width)
-            let height = Int(view.drawableSize.height)
+        func snapshot(margin: CGFloat = 0, scale requested: CGFloat? = nil) -> UIImage? {
+            guard let view, let device, view.drawableSize.width > 0, view.bounds.width > 0 else { return nil }
+            let scale = requested ?? view.drawableSize.width / view.bounds.width
+            let width = Int((view.bounds.width * scale).rounded())
+            let height = Int((view.bounds.height * scale).rounded())
             func texture(_ format: MTLPixelFormat, samples: Int, storage: MTLStorageMode) -> MTLTexture? {
                 let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: width,
                                                                           height: height, mipmapped: false)
@@ -412,7 +413,6 @@ struct FlipRenderer: UIViewRepresentable {
                                           bitmapInfo: info),
                   let image = context.makeImage()
             else { return nil }
-            let scale = view.drawableSize.width / max(view.bounds.width, 1)
             let inset = (FlipLook.canvasPadding(forStubWidth: stubSize.width) - margin) * scale
             let crop = CGRect(x: inset, y: inset, width: (stubSize.width + margin * 2) * scale,
                               height: (stubSize.height + margin * 2) * scale)

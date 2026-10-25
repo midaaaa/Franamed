@@ -106,7 +106,8 @@ extension ShareLaunch {
                       snapshotter.faceTexture(front: ResultStubFront(content: $0).environment(\.resultStubWidth, stubWidth))
                   },
                   renderStub: {
-                      snapshotter.render(front: ResultStubFront(content: $0).environment(\.resultStubWidth, stubWidth))
+                      snapshotter.render(front: ResultStubFront(content: $0).environment(\.resultStubWidth, stubWidth),
+                                         scale: ShareStubPlacement.snapshotScale(stubWidth: stubWidth))
                   },
                   stubFrame: { snapshotter.frameInWindow() },
                   launchStubFrame: snapshotter.frameInWindow())

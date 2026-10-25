@@ -68,9 +68,9 @@ final class FlipSnapshotter {
     weak var engine: FlipEngine?
     var scale: CGFloat = 3
 
-    func render(front: some View) -> UIImage? {
+    func render(front: some View, scale: CGFloat) -> UIImage? {
         guard let image = TicketSnapshot.image(of: front, scale: scale) else { return nil }
-        return engine?.plainSnapshot?(image)
+        return engine?.plainSnapshot?(image, scale)
     }
 
     func hostController() -> UIViewController? {

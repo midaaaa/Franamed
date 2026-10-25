@@ -14,6 +14,10 @@ struct ShareStubPlacement {
 
     static let stickerShare: CGFloat = 0.92
 
+    static func snapshotScale(stubWidth: CGFloat) -> CGFloat {
+        ShareCard.exportScale * ShareFormat.baseWidth * stickerShare / stubWidth
+    }
+
     static var stubAspect: CGFloat {
         let width = TicketStyle.referenceWidth
         return TicketStubMetrics.height(width: width, edgeStyle: .stored) / width
