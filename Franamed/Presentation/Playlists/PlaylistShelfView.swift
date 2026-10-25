@@ -152,8 +152,7 @@ private struct PlaylistShelfItem: View {
                  onFolderFrame: onFolderFrame)
         }
         .overlay {
-            PlaylistShelfMenu(title: playlist.title,
-                              preview: AnyView(cell(isLifted: true).padding(4)),
+            PlaylistShelfMenu(preview: AnyView(cell(isLifted: true).padding(4)),
                               actions: actions,
                               onTap: onTap,
                               onLift: { isUp in withAnimation(isUp ? Self.liftUp : Self.liftDown) { isLifted = isUp } })

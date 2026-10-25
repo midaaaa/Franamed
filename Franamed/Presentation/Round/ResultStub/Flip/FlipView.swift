@@ -51,15 +51,6 @@ struct FlipView<Front: View, Back: View>: View {
             )
         }
         .frame(width: size.width, height: size.height)
-        .accessibilityRepresentation {
-            if engine.isFrontVisible { front() } else { back() }
-        }
-        .accessibilityAction(named: "Перевернуть") { engine.flip(towardsTrailing: true) }
-        .accessibilityActions {
-            ForEach(menuItems) { item in
-                Button(item.title, systemImage: item.systemImage, action: item.action)
-            }
-        }
         .onChange(of: reduceMotion, initial: true) { _, new in engine.settlesInstantly = new }
         .onChange(of: engine.isFrontVisible) { _, isFront in onFrontVisibleChange(isFront) }
         .onAppear {

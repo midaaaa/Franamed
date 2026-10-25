@@ -27,7 +27,6 @@ struct CaptureWarningBanner: View {
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityHidden(true)
     }
 
     @MainActor static let hallLight = HallFrameSample.rendering(CaptureWarningBanner())

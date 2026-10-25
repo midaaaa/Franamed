@@ -22,7 +22,6 @@ struct SpinnerGlyph: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityHidden(true)
     }
 
     @MainActor static let hallLight = HallFrameSample.rendering(SpinnerGlyph())

@@ -59,6 +59,5 @@ struct FlipCanvas: View {
                height: size.height + FlipLook.canvasPadding(forStubWidth: size.width) * 2)
         .frame(width: size.width, height: size.height)
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }

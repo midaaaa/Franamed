@@ -15,7 +15,6 @@ struct PlaylistMenuAction {
 }
 
 struct PlaylistShelfMenu: UIViewRepresentable {
-    let title: String
     let preview: AnyView
     let actions: [PlaylistMenuAction]
     let onTap: () -> Void
@@ -30,7 +29,6 @@ struct PlaylistShelfMenu: UIViewRepresentable {
         control.actions = actions
         control.onTap = onTap
         control.onLift = onLift
-        control.accessibilityLabel = title
     }
 
     final class Control: UIControl {
@@ -51,8 +49,6 @@ struct PlaylistShelfMenu: UIViewRepresentable {
         override init(frame: CGRect) {
             super.init(frame: frame)
             isContextMenuInteractionEnabled = true
-            isAccessibilityElement = true
-            accessibilityTraits = .button
             addAction(UIAction { [weak self] _ in self?.onTap?() }, for: .touchUpInside)
             addGestureRecognizer(PressRecognizer { [weak self] in self?.isPressing = $0 })
         }
