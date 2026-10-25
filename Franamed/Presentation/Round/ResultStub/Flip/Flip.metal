@@ -319,5 +319,5 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
 
     half3 lit = base * half3(light) + half3(sheenColor * spec * u.hallShape.w);
     lit = tearHealGlow(u, in.paper, lit);
-    return half4(lit, alpha);
+    return half4(lit * alpha, alpha);
 }
