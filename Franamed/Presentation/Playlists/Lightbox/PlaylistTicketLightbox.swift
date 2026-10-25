@@ -29,6 +29,7 @@ struct PlaylistTicketLightbox: View {
     @State private var stageFrame = CGRect.zero
     @State private var closingFrame: CGRect?
     @State private var scrollFreezer = PlaylistScrollFreezer()
+    @State private var copiedKey: String?
 
     private static let dim = 0.2
     private static let peek: CGFloat = 18
@@ -56,6 +57,8 @@ struct PlaylistTicketLightbox: View {
     private static let maxDragShrink: CGFloat = 0.1
     private static let controlsHideDistance: CGFloat = 60
     private static let maxReleaseSpeed: CGFloat = 2500
+    private static let copiedDuration = Duration.seconds(1.5)
+    private static let copiedAnimation = Animation.snappy
 
     init(playlist: PlaylistDetail, startKey: String, ticket: PlaylistTicket?, loader: PlaylistTicketLoader,
          grid: PlaylistLightboxGrid, onClosed: @escaping () -> Void) {
@@ -127,6 +130,7 @@ struct PlaylistTicketLightbox: View {
         .onChange(of: currentKey) { _, key in
             guard let key, key != focusKey, !isClosing else { return }
             focusKey = key
+            copiedKey = nil
             prefetch()
         }
     }
@@ -236,8 +240,26 @@ struct PlaylistTicketLightbox: View {
     private var actions: [FlipMenuItem] {
         guard let entry = focusedEntry else { return [] }
         let display = playlist.display(of: entry)
-        return entry.stubContent(display: display, details: loader.details[entry.key])
-            .menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) }, onShare: share)
+        let items = entry.stubContent(display: display, details: loader.details[entry.key])
+            .menuItems(onWebSearch: { webSearch = WebSearchLink(query: $0) },
+                       onCopy: { markCopied(entry.key) }, onShare: share)
+        guard copiedKey == entry.key else { return items }
+        return items.map { item in
+            var item = item
+            item.isDone = item.doneTitle != nil
+            return item
+        }
+    }
+
+    private func markCopied(_ key: String) {
+        guard copiedKey != key else { return }
+        withAnimation(Self.copiedAnimation) { copiedKey = key }
+        Haptics.shared.play(.menuSelect)
+        Task {
+            try? await Task.sleep(for: Self.copiedDuration)
+            guard copiedKey == key else { return }
+            withAnimation(Self.copiedAnimation) { copiedKey = nil }
+        }
     }
 
     // MARK: Flow

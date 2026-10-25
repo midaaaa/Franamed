@@ -19,8 +19,11 @@ struct PlaylistLightboxToolbar: ToolbarContent {
         ToolbarSpacer(.flexible, placement: .bottomBar)
         ToolbarItemGroup(placement: .bottomBar) {
             ForEach(actions) { action in
-                Button(action.title, systemImage: action.systemImage, action: action.action)
-                    .disabled(!areActionsEnabled)
+                Button(action: action.action) {
+                    Label(action.shownTitle, systemImage: action.shownImage)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .disabled(!areActionsEnabled)
             }
         }
         ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -43,7 +46,6 @@ struct PlaylistLightboxCloseButton: View {
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .circle)
-        .accessibilityLabel("Закрыть")
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.horizontal, 16)
         .modifier(Reveal(isShown: isShown, slide: -Reveal.slide))
@@ -78,20 +80,21 @@ struct PlaylistLightboxButtons: View {
     private func button(_ action: FlipMenuItem) -> some View {
         VStack(spacing: 6) {
             Button(action: action.action) {
-                Image(systemName: action.systemImage)
+                Image(systemName: action.shownImage)
                     .font(.system(size: Self.iconSize, weight: .regular))
+                    .contentTransition(.symbolEffect(.replace))
                     .frame(width: Self.size, height: Self.size)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .circle)
-            .accessibilityLabel(action.title)
-            Text(action.title)
+            Text(action.shownTitle)
                 .font(.footnote)
+                .contentTransition(.identity)
                 .lineLimit(1)
                 .fixedSize()
-                .accessibilityHidden(true)
         }
+        .frame(width: Self.size)
     }
 }
 
