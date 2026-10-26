@@ -119,7 +119,7 @@ extension ShareMaterial {
         let item = MediaItem(id: 335984, mediaType: .movie, title: "Бегущий по лезвию 2049",
                              originalTitle: "Blade Runner 2049", releaseDate: "2017-10-04", overview: nil)
         let details = MediaDetails(runtimeMinutes: 164, firstYear: 2017, certification: "18+", authors: ["Дени Вильнёв"])
-        let content = ResultStubContent(item: item, mediaType: .movie, details: details, outcome: .correct, attemptsUsed: 2,
+        let content = ResultStubContent(item: item, mediaType: .movie, details: details,
                                         progress: .finished(frameCount: 6, attemptsMade: 2, outcome: .correct))
         return ShareMaterial(content: content, solvedAtFrame: 2, frames: .dark)
     }

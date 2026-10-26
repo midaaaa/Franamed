@@ -24,13 +24,11 @@ struct ResultStubPaper<Content: View>: View {
     var body: some View {
         let edgeStyle = TicketEdgeStyle(hasScallops: hasScallops)
 
-        VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
-            content
-        }
-        .modifier(TicketStubFrame(width: stubWidth, edgeStyle: edgeStyle))
-        .background(TicketStyle.paper)
-        .clipShape(clipsShape ? AnyShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored)) : AnyShape(Rectangle()))
-        .environment(\.colorScheme, .light)
+        content
+            .modifier(TicketStubFrame(width: stubWidth, edgeStyle: edgeStyle))
+            .background(TicketStyle.paper)
+            .clipShape(clipsShape ? AnyShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored)) : AnyShape(Rectangle()))
+            .environment(\.colorScheme, .light)
     }
 }
 

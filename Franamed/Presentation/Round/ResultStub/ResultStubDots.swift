@@ -45,23 +45,19 @@ struct ResultStubProgress: Hashable {
 
 struct ResultStubDots: View {
     let progress: ResultStubProgress
-    var reservesRing = true
 
     private static let dotSize: CGFloat = 6
     private static let ringSize: CGFloat = 11
     private static let spacing: CGFloat = 3
-    private static let compactSpacing: CGFloat = 5
-
-    static let compactHeight = dotSize
 
     var body: some View {
         let marks = progress.marks
-        return HStack(spacing: reservesRing ? Self.spacing : Self.compactSpacing) {
+        return HStack(spacing: Self.spacing) {
             ForEach(marks.indices, id: \.self) { index in
                 Circle()
                     .fill(color(for: marks[index]))
                     .frame(width: Self.dotSize, height: Self.dotSize)
-                    .frame(width: slot, height: slot)
+                    .frame(width: Self.ringSize, height: Self.ringSize)
                     .overlay {
                         if index == progress.currentFrame {
                             Circle()
@@ -72,8 +68,6 @@ struct ResultStubDots: View {
             }
         }
     }
-
-    private var slot: CGFloat { reservesRing ? Self.ringSize : Self.dotSize }
 
     private func color(for mark: ResultStubMark) -> Color {
         switch mark {

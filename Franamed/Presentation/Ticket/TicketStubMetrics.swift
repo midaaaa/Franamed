@@ -18,6 +18,13 @@ enum TicketStubMetrics {
         }
     }
 
+    static func serialOffset(edgeStyle: TicketEdgeStyle) -> CGFloat {
+        let width = TicketStyle.referenceWidth
+        let edgeDepth = edgeStyle == .scalloped ? TicketPerforationShape.scallopDepth(width: width) : 0
+        let band = contentHeight - TicketStyle.stubBodyHeight + bottomPadding(width: width, edgeStyle: edgeStyle) - edgeDepth
+        return band / 2
+    }
+
     static func height(width: CGFloat, edgeStyle: TicketEdgeStyle) -> CGFloat {
         let height = layoutHeight(edgeStyle: edgeStyle) * TicketStyle.zoom(forWidth: width)
         return (height / 2).rounded(.up) * 2
@@ -35,6 +42,7 @@ struct TicketStubFrame: ViewModifier {
     func body(content: Content) -> some View {
         let layoutWidth = TicketStyle.referenceWidth
         content
+            .environment(\.ticketEdgeStyle, edgeStyle)
             .frame(height: TicketStubMetrics.contentHeight, alignment: .top)
             .padding(.top, TicketStyle.stubPadding)
             .padding(.horizontal, TicketStyle.stubPadding)
@@ -44,4 +52,8 @@ struct TicketStubFrame: ViewModifier {
             .frame(width: width, height: TicketStubMetrics.height(width: width, edgeStyle: edgeStyle),
                    alignment: .topLeading)
     }
+}
+
+extension EnvironmentValues {
+    @Entry var ticketEdgeStyle = TicketEdgeStyle.straight
 }

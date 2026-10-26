@@ -28,6 +28,12 @@ enum TicketGameMode: Int, CaseIterable {
         }
     }
 
+    func serial(mediaType: MediaType, frameCount: Int? = nil) -> String {
+        let number = 4200 + rawValue * 137 + (mediaType == .movie ? 0 : 61)
+        let parts = ["FRN", serialCode, mediaType == .movie ? "MV" : "TV", frameCount.map(String.init), String(number)]
+        return parts.compactMap { $0 }.joined(separator: " ")
+    }
+
     var roundSource: RoundSource {
         switch self {
         case .curated: .curated

@@ -8,20 +8,25 @@
 import SwiftUI
 
 enum TicketStyle {
-    static let title = Font.system(size: 24, weight: .bold, design: .serif)
-    static let fieldLabel = Font.system(size: 10, weight: .semibold)
-    static let fieldValue = Font.system(size: 15, weight: .medium, design: .monospaced)
-    static let fieldPlaceholder = Font.system(size: 15, weight: .regular, design: .monospaced)
-    static let metaUIFont = UIFont.systemFont(ofSize: 13, weight: .medium)
-    static let meta = Font(metaUIFont)
-    static let serial = Font.system(size: 10, weight: .medium, design: .monospaced)
+    static let name = Font.system(size: 26, weight: .heavy)
+    static let media = Font.system(size: 10, weight: .regular)
+    static let fieldLabel = Font.system(size: 7.5, weight: .heavy)
+    static let valueSize: CGFloat = 15
+    static let valueUIFont = UIFont.systemFont(ofSize: valueSize, weight: .medium)
+    static let codeCaption = Font.system(size: 8.5, weight: .heavy)
+    static let serial = Font.system(size: 7, weight: .medium, design: .monospaced)
+
+    static func value(isSet: Bool) -> Font {
+        .system(size: valueSize, weight: isSet ? .semibold : .medium).monospacedDigit()
+    }
 
     static let placeholderInk = Color.black.opacity(0.32)
     static let paper = Color(white: 0.9)
 
-    static let fieldLabelTracking: CGFloat = 1.1
-    static let serialTracking: CGFloat = 1.5
-    static let valueSymbolSize: CGFloat = 14
+    static let mediaTracking: CGFloat = 0.6
+    static let fieldLabelTracking: CGFloat = 1
+    static let codeCaptionTracking: CGFloat = 2.4
+    static let serialTracking: CGFloat = 1.6
     static let minimumScale: CGFloat = 0.7
 
     static let screenInset: CGFloat = 50
@@ -33,19 +38,16 @@ enum TicketStyle {
     static let paperThickness: CGFloat = 1
     static let stubPadding: CGFloat = 12
     static let stubSpacing: CGFloat = 8
-    static let fieldRowSpacing: CGFloat = 6
-    static let fieldLabelSpacing: CGFloat = 0
-    static let fieldColumnGap: CGFloat = 12
-    static let fieldYearWidth: CGFloat = 84
-    static let fieldVotesWidth: CGFloat = 66
-    static let fieldTrailingWidth: CGFloat = 60
-    static let symbolTextSpacing: CGFloat = 3
-    static let metaSpacing: CGFloat = 6
-
-    static let barcodeHeight: CGFloat = 36
-    static let barcodeBarSpacing: CGFloat = 2
-    static let barcodeBarScale: CGFloat = 1.5
-    static let barcodeSerialSpacing: CGFloat = 5
+    static let stubSideInset: CGFloat = 16
+    static let stubBodyHeight: CGFloat = 185
+    static let stubBodyWidth = referenceWidth - stubSideInset * 2
+    static let serialBand: CGFloat = 8
+    static let ruleWidth: CGFloat = 1.2
+    static let headerSpacing: CGFloat = 6
+    static let fieldLeadingWidth: CGFloat = 62
+    static let fieldTrailingWidth: CGFloat = 78
+    static let codeHeight: CGFloat = 39
+    static let codeGap: CGFloat = 7
 }
 
 extension TicketStyle {

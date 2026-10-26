@@ -101,8 +101,7 @@ struct ResultStubPeek: View {
     }
 
     private var content: ResultStubContent {
-        ResultStubContent(item: item, mediaType: mediaType, details: details, outcome: outcome,
-                          attemptsUsed: max(attemptsMade, 1), playedAt: playedAt,
+        ResultStubContent(item: item, mediaType: mediaType, details: details, playedAt: playedAt,
                           progress: ResultStubProgress(frameCount: frameCount, attemptsMade: attemptsMade,
                                                        revealedCount: revealedCount, outcome: outcome,
                                                        currentFrame: currentFrame))

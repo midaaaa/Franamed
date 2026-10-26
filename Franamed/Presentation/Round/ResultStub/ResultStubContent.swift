@@ -12,7 +12,8 @@ struct ResultStubContent: Hashable {
     private(set) var title: String
     private(set) var credits: [String]
     private(set) var meta: String
-    let verdict: String
+    private(set) var certification: String?
+    let mediaType: MediaType
     let session: String
     let searchQuery: String
     private(set) var progress: ResultStubProgress
@@ -20,18 +21,13 @@ struct ResultStubContent: Hashable {
     init(item: MediaItem,
          mediaType: MediaType,
          details: MediaDetails?,
-         outcome: RoundOutcome?,
-         attemptsUsed: Int,
          playedAt: Date = .now,
          progress: ResultStubProgress) {
+        self.mediaType = mediaType
         title = item.originalTitle
         credits = Self.credits(mediaType: mediaType, authors: details?.authors ?? [])
         meta = Self.meta(mediaType: mediaType, item: item, details: details)
-        switch outcome {
-        case .correct: verdict = "УГАДАНО С \(attemptsUsed)-Й ПОПЫТКИ"
-        case .incorrect: verdict = "НЕ УГАДАНО"
-        case nil: verdict = ""
-        }
+        certification = details?.certification
         session = Self.session(playedAt)
         let year = item.releaseDate?.prefix(4) ?? ""
         searchQuery = year.isEmpty ? title : "\(title) \(year)"
@@ -40,21 +36,21 @@ struct ResultStubContent: Hashable {
 
     private static func session(_ date: Date) -> String {
         let parts = Calendar.current.dateComponents([.day, .month, .year, .hour, .minute], from: date)
-        return String(format: "%02d.%02d.%02d %02d:%02d", parts.day ?? 0, parts.month ?? 0,
-                      (parts.year ?? 0) % 100, parts.hour ?? 0, parts.minute ?? 0)
+        return String(format: "%02d.%02d.%04d %02d:%02d", parts.day ?? 0, parts.month ?? 0,
+                      parts.year ?? 0, parts.hour ?? 0, parts.minute ?? 0)
     }
 
     // MARK: Credits
 
+    private static func creditsLabel(_ mediaType: MediaType) -> String {
+        mediaType == .movie ? "реж." : "авт."
+    }
+
     private static func credits(mediaType: MediaType, authors: [String]) -> [String] {
-        let label = switch mediaType {
-        case .movie: "реж."
-        case .tv: authors.count == 1 ? "создатель" : "создатели"
-        }
-        return stride(from: authors.count, through: 1, by: -1).map { shown in
+        stride(from: authors.count, through: 1, by: -1).map { shown in
             let names = authors.prefix(shown).joined(separator: ", ")
             let rest = authors.count - shown
-            return rest == 0 ? "\(label) \(names)" : "\(label) \(names) и ещё \(rest)"
+            return "\(creditsLabel(mediaType))\u{00A0}\(rest == 0 ? names : "\(names) +\(rest)")"
         }
     }
 
@@ -67,15 +63,19 @@ struct ResultStubContent: Hashable {
 
         switch mediaType {
         case .movie:
-            if let runtime = details?.runtimeMinutes, runtime > 0 { parts.append(duration(runtime)) }
+            if let runtime = details?.runtimeMinutes, runtime > 0 { parts.append("\(runtime) мин") }
         case .tv:
-            if let seasons = details?.seasonCount, seasons > 0 { parts.append(seasonsText(seasons)) }
+            if details?.isMiniseries == true {
+                parts.append("мини-сериал")
+            } else if let seasons = details?.seasonCount, seasons > 0 {
+                parts.append(seasonsText(seasons))
+            }
         }
 
-        if let certification = details?.certification { parts.append(certification) }
-
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: metaSeparator)
     }
+
+    private static let metaSeparator = " · "
 
     private static func years(mediaType: MediaType, item: MediaItem, details: MediaDetails?) -> String? {
         let first = details?.firstYear ?? Int(item.releaseDate?.prefix(4) ?? "")
@@ -83,16 +83,9 @@ struct ResultStubContent: Hashable {
 
         guard mediaType == .tv else { return "\(first)" }
 
-        if details?.isInProduction == true { return "\(first) — …" }
-        if details?.isCanceled == true { return "\(first) — прервано" }
+        if details?.isInProduction == true { return "с \(first)" }
         guard let last = details?.lastYear, last != first else { return "\(first)" }
         return "\(first)–\(last)"
-    }
-
-    private static func duration(_ minutes: Int) -> String {
-        let hours = minutes / 60, rest = minutes % 60
-        if hours == 0 { return "\(rest) мин" }
-        return rest == 0 ? "\(hours) ч" : "\(hours) ч \(rest) мин"
     }
 
     private static func seasonsText(_ count: Int) -> String {
@@ -109,9 +102,12 @@ struct ResultStubContent: Hashable {
 extension ResultStubContent {
     func concealed() -> ResultStubContent {
         var copy = self
-        copy.title = "???"
-        copy.credits = [" "]
-        copy.meta = "????  ·  ? ч ?? мин"
+        let hidden = "???"
+        let length = mediaType == .movie ? "мин" : "сезонов"
+        copy.title = hidden
+        copy.credits = ["\(Self.creditsLabel(mediaType))\u{00A0}\(hidden)"]
+        copy.meta = [hidden, "\(hidden) \(length)"].joined(separator: Self.metaSeparator)
+        copy.certification = "??"
         return copy
     }
 

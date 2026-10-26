@@ -61,7 +61,7 @@ extension PlaylistEntry {
         let item = MediaItem(id: PlaylistMediaRef(key: key)?.id ?? 0, mediaType: mediaType, title: title,
                              originalTitle: title, releaseDate: releaseYear.map(String.init), overview: nil)
         let date = playedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? .now
-        return ResultStubContent(item: item, mediaType: mediaType, details: details, outcome: display.outcome,
-                                 attemptsUsed: max(attemptsUsed, 1), playedAt: date, progress: progress(display))
+        return ResultStubContent(item: item, mediaType: mediaType, details: details, playedAt: date,
+                                 progress: progress(display))
     }
 }

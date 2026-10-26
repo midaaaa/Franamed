@@ -25,7 +25,7 @@ private struct DetailsResponse: Decodable {
     let lastAirDate: String?
     let numberOfSeasons: Int?
     let inProduction: Bool?
-    let status: String?
+    let type: String?
     let createdBy: [Named]?
     let credits: Credits?
     let releaseDates: ReleaseDates?
@@ -56,7 +56,7 @@ extension TMDBClient {
         details.lastYear = Self.year(from: response.lastAirDate)
         details.seasonCount = response.numberOfSeasons
         details.isInProduction = response.inProduction ?? false
-        details.isCanceled = response.status == "Canceled"
+        details.isMiniseries = response.type == "Miniseries"
         details.certification = Self.certification(from: response)
         details.authors = mediaType == .movie
             ? (response.credits?.crew ?? []).filter { $0.job == "Director" }.map(\.name)

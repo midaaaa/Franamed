@@ -13,6 +13,8 @@ struct MediaFilters: Hashable {
     var minRating: Double? = nil
     var minVoteCount: Int? = nil
     var originalLanguages: [String]? = nil
-    var includeAdult: Bool = false
-    var sortBy: SortBy = .popularityDesc
+}
+
+extension MediaFilters {
+    static let earliestYear = 1888
 }

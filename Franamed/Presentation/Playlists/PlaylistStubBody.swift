@@ -17,27 +17,33 @@ struct PlaylistStubBody: View {
     private static let ringSide: CGFloat = 64
     private static let stampScale: CGFloat = 1
     private static let stampOverhang: CGFloat = 10
+    private static let nameSize: CGFloat = 20
+    private static let nameLines = 4
+    private static let nameMinimumScale: CGFloat = 0.6
 
     var body: some View {
-        VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
-            Text(mode.displayName)
-                .font(TicketStyle.title)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
+        VStack(alignment: .leading, spacing: 0) {
+            TicketStubHeader(title: mode.displayName, media: mediaType.displayName)
             Button(action: onOpenPicker) {
                 content.contentShape(Rectangle())
             }
-            .frame(maxHeight: .infinity)
-            startButton
+            Button(action: onStart) {
+                TicketPlayCode(caption: caption, serial: serial)
+                    .contentShape(Rectangle())
+            }
+            .padding(.top, TicketStyle.codeGap)
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.black)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(TicketStubLayout(serial: serial))
     }
 
     private var content: some View {
-        HStack(spacing: 16) {
-            name
+        HStack(spacing: 10) {
+            Text(playlist?.title ?? "Выберите подборку")
+                .font(.system(size: Self.nameSize, weight: playlist == nil ? .medium : .semibold))
+                .lineLimit(Self.nameLines)
+                .minimumScaleFactor(Self.nameMinimumScale)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let playlist {
                 PlaylistProgressRing(ticket: playlist, stampScale: Self.stampScale)
                     .frame(width: Self.ringSide)
@@ -46,37 +52,17 @@ struct PlaylistStubBody: View {
                     .allowsHitTesting(false)
             }
         }
+        .padding(.top, TicketStyle.codeGap)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var name: some View {
-        let title = playlist?.title ?? "Выберите подборку"
-        return ViewThatFits(in: .horizontal) {
-            nameText(title, font: .system(size: 24, weight: .semibold, design: .serif), lines: 1)
-                .fixedSize()
-            nameText(title, font: .system(size: 20, weight: .semibold, design: .serif), lines: 3)
-        }
-        .foregroundStyle(playlist == nil ? TicketStyle.placeholderInk : Color.black)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private var caption: String {
+        guard let playlist else { return "ВЫБРАТЬ ПОДБОРКУ" }
+        return playlist.isFinished ? "ИГРАТЬ ДАЛЬШЕ" : "ИГРАТЬ"
     }
 
-    private func nameText(_ title: String, font: Font, lines: Int) -> some View {
-        Text(title)
-            .font(font)
-            .lineLimit(lines)
-            .minimumScaleFactor(TicketStyle.minimumScale)
-            .multilineTextAlignment(.leading)
-    }
-
-    private var startButton: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: 0)
-            Button(action: onStart) {
-                TicketBarcodeView(mediaType: mediaType, mode: mode)
-                    .contentShape(Rectangle())
-            }
-            Spacer(minLength: 0)
-        }
+    private var serial: String {
+        mode.serial(mediaType: mediaType)
     }
 }
 
@@ -86,7 +72,7 @@ struct PlaylistStubBody: View {
             VStack(spacing: 16) {
                 ForEach([nil] + playlists.playlists.map(\.id), id: \.self) { id in
                     PlaylistStubBody(mediaType: .movie, mode: .collection, playlist: id.flatMap(playlists.ticket(id:)))
-                        .modifier(TicketStubFrame(width: 300, edgeStyle: .scalloped))
+                        .modifier(TicketStubFrame(width: 293, edgeStyle: .scalloped))
                         .background(TicketStyle.paper)
                 }
             }

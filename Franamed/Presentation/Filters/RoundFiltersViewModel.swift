@@ -72,11 +72,7 @@ final class RoundFiltersViewModel: ObservableObject {
     }
 
     var hasFilters: Bool {
-        previewFilters != clearedFilters
-    }
-
-    private var clearedFilters: MediaFilters {
-        MediaFilters(includeAdult: filters.includeAdult, sortBy: filters.sortBy)
+        previewFilters != MediaFilters()
     }
 
     var hasChanges: Bool {
@@ -140,7 +136,7 @@ final class RoundFiltersViewModel: ObservableObject {
     }
 
     func clearFilters() {
-        filters = clearedFilters
+        filters = MediaFilters()
         limitYears = false
         yearFrom = Self.defaultYearFrom
         yearTo = Self.currentYear

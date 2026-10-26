@@ -10,67 +10,63 @@ import Foundation
 struct TicketField {
     enum Value {
         case text(String)
-        case symbol(name: String, text: String)
-        case list([String])
+        case rating(String)
+        case list([String], separator: String)
     }
 
     let label: String
     let value: Value
-    var isPlaceholder = false
+    var isSet = true
 }
 
 struct TicketFilterSummary {
-    let genres: TicketField
+    let frames: TicketField
+    let years: TicketField
     let rating: TicketField
-    let year: TicketField
+    let genres: TicketField
     let votes: TicketField
     let languages: TicketField
 
-    init(filters: MediaFilters, genreNames: [String]) {
-        genres = Self.genres(genreNames)
+    static let defaultFrameCount = RoundSetup().frameCount
+
+    init(setup: RoundSetup, genreNames: [String]) {
+        let filters = setup.filters
+        frames = TicketField(label: "Кадры", value: .text("\(setup.frameCount)"),
+                             isSet: setup.frameCount != Self.defaultFrameCount)
+        years = Self.years(filters.yearRange)
         rating = Self.rating(filters.minRating)
-        year = Self.year(filters.yearRange)
+        genres = Self.list("Жанры", genreNames, separator: ", ")
         votes = Self.votes(filters.minVoteCount)
-        languages = Self.languages(filters.originalLanguages)
+        languages = Self.list("Языки", filters.originalLanguages?.map { $0.uppercased() } ?? [], separator: " ")
     }
 
-    private static func genres(_ names: [String]) -> TicketField {
-        guard !names.isEmpty else {
-            return TicketField(label: "Жанр", value: .text("Любые"), isPlaceholder: true)
-        }
-        return TicketField(label: "Жанр", value: .list(names))
+    private static func list(_ label: String, _ names: [String], separator: String) -> TicketField {
+        guard !names.isEmpty else { return TicketField(label: label, value: .text("все"), isSet: false) }
+        return TicketField(label: label, value: .list(names, separator: separator))
     }
 
     private static func rating(_ value: Double?) -> TicketField {
-        guard let value else {
-            return TicketField(label: "Рейтинг", value: .text("Любой"), isPlaceholder: true)
-        }
-        let text = "\(value.formatted(.number.precision(.fractionLength(0...1))))+"
-        return TicketField(label: "Рейтинг", value: .symbol(name: "star.fill", text: text))
-    }
-
-    private static func year(_ range: ClosedRange<Int>?) -> TicketField {
-        guard let range else {
-            return TicketField(label: "Год", value: .text("Все годы"), isPlaceholder: true)
-        }
-        let text = range.lowerBound == range.upperBound
-            ? "\(range.lowerBound)"
-            : "\(range.lowerBound)–\(range.upperBound)"
-        return TicketField(label: "Год", value: .text(text))
+        guard let value else { return TicketField(label: "Рейтинг", value: .text("любой"), isSet: false) }
+        return TicketField(label: "Рейтинг",
+                           value: .rating("\(value.formatted(.number.precision(.fractionLength(0...1))))+"))
     }
 
     private static func votes(_ count: Int?) -> TicketField {
-        guard let count else {
-            return TicketField(label: "Оценки", value: .text("Неважно"), isPlaceholder: true)
-        }
-        return TicketField(label: "Оценки", value: .symbol(name: "person.fill", text: "\(count)+"))
+        guard let count else { return TicketField(label: "Оценки", value: .text("все"), isSet: false) }
+        return TicketField(label: "Оценки", value: .text("\(count)+"))
     }
 
-    private static func languages(_ codes: [String]?) -> TicketField {
-        let names = codes?.map { $0.uppercased() } ?? []
-        guard !names.isEmpty else {
-            return TicketField(label: "Язык", value: .text("Любой"), isPlaceholder: true)
-        }
-        return TicketField(label: "Язык", value: .list(names))
+    private static func years(_ range: ClosedRange<Int>?) -> TicketField {
+        guard let range else { return TicketField(label: "Годы", value: .text("все"), isSet: false) }
+        return TicketField(label: "Годы", value: .text(yearsText(range)))
+    }
+
+    private static func yearsText(_ range: ClosedRange<Int>) -> String {
+        let (low, high) = (range.lowerBound, range.upperBound)
+        if low == high { return "\(low)" }
+        if low % 10 == 0, high == low + 9 { return "\(String(low).suffix(2))-е" }
+        if high >= Calendar.current.component(.year, from: .now) { return "с \(low)" }
+        if low <= MediaFilters.earliestYear { return "до \(high)" }
+        return "\(low)–\(high)"
     }
 }

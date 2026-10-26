@@ -39,9 +39,7 @@ final class TMDBClient: TMDBClientProtocol {
         components.queryItems = [
             URLQueryItem(name: "api_key", value: apiKey),
             URLQueryItem(name: "page", value: "\(page)"),
-            URLQueryItem(name: "language", value: "ru-RU"),
-            URLQueryItem(name: "include_adult", value: String(filters.includeAdult)),
-            URLQueryItem(name: "sort_by", value: filters.sortBy.tmdbValue(for: mediaType))
+            URLQueryItem(name: "language", value: "ru-RU")
         ]
 
         if let genres = filters.genres, !genres.isEmpty {

@@ -13,7 +13,7 @@ struct MediaDetails: Equatable, Sendable {
     var lastYear: Int?
     var seasonCount: Int?
     var isInProduction = false
-    var isCanceled = false
+    var isMiniseries = false
     var certification: String?
     var authors: [String] = []
     var posterPath: String?

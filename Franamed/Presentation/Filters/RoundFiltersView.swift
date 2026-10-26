@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct RoundFiltersView: View {
-    private static let earliestYear = 1888
     private static let applyBottomSpace: CGFloat = 20
 
     @Environment(\.dismiss) private var dismiss
@@ -47,16 +46,19 @@ struct RoundFiltersView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if viewModel.source == .tmdb {
-                    AdultFilterSection(includeAdult: $viewModel.filters.includeAdult,
-                                       mediaType: viewModel.mediaType)
-                }
                 DifficultyFilterSection(frameCount: $viewModel.frameCount)
-                switch viewModel.source {
-                case .tmdb: SortByFilterSection(sortBy: $viewModel.filters.sortBy, mediaType: viewModel.mediaType)
-                case .curated: ShuffleFilterSection(shuffle: $viewModel.shuffle)
+                if viewModel.source == .curated {
+                    ShuffleFilterSection(shuffle: $viewModel.shuffle)
                 }
-                GenresFilterSection(viewModel: viewModel)
+
+                YearRangeFilterSection(
+                    earliestYear: MediaFilters.earliestYear,
+                    currentYear: RoundFiltersViewModel.currentYear,
+                    footerText: yearSectionFooterText,
+                    isEnabled: $viewModel.limitYears,
+                    yearFrom: $viewModel.yearFrom,
+                    yearTo: $viewModel.yearTo
+                )
 
                 OptionalThresholdFilterSection(
                     title: "Рейтинг",
@@ -70,19 +72,12 @@ struct RoundFiltersView: View {
                     value: $viewModel.filters.minRating
                 )
 
-                YearRangeFilterSection(
-                    earliestYear: Self.earliestYear,
-                    currentYear: RoundFiltersViewModel.currentYear,
-                    footerText: yearSectionFooterText,
-                    isEnabled: $viewModel.limitYears,
-                    yearFrom: $viewModel.yearFrom,
-                    yearTo: $viewModel.yearTo
-                )
+                GenresFilterSection(viewModel: viewModel)
 
                 OptionalThresholdFilterSection(
-                    title: "Голоса",
+                    title: "Оценки",
                     toggleTitle: "Не меньше",
-                    footer: "Сколько зрителей поставили оценку. Рейтинг от пары голосов ненадёжен.",
+                    footer: "Сколько зрителей поставили оценку. Рейтинг по паре оценок ненадёжен.",
                     range: 0...5000,
                     step: 100,
                     defaultValue: RoundFiltersViewModel.defaultMinVoteCount,
