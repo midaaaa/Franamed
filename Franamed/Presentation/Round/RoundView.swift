@@ -60,7 +60,7 @@ struct RoundView: View {
     @ObservedObject private var playlists: PlaylistsViewModel
     private let playlistID: String?
 
-    private static let backgroundSpace = "roundBackground"
+    private nonisolated static let backgroundSpace = "roundBackground"
     private nonisolated static let contentSpace = "roundContent"
     private static let formCollapsedSide: CGFloat = 44
     private static let formCollapseDuration = 0.32

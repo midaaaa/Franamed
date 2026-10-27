@@ -180,12 +180,14 @@ final class PlaylistScrollFreezer {
     fileprivate weak var scrollView: UIScrollView?
     private(set) var isAligned = true
 
+    @MainActor
     func cancelTouch() -> Bool {
         guard let pan = scrollView?.panGestureRecognizer, pan.state == .began || pan.state == .changed else { return false }
         stop()
         return true
     }
 
+    @MainActor
     func stop() {
         guard let scrollView else { return }
         isAligned = false
