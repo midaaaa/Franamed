@@ -10,6 +10,7 @@ import { authenticate } from "../lib/auth.js";
 import { buildCatalogQuery, loadGenreIds, parseFilters, serializeImage, serializeMediaItem } from "../lib/media.js";
 import { ROUND_LAYOUT_SIZE, selectRoundFrames, selectSpareFrames } from "../lib/frames.js";
 import { finishRound } from "../lib/plays.js";
+import { rebuildIndexIfDirty } from "../lib/catalogIndex.js";
 import { playerOrderRank } from "../lib/playlists.js";
 import { dailyNumber, ensureFrozen, isValidDateString, loadDailyPlan, utcDateString } from "../lib/daily.js";
 
@@ -218,8 +219,16 @@ export async function handleRound(request, env, segments, url) {
         }
 
         // Its own code so the phone can tell a playlist that emptied under it
-        // from a missing one: it refreshes the index and goes back to the ticket.
-        if (!row) throw new APIError(404, "playlist_empty", "Nothing left to play in this playlist");
+        // from a missing one. A dirty index is rebuilt here, so the refresh that
+        // follows already drops the title instead of waiting for the cron.
+        if (!row) {
+            try {
+                await rebuildIndexIfDirty(env);
+            } catch (error) {
+                console.error("Index rebuild on playlist_empty failed", error?.message);
+            }
+            throw new APIError(404, "playlist_empty", "Nothing left to play in this playlist");
+        }
 
         // Counted over what can be dealt, so a title that left the game does
         // not leave "17 of 100" forever one short.

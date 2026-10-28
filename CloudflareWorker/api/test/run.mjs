@@ -975,6 +975,23 @@ console.log("empty playlists");
         && db.db.prepare("SELECT published FROM playlists WHERE id = ?").get(id).published === 1, JSON.stringify(res.body));
     res = await call("mod", "PATCH", `/v1/playlists/${id}`, { published: true, title: "Всё ещё пусто", coverImageURL: "https://img.test/c.jpg" });
     check("an emptied published one can still be edited", res.status === 200, JSON.stringify(res.body));
+
+    const config = (key) => db.db.prepare("SELECT value FROM app_config WHERE key = ?").get(key)?.value;
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: [playable[0]] });
+    await worker.scheduled({}, env, {});
+    const clean = config("catalogIndexVersion");
+    await call("mod", "PATCH", `/v1/catalog/items/${playable[0]}`, { publishMode: "off" });
+    check("unpublishing its last title flags the index", config("catalogIndexDirty") !== undefined);
+    res = await call("mod", "GET", `/v1/round/next?playlistId=${id}`);
+    const fresh = config("catalogIndexVersion");
+    check("playlist_empty rebuilds a dirty index", res.status === 404 && res.body.error === "playlist_empty"
+        && config("catalogIndexDirty") === undefined && fresh !== clean
+        && !JSON.parse(db.db.prepare("SELECT body FROM catalog_index WHERE version = ?").get(fresh).body).items.some((i) => i.key === playable[0]),
+        JSON.stringify(res.body));
+    res = await call("mod", "GET", `/v1/round/next?playlistId=${id}`);
+    check("and leaves a clean one alone", res.body.error === "playlist_empty" && config("catalogIndexVersion") === fresh);
+    await call("mod", "PATCH", `/v1/catalog/items/${playable[0]}`, { publishMode: "auto" });
+    await worker.scheduled({}, env, {});
     await call("me", "DELETE", `/v1/playlists/${id}`);
 }
 
