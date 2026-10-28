@@ -24,6 +24,7 @@ nonisolated struct TicketTearConfig: Sendable, Equatable {
     var tearJitter: CGFloat = 1.2
     var tornSoftness: CGFloat = 0.45
     var tornGap: CGFloat = 1.0
+    var edge = TearEdge.plain
 
     // MARK: Tear effort
 

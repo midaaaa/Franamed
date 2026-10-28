@@ -103,20 +103,20 @@ struct PlaylistStubPiece<Paper: View>: View {
                 PlaylistTicketGeometry.outline(width: width, edgeStyle: edgeStyle)
             }
         case .detached(let seed, let scar):
-            detached.overlay {
+            detached(seed: seed).overlay {
                 if scar > 0 { PlaylistStubScar(seed: seed, reach: scar) }
             }
         case .ripped(let seed):
             let separation = PlaylistTicketGeometry.ripSeparation(width: width)
             ZStack {
-                detached.mask(PlaylistStubTearShape(seed: seed, side: .leading)).offset(x: -separation)
-                detached.mask(PlaylistStubTearShape(seed: seed, side: .trailing)).offset(x: separation)
+                detached(seed: seed).mask(PlaylistStubTearShape(seed: seed, side: .leading)).offset(x: -separation)
+                detached(seed: seed).mask(PlaylistStubTearShape(seed: seed, side: .trailing)).offset(x: separation)
             }
         }
     }
 
-    private var detached: some View {
-        paper.clipShape(ResultStubShape(edgeStyle: edgeStyle))
+    private func detached(seed: UInt64) -> some View {
+        paper.clipShape(ResultStubShape(edgeStyle: edgeStyle, edge: TearEdge(seed: seed)))
     }
 }
 

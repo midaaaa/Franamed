@@ -123,7 +123,7 @@ struct CurlUniforms {
     float colsB;
     float opacity;
     float thickness;
-    float _reserved;
+    float edgeShift;
 
     float front;
     float pitch;
@@ -294,7 +294,7 @@ fragment half4 ticketCurlFragment(VertexOut in [[stage_in]],
 
     float holeFrac = clamp(u.holeLen / pitch, 0.0, 0.99);
     float tabT = saturate((fract(ap / pitch) - holeFrac) / (1.0 - holeFrac));
-    float wander = tearJitter(aFixed, u.jitterAmp) * sin(M_PI_F * tabT);
+    float wander = tearJitter(aFixed + u.edgeShift, u.jitterAmp) * sin(M_PI_F * tabT);
     float fracture = b - max(u.tornGap + wander, 0.35);
 
     float torn = smoothstep(1.5, -1.5, a - u.front);

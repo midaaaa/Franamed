@@ -36,7 +36,7 @@ struct CurlUniforms {
     var colsB: Float
     var opacity: Float = 1
     var thickness: Float = 0
-    var _reserved: Float = 0
+    var edgeShift: Float = 0
 
     // MARK: Perforation pattern (consumed by the fragment shader)
 

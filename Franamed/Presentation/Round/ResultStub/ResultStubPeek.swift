@@ -32,6 +32,7 @@ struct ResultStubPeek: View {
     let restOffset: CGFloat
     let formWidth: CGFloat
     var playlist: PlaylistTicket?
+    let ticketSeed: UInt64
     var onBackShown: () -> Void = {}
     var isLifted = false
     var onShare: ((ResultStubContent, ShareLaunch) -> Void)?
@@ -104,7 +105,8 @@ struct ResultStubPeek: View {
         ResultStubContent(item: item, mediaType: mediaType, details: details, playedAt: playedAt,
                           progress: ResultStubProgress(frameCount: frameCount, attemptsMade: attemptsMade,
                                                        revealedCount: revealedCount, outcome: outcome,
-                                                       currentFrame: currentFrame))
+                                                       currentFrame: currentFrame),
+                          tearEdge: TearEdge(seed: tearSeed))
     }
 
     var body: some View {
@@ -120,7 +122,7 @@ struct ResultStubPeek: View {
         } back: {
             ResultStubSetupBack(card: TicketCard(mediaType: mediaType, posterPath: nil, mode: mode, playlist: playlist),
                                 setup: RoundSetup(filters: filters, frameCount: frameCount),
-                                genreNames: genreNames)
+                                genreNames: genreNames, edge: content.tearEdge)
         } onFrontVisibleChange: { isFront in
             isFrontVisible = isFront
             if !isFront { onBackShown() }
@@ -187,7 +189,7 @@ struct ResultStubPeek: View {
     }
 
     private var tearSeed: UInt64 {
-        playlist?.tearSeed(for: "\(mediaType.rawValue)_\(item.id)") ?? FlipTear.seed(itemID: item.id, playedAt: playedAt)
+        playlist?.tearSeed(for: "\(mediaType.rawValue)_\(item.id)") ?? ticketSeed
     }
 
     private func followKeyboard() {

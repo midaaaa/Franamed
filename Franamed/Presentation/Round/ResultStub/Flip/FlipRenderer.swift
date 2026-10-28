@@ -161,7 +161,7 @@ struct FlipRenderer: UIViewRepresentable {
         coordinator.frontTexture = frontTexture
         coordinator.backTexture = backTexture
         coordinator.stubSize = stubSize
-        coordinator.setOutline(size: stubSize, edgeStyle: edgeStyle)
+        coordinator.setOutline(size: stubSize, edgeStyle: edgeStyle, edge: tear.edge)
         let lightChanged = coordinator.lighting != lighting || coordinator.tilt != tilt
         coordinator.lighting = lighting
         coordinator.tilt = tilt
@@ -203,6 +203,7 @@ struct FlipRenderer: UIViewRepresentable {
         private var outlineBuffer: MTLBuffer?
         private var outlineSize: CGSize = .zero
         private var outlineStyle: TicketEdgeStyle = .scalloped
+        private var outlineEdge = TearEdge.plain
 
         private static let tearSegments = 160
         private var tear = FlipTearMotion()
@@ -213,12 +214,13 @@ struct FlipRenderer: UIViewRepresentable {
 
         func snapTear() { tear.snap() }
 
-        func setOutline(size: CGSize, edgeStyle: TicketEdgeStyle) {
-            outlineChanged = size.width > 1 && (size != outlineSize || edgeStyle != outlineStyle)
+        func setOutline(size: CGSize, edgeStyle: TicketEdgeStyle, edge: TearEdge) {
+            outlineChanged = size.width > 1 && (size != outlineSize || edgeStyle != outlineStyle || edge != outlineEdge)
             guard outlineChanged else { return }
             outlineSize = size
             outlineStyle = edgeStyle
-            outline = FlipEdge.outline(size: size, edgeStyle: edgeStyle)
+            outlineEdge = edge
+            outline = FlipEdge.outline(size: size, edgeStyle: edgeStyle, edge: edge)
             outlineBuffer = outline.vertices.isEmpty ? nil : device?.makeBuffer(
                 bytes: outline.vertices,
                 length: outline.vertices.count * MemoryLayout<FlipEdge.Vertex>.stride,
@@ -353,7 +355,7 @@ struct FlipRenderer: UIViewRepresentable {
             let view = FlipRenderer.makeMetalView(coordinator: flight, sharing: self)
             view.isPaused = true
             (view.layer as? CAMetalLayer)?.presentsWithTransaction = true
-            flight.setOutline(size: stubSize, edgeStyle: outlineStyle)
+            flight.setOutline(size: stubSize, edgeStyle: outlineStyle, edge: outlineEdge)
             return FlipFlight(coordinator: flight, view: view)
         }
 

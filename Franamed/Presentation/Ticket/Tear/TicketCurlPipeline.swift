@@ -190,13 +190,14 @@ final class TicketCurlPipeline {
             colsB: Float(TicketCurlTopology.colsB),
             opacity: Float(pose.opacity),
             thickness: Float(max(config.thickness, 0)),
+            edgeShift: config.edge.shift,
 
             front: Float(pose.front),
             pitch: Float(pose.pitch),
             holeLen: Float(pose.holeLen),
             holeHalfWidth: Float(config.holeHalfWidth),
 
-            jitterAmp: Float(config.tearJitter),
+            jitterAmp: Float(config.tearJitter) * config.edge.scale,
             strainCell: Float(pose.strainCell),
             strain: Float(pose.strain),
             neckFraction: Float(config.neckFraction),

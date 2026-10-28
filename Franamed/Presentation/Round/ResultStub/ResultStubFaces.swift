@@ -18,7 +18,7 @@ struct ResultStubFront: View {
     private static let shareLink = "franamed.app/s/xk3p"
 
     var body: some View {
-        ResultStubPaper(mirrored: true, clipsShape: clipsShape) {
+        ResultStubPaper(mirrored: true, clipsShape: clipsShape, edge: content.tearEdge) {
             VStack(alignment: .leading, spacing: 0) {
                 serviceLine
                 details.opacity(hidesDetails ? 0 : 1)
@@ -133,9 +133,10 @@ struct ResultStubSetupBack: View {
     let card: TicketCard
     let setup: RoundSetup
     let genreNames: [String]
+    var edge = TearEdge.plain
 
     var body: some View {
-        ResultStubPaper {
+        ResultStubPaper(edge: edge) {
             TicketStubBody(card: card, setup: setup, genreNames: genreNames)
                 .allowsHitTesting(false)
         }

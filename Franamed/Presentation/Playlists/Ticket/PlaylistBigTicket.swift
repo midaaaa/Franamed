@@ -83,7 +83,7 @@ struct PlaylistBigTicket: View {
             ResultStubSetupBack(card: TicketCard(mediaType: entry.mediaType, posterPath: nil, mode: .collection,
                                                  playlist: playlist),
                                 setup: RoundSetup(frameCount: PlaylistDetail.frameCount),
-                                genreNames: [])
+                                genreNames: [], edge: content.tearEdge)
         }
         .environment(\.resultStubWidth, width)
         .environment(\.flipTear, FlipTear.round(seed: entry.stubTearSeed, attemptsMade: entry.attemptsUsed,

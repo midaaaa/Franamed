@@ -20,6 +20,8 @@ struct FlipTear: Equatable {
 
     var state: SIMD3<Float> { SIMD3(progress, opening, separation) }
 
+    var edge: TearEdge { seed == 0 ? .plain : TearEdge(seed: seed) }
+
     func shape(width: CGFloat) -> (line: SIMD4<Float>, shape: SIMD4<Float>) {
         var generator = SplitMix(state: seed &+ 0x51_7C_C1_B7_27_22_0A_95)
         let w = Float(width)
@@ -36,7 +38,7 @@ struct FlipTear: Equatable {
     }
 }
 
-private struct SplitMix {
+nonisolated struct SplitMix {
     var state: UInt64
 
     mutating func next() -> UInt64 {

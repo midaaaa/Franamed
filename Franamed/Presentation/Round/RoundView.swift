@@ -59,6 +59,7 @@ struct RoundView: View {
     private let mode: TicketGameMode
     @ObservedObject private var playlists: PlaylistsViewModel
     private let playlistID: String?
+    private let ticketSeed: UInt64
 
     private nonisolated static let backgroundSpace = "roundBackground"
     private nonisolated static let contentSpace = "roundContent"
@@ -123,11 +124,12 @@ struct RoundView: View {
                                     room: (safeWidth - max(frameWidth, formOuterWidth)) / 2)
     }
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil, isDismissLocked: Binding<Bool> = .constant(false)) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil, ticketSeed: UInt64 = FlipTear.randomSeed(), isDismissLocked: Binding<Bool> = .constant(false)) {
         _isDismissLocked = isDismissLocked
         self.mode = mode
         self.playlists = playlists
         self.playlistID = playlistID
+        self.ticketSeed = ticketSeed
         _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle, playlistId: playlistID))
     }
 
@@ -540,6 +542,7 @@ struct RoundView: View {
                            restOffset: stubRestOffset,
                            formWidth: formOuterWidth - barInset * 2,
                            playlist: playlistTicket,
+                           ticketSeed: FlipTear.seed(ticket: ticketSeed, round: roundNumber),
                            onBackShown: stampOnBackIfNeeded,
                            isLifted: isShareLifted,
                            onShare: startShare)

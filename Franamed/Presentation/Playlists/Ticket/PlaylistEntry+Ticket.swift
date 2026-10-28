@@ -62,6 +62,6 @@ extension PlaylistEntry {
                              originalTitle: title, releaseDate: releaseYear.map(String.init), overview: nil)
         let date = playedAt.map { Date(timeIntervalSince1970: $0 / 1000) } ?? .now
         return ResultStubContent(item: item, mediaType: mediaType, details: details, playedAt: date,
-                                 progress: progress(display))
+                                 progress: progress(display), tearEdge: TearEdge(seed: stubTearSeed))
     }
 }

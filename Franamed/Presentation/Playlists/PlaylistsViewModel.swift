@@ -134,6 +134,17 @@ final class PlaylistsViewModel: ObservableObject {
                               hasWhiteStamp: stamps[id] == false, uid: uid)
     }
 
+    func nextTearSeed(for id: String) -> UInt64? {
+        guard let playlist = playlist(id: id) else { return nil }
+        if let unplayed = playlist.items.first(where: { $0.state != .completed }) {
+            return unplayed.tearSeed
+        }
+        return playlist.items
+            .filter { $0.wasCorrect == false }
+            .min { ($0.playedAt ?? 0, $0.key) < ($1.playedAt ?? 0, $1.key) }?
+            .tearSeed
+    }
+
     // MARK: Actions
 
     func select(_ id: String) {

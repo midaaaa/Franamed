@@ -10,6 +10,7 @@ import SwiftUI
 struct ResultStubShape: Shape, Hashable {
     var edgeStyle: TicketEdgeStyle = .scalloped
     var mirrored = false
+    var edge = TearEdge.plain
 
     static func perforation(width: CGFloat) -> TearPerforation {
         TearPerforation(config: .ticket(width: width), length: width)
@@ -84,7 +85,8 @@ struct ResultStubShape: Shape, Hashable {
     }
 
     private func fractureCut(at a: CGFloat, perforation: TearPerforation) -> CGFloat {
-        let wander = Self.tearJitter(a, amp: Self.jitterAmplitude) * sin(.pi * tabProgress(at: a, perforation: perforation))
+        let amp = Self.jitterAmplitude * CGFloat(edge.scale)
+        let wander = Self.tearJitter(a + CGFloat(edge.shift), amp: amp) * sin(.pi * tabProgress(at: a, perforation: perforation))
         return max(Self.tornGap + wander, 0.35)
     }
 

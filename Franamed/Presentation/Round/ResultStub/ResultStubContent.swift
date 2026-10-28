@@ -17,12 +17,14 @@ struct ResultStubContent: Hashable {
     let session: String
     let searchQuery: String
     private(set) var progress: ResultStubProgress
+    let tearEdge: TearEdge
 
     init(item: MediaItem,
          mediaType: MediaType,
          details: MediaDetails?,
          playedAt: Date = .now,
-         progress: ResultStubProgress) {
+         progress: ResultStubProgress,
+         tearEdge: TearEdge = .plain) {
         self.mediaType = mediaType
         title = item.originalTitle
         credits = Self.credits(mediaType: mediaType, authors: details?.authors ?? [])
@@ -32,6 +34,7 @@ struct ResultStubContent: Hashable {
         let year = item.releaseDate?.prefix(4) ?? ""
         searchQuery = year.isEmpty ? title : "\(title) \(year)"
         self.progress = progress
+        self.tearEdge = tearEdge
     }
 
     private static func session(_ date: Date) -> String {

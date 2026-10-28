@@ -25,6 +25,8 @@ struct TicketView: View {
     @State private var isCardLocked = false
     @State private var isStubAway = false
     @State private var isHealingStub = false
+    @State private var tearSeeds = TicketTearSeeds()
+    @State private var tornTicket: (mode: TicketGameMode, mediaType: MediaType)?
 
     @State private var cardOffset: CGSize = .zero
     @State private var containerFrame: CGRect = .zero
@@ -75,6 +77,7 @@ struct TicketView: View {
                             shuffle: viewModel.setup(for: mediaType).shuffle,
                             playlists: playlists,
                             playlistID: viewModel.mode == .collection ? playlists.selectedID(for: mediaType) : nil,
+                            ticketSeed: tearSeed,
                             isDismissLocked: $isRoundDismissLocked
                         )
                         .toolbar {
@@ -168,6 +171,7 @@ struct TicketView: View {
             isRasterized: isRasterized,
             hidesStub: hidesStub,
             edgeStyle: edgeStyle,
+            tearEdge: TearEdge(seed: tearSeed),
             tearOverscan: tearOverscan,
             returnToken: stubReturnToken,
             posterZoom: posterZoom,
@@ -190,6 +194,12 @@ struct TicketView: View {
     }
 
     // MARK: Content
+
+    private var tearSeed: UInt64 {
+        let ticketSeed = tearSeeds.seed(mode: viewModel.mode, mediaType: viewModel.mediaType)
+        guard viewModel.mode == .collection, let id = playlists.selectedID(for: viewModel.mediaType) else { return ticketSeed }
+        return playlists.nextTearSeed(for: id) ?? ticketSeed
+    }
 
     private var currentCard: TicketCard {
         var card = viewModel.card
@@ -234,6 +244,7 @@ struct TicketView: View {
 
     private func startRound(mediaType: MediaType) {
         isCardLocked = true
+        tornTicket = (viewModel.mode, mediaType)
         withAnimation(TicketMotion.roundCoverIn) { hidesStub = true }
         coordinator.showRound(mediaType: mediaType)
         withAnimation(.easeOut(duration: TicketMotion.returnShrinkDuration)) {
@@ -255,6 +266,10 @@ struct TicketView: View {
         let healed = isHealingStub
         isHealingStub = false
 
+        if let torn = tornTicket {
+            tearSeeds.renew(mode: torn.mode, mediaType: torn.mediaType)
+            tornTicket = nil
+        }
         if healed {
             hidesStub = false
         } else {

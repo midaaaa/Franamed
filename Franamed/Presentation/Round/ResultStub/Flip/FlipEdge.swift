@@ -11,10 +11,10 @@ enum FlipEdge {
     typealias Vertex = EdgeOutline.Vertex
     typealias Outline = EdgeOutline.Outline
 
-    static func outline(size: CGSize, edgeStyle: TicketEdgeStyle) -> Outline {
+    static func outline(size: CGSize, edgeStyle: TicketEdgeStyle, edge: TearEdge) -> Outline {
         guard size.width > 1, size.height > 1 else { return Outline() }
 
-        let shape = ResultStubShape(edgeStyle: edgeStyle, mirrored: true)
+        let shape = ResultStubShape(edgeStyle: edgeStyle, mirrored: true, edge: edge)
         let rect = CGRect(origin: .zero, size: size)
         let centre = CGPoint(x: size.width / 2, y: size.height / 2)
 

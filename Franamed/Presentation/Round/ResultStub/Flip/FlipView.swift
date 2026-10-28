@@ -26,6 +26,7 @@ struct FlipView<Front: View, Back: View>: View {
     @Environment(\.flipLighting) private var lighting
     @Environment(\.flipRecordingLighting) private var recordingLighting
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.flipTear) private var tear
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
     var body: some View {
@@ -46,6 +47,7 @@ struct FlipView<Front: View, Back: View>: View {
                 frontImage: faces.frontImage,
                 backImage: faces.backImage,
                 edgeStyle: edgeStyle,
+                edge: tear.edge,
                 menuItems: menuItems,
                 allowsRotation: allowsRotation
             )
@@ -96,6 +98,7 @@ private struct FlipInteractionView: UIViewRepresentable {
     let frontImage: UIImage?
     let backImage: UIImage?
     let edgeStyle: TicketEdgeStyle
+    let edge: TearEdge
     let menuItems: [FlipMenuItem]
     let allowsRotation: Bool
 
@@ -136,6 +139,7 @@ private struct FlipInteractionView: UIViewRepresentable {
         coordinator.frontImage = frontImage
         coordinator.backImage = backImage
         coordinator.edgeStyle = edgeStyle
+        coordinator.edge = edge
         coordinator.menuItems = menuItems
     }
 
@@ -146,6 +150,7 @@ private struct FlipInteractionView: UIViewRepresentable {
         var frontImage: UIImage?
         var backImage: UIImage?
         var edgeStyle: TicketEdgeStyle = .scalloped
+        var edge = TearEdge.plain
         var menuItems: [FlipMenuItem] = []
 
         private static let highlightTimeout: TimeInterval = 1.0
@@ -322,7 +327,7 @@ private struct FlipInteractionView: UIViewRepresentable {
             if tearPreview != nil {
                 parameters.visiblePath = UIBezierPath(rect: previewView.bounds)
             } else {
-                let outline = ResultStubShape(edgeStyle: edgeStyle, mirrored: isFront)
+                let outline = ResultStubShape(edgeStyle: edgeStyle, mirrored: isFront, edge: edge)
                     .path(in: CGRect(origin: .zero, size: size))
                 parameters.visiblePath = UIBezierPath(cgPath: outline.cgPath)
             }

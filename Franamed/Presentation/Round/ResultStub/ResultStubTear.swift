@@ -8,8 +8,14 @@
 import Foundation
 
 extension FlipTear {
-    static func seed(itemID: Int, playedAt: Date) -> UInt64 {
-        UInt64(bitPattern: Int64(itemID)) &+ UInt64(playedAt.timeIntervalSince1970)
+    static func randomSeed() -> UInt64 {
+        .random(in: 1 ... .max)
+    }
+
+    static func seed(ticket: UInt64, round: Int) -> UInt64 {
+        guard round > 0 else { return ticket }
+        var generator = SplitMix(state: ticket &+ UInt64(round))
+        return max(generator.next(), 1)
     }
 
     static func seed(uid: String, playlistID: String, mediaKey: String) -> UInt64 {
