@@ -20,6 +20,7 @@ struct PlaylistTicket: Hashable {
     var isStampGold = false
     var hasWhiteStamp = false
     var uid: String?
+    var isResumable = false
 
     var isPerfect: Bool { correct >= total }
 }
@@ -54,6 +55,7 @@ final class PlaylistsViewModel: ObservableObject {
     @Published private(set) var stamps: [String: Bool] = [:]
     @Published private(set) var newKeys: [String: Set<String>] = [:]
     @Published private(set) var loadState = LoadState.idle
+    @Published private(set) var resumes: [String: PlaylistRoundResume]
 
     private var openedIDs: Set<String> = []
     private var uid: String?
@@ -61,6 +63,7 @@ final class PlaylistsViewModel: ObservableObject {
     private let catalogIndex: CatalogIndexStore
     private let imageBaseURL: String
     private let defaults: UserDefaults
+    private let resumeStore: PlaylistRoundResumes
 
     private static let lastSeenKey = "playlists.lastSeen"
 
@@ -69,6 +72,8 @@ final class PlaylistsViewModel: ObservableObject {
         catalogIndex = backend.catalogIndex
         imageBaseURL = backend.configuration.imageBaseURL
         self.defaults = defaults
+        resumeStore = PlaylistRoundResumes(defaults: defaults)
+        resumes = resumeStore.load()
     }
 
     // MARK: Queries
@@ -131,7 +136,13 @@ final class PlaylistsViewModel: ObservableObject {
                               total: playlist.availableCount, answered: playlist.answeredCount,
                               correct: playlist.correctCount, isFinished: playlist.isFinished,
                               stampProgress: hasPendingStamp(id) ? 0 : 1, isStampGold: stamps[id] ?? false,
-                              hasWhiteStamp: stamps[id] == false, uid: uid)
+                              hasWhiteStamp: stamps[id] == false, uid: uid, isResumable: resume(for: id) != nil)
+    }
+
+    func resume(for id: String) -> PlaylistRoundResume? {
+        guard let resume = resumes[id],
+              playlist(id: id)?.items.contains(where: { $0.key == resume.mediaKey }) == true else { return nil }
+        return resume
     }
 
     func nextTearSeed(for id: String) -> UInt64? {
@@ -152,6 +163,11 @@ final class PlaylistsViewModel: ObservableObject {
         selectedIDs[playlist.mediaType] = id
         defaults.set(id, forKey: Self.selectionKey(playlist.mediaType))
         prefetchCover(playlist.largeCoverURL)
+    }
+
+    func setResume(_ resume: PlaylistRoundResume?, for id: String) {
+        resumes[id] = playlist(id: id)?.completion == .perfect ? nil : resume
+        resumeStore.save(resumes)
     }
 
     func revealStamp(_ id: String) {
@@ -221,6 +237,11 @@ final class PlaylistsViewModel: ObservableObject {
         defaults.set(seen, forKey: Self.lastSeenKey)
 
         if playlists != next { playlists = next }
+        let orphans = resumes.keys.filter { id in !next.contains { $0.id == id } }
+        if !orphans.isEmpty {
+            for id in orphans { resumes[id] = nil }
+            resumeStore.save(resumes)
+        }
         var nextSelected: [MediaType: String] = [:]
         for mediaType in MediaType.allCases {
             let stored = defaults.string(forKey: Self.selectionKey(mediaType))

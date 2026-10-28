@@ -132,7 +132,12 @@ struct RoundView: View {
         self.playlists = playlists
         self.playlistID = playlistID
         self.ticketSeed = ticketSeed
-        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle, playlistId: playlistID))
+        let saveResume: (PlaylistRoundResume?) -> Void = { [playlists] resume in
+            guard let playlistID else { return }
+            playlists.setResume(resume, for: playlistID)
+        }
+        _viewModel = StateObject(wrappedValue: RoundViewModel(mediaFacade: mediaFacade, mediaType: mediaType, source: mode.roundSource, filters: filters, frameCount: frameCount, shuffle: shuffle, playlistId: playlistID,
+                                                              resume: playlistID.flatMap(playlists.resume(for:)), onResumeChange: saveResume))
     }
 
     var body: some View {
@@ -413,10 +418,8 @@ struct RoundView: View {
         guard let ticket = answeredTicket ?? storedPlaylistTicket, ticket.isFinished else {
             return AnswerBarNext(title: "Следующий")
         }
-        if ticket.isPerfect {
-            return AnswerBarNext(title: "Играть дальше", badge: "100%", stamp: playlistFinish)
-        }
-        return AnswerBarNext(title: "Переиграть", badge: "\(ticket.correctPercent)%", stamp: playlistFinish)
+        let badge = ticket.isPerfect ? "100%" : "\(ticket.correctPercent)%"
+        return AnswerBarNext(title: "Дальше", badge: badge, stamp: playlistFinish)
     }
 
     private func collapseForm() {

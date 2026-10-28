@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct MediaItemWithBackdrops {
+struct MediaItemWithBackdrops: Codable {
     let item: MediaItem
     let backdrops: [Backdrop]
     var posterPath: String?

@@ -138,6 +138,7 @@ struct ResultStubSetupBack: View {
     var body: some View {
         ResultStubPaper(edge: edge) {
             TicketStubBody(card: card, setup: setup, genreNames: genreNames)
+                .environment(\.ticketStubIsUsed, true)
                 .allowsHitTesting(false)
         }
     }

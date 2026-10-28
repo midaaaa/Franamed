@@ -120,21 +120,31 @@ struct TicketPlayCode: View {
     let caption: String
     let serial: String
 
+    @Environment(\.ticketStubIsUsed) private var isUsed
+
     var body: some View {
         ZStack {
             TicketCodeImage(image: TicketCode.linear(serial.replacingOccurrences(of: " ", with: "")))
                 .frame(height: TicketStyle.codeHeight)
-            Text(caption)
-                .font(TicketStyle.codeCaption)
-                .tracking(TicketStyle.codeCaptionTracking)
-                .padding(.leading, TicketStyle.codeCaptionTracking)
-                .lineLimit(1)
-                .frame(height: 12)
-                .padding(.horizontal, 9)
-                .background(TicketStyle.paper)
+            if !isUsed { label }
         }
         .frame(maxWidth: .infinity)
     }
+
+    private var label: some View {
+        Text(caption)
+            .font(TicketStyle.codeCaption)
+            .tracking(TicketStyle.codeCaptionTracking)
+            .padding(.leading, TicketStyle.codeCaptionTracking)
+            .lineLimit(1)
+            .frame(height: 12)
+            .padding(.horizontal, 9)
+            .background(TicketStyle.paper)
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var ticketStubIsUsed = false
 }
 
 struct TicketCodeImage: View {

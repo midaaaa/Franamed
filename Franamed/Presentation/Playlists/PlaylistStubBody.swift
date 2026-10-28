@@ -58,7 +58,7 @@ struct PlaylistStubBody: View {
 
     private var caption: String {
         guard let playlist else { return "ВЫБРАТЬ ПОДБОРКУ" }
-        return playlist.isFinished ? "ИГРАТЬ ДАЛЬШЕ" : "ИГРАТЬ"
+        return playlist.isResumable ? "ПРОДОЛЖИТЬ" : "ИГРАТЬ"
     }
 
     private var serial: String {

@@ -37,9 +37,11 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var stats: RoundStats?
     @Published private(set) var recordedFinishes = 0
     private var detailsTask: Task<Void, Never>?
+    private var pendingResume: PlaylistRoundResume?
+    private let onResumeChange: ((PlaylistRoundResume?) -> Void)?
     private let mediaFacade: MediaFacadeProtocol
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlistId: String? = nil) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, source: RoundSource = .tmdb, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlistId: String? = nil, resume: PlaylistRoundResume? = nil, onResumeChange: ((PlaylistRoundResume?) -> Void)? = nil) {
         self.mediaFacade = mediaFacade
         self.mediaType = mediaType
         self.source = source
@@ -48,6 +50,8 @@ final class RoundViewModel: ObservableObject {
         self.shuffle = shuffle
         self.playlistId = playlistId
         self.attemptsRemaining = frameCount
+        self.pendingResume = playlistId == nil ? nil : resume
+        self.onResumeChange = onResumeChange
     }
 
     func loadRound() async {
@@ -68,9 +72,19 @@ final class RoundViewModel: ObservableObject {
         details = nil
         selectedSuggestion = nil
 
+        if let resume = pendingResume {
+            pendingResume = nil
+            mediaItemWithBackdrops = resume.media
+            restore(attemptsMade: resume.attemptsMade)
+            prefetchDetails(for: resume.media.item)
+            prefetchGenreNames()
+            return
+        }
+
         do {
             let loaded = try await fetchRound()
             mediaItemWithBackdrops = loaded
+            updateResume()
             prefetchDetails(for: loaded.item)
             prefetchGenreNames()
         } catch let error as BackendError where error.isPlaylistEmpty {
@@ -85,6 +99,19 @@ final class RoundViewModel: ObservableObject {
             return try await mediaFacade.fetchPlaylistRound(playlistId: playlistId, frameCount: frameCount)
         }
         return try await mediaFacade.fetchRound(source: source, mediaType: mediaType, filters: filters, frameCount: frameCount, shuffle: shuffle)
+    }
+
+    private func restore(attemptsMade made: Int) {
+        attemptsMade = min(max(made, 0), frameCount - 1)
+        attemptsRemaining = frameCount - attemptsMade
+        revealedCount = min(attemptsMade + 1, frameCount)
+        currentFrameIndex = revealedCount - 1
+    }
+
+    private func updateResume() {
+        guard playlistId != nil else { return }
+        let unfinished = outcome == nil ? mediaItemWithBackdrops : nil
+        onResumeChange?(unfinished.map { PlaylistRoundResume(media: $0, attemptsMade: attemptsMade, frameCount: frameCount) })
     }
 
     func selectSuggestion(_ item: MediaItem) {
@@ -130,6 +157,7 @@ final class RoundViewModel: ObservableObject {
                 reportFinish(of: item, solvedAtFrame: nil)
             }
         }
+        updateResume()
     }
 
     private func reportFinish(of item: MediaItem, solvedAtFrame: Int?) {
