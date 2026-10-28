@@ -21,6 +21,7 @@ final class RoundViewModel: ObservableObject {
     @Published private(set) var mediaItemWithBackdrops: MediaItemWithBackdrops?
     @Published private(set) var isLoading = true
     @Published private(set) var error: Error?
+    @Published private(set) var isPlaylistEmpty = false
     @Published private(set) var searchResults: [MediaItem] = []
     @Published private(set) var hasSearched = false
 
@@ -72,6 +73,8 @@ final class RoundViewModel: ObservableObject {
             mediaItemWithBackdrops = loaded
             prefetchDetails(for: loaded.item)
             prefetchGenreNames()
+        } catch let error as BackendError where error.isPlaylistEmpty {
+            isPlaylistEmpty = true
         } catch {
             self.error = error
         }

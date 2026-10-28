@@ -8,21 +8,22 @@
 import Foundation
 
 enum PlaylistAssembly {
-    static func details(from contents: PlaylistsStore.Contents, index: CatalogIndex?, imageBaseURL: String) -> [PlaylistDetail] {
+    static func details(from contents: PlaylistsStore.Contents, index: CatalogIndex, imageBaseURL: String) -> [PlaylistDetail] {
         guard let snapshot = contents.snapshot else { return [] }
-        let playableKeys = index.map { Set($0.items.map(\.key)) }
+        let playableKeys = Set(index.items.map(\.key))
         let answers = Dictionary(grouping: contents.answers?.answers ?? [], by: \.playlistId)
         let completions = Dictionary((contents.answers?.completions ?? []).map { ($0.playlistId, $0) }) { first, _ in first }
 
-        return snapshot.playlists.map { playlist in
+        return snapshot.playlists.compactMap { playlist in
             let answered = Dictionary((answers[playlist.id] ?? []).map { ($0.mediaKey, $0) }) { first, _ in first }
             var items = playlist.items
                 .map { item in
-                    entry(item, answer: answered[item.key], isPlayable: playableKeys?.contains(item.key) ?? true,
+                    entry(item, answer: answered[item.key], isPlayable: playableKeys.contains(item.key),
                           imageBaseURL: imageBaseURL,
                           tearSeed: contents.uid.map { FlipTear.seed(uid: $0, playlistID: playlist.id, mediaKey: item.key) })
                 }
                 .filter { $0.isPlayable || $0.state == .completed }
+            guard items.contains(where: \.isPlayable) else { return nil }
             if !playlist.orderByCurator, let uid = contents.uid {
                 items.sort { playerOrderRank(uid: uid, playlistId: playlist.id, mediaKey: $0.key)
                     < playerOrderRank(uid: uid, playlistId: playlist.id, mediaKey: $1.key) }

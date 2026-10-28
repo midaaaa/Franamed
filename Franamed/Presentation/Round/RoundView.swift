@@ -60,6 +60,7 @@ struct RoundView: View {
     @ObservedObject private var playlists: PlaylistsViewModel
     private let playlistID: String?
     private let ticketSeed: UInt64
+    private let onPlaylistEmpty: () -> Void
 
     private nonisolated static let backgroundSpace = "roundBackground"
     private nonisolated static let contentSpace = "roundContent"
@@ -124,8 +125,9 @@ struct RoundView: View {
                                     room: (safeWidth - max(frameWidth, formOuterWidth)) / 2)
     }
 
-    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil, ticketSeed: UInt64 = FlipTear.randomSeed(), isDismissLocked: Binding<Bool> = .constant(false)) {
+    init(mediaFacade: MediaFacadeProtocol, mediaType: MediaType = .movie, mode: TicketGameMode = .random, filters: MediaFilters = MediaFilters(), frameCount: Int = 6, shuffle: ShuffleMode = .smart, playlists: PlaylistsViewModel, playlistID: String? = nil, ticketSeed: UInt64 = FlipTear.randomSeed(), isDismissLocked: Binding<Bool> = .constant(false), onPlaylistEmpty: @escaping () -> Void = {}) {
         _isDismissLocked = isDismissLocked
+        self.onPlaylistEmpty = onPlaylistEmpty
         self.mode = mode
         self.playlists = playlists
         self.playlistID = playlistID
@@ -242,6 +244,9 @@ struct RoundView: View {
             }
         }
         .coordinateSpace(.named(Self.backgroundSpace))
+        .onChange(of: viewModel.isPlaylistEmpty) { _, isEmpty in
+            if isEmpty { onPlaylistEmpty() }
+        }
         .onChange(of: viewModel.outcome) { _, outcome in
             if outcome == nil { phone.closeApp() }
             mockStats = outcome == nil || !isStatsMocked ? nil

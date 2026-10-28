@@ -164,9 +164,9 @@ final class PlaylistNavigationController: UINavigationController {
     }
 
     private func selectItems(for id: String) -> [UIBarButtonItem] {
-        guard let playlist = playlists.playlist(id: id) else { return [] }
+        guard playlists.playlist(id: id) != nil else { return [] }
         let isSelected = playlists.isSelected(id)
-        if usesVerticalBar { return [verticalSelectItem(for: id, isSelected: isSelected, playlist: playlist)] }
+        if usesVerticalBar { return [verticalSelectItem(for: id, isSelected: isSelected)] }
         var configuration = isSelected ? UIButton.Configuration.glass() : UIButton.Configuration.prominentGlass()
         configuration.title = isSelected ? "Выбрана" : "Выбрать"
         if isSelected {
@@ -187,7 +187,6 @@ final class PlaylistNavigationController: UINavigationController {
             self?.playlists.select(id)
             self?.onDone()
         })
-        button.isEnabled = isSelected || playlist.availableCount > 0
         button.isUserInteractionEnabled = !isSelected
         let width = button.widthAnchor.constraint(equalToConstant: Self.selectMaxWidth)
         selectWidths.add(width)
@@ -200,7 +199,7 @@ final class PlaylistNavigationController: UINavigationController {
         return [.flexibleSpace(), item, .flexibleSpace()]
     }
 
-    private func verticalSelectItem(for id: String, isSelected: Bool, playlist: PlaylistDetail) -> UIBarButtonItem {
+    private func verticalSelectItem(for id: String, isSelected: Bool) -> UIBarButtonItem {
         let item = UIBarButtonItem(title: isSelected ? "Выбрана" : "Выбрать",
                                    image: UIImage(systemName: "checkmark"),
                                    primaryAction: UIAction { [weak self] _ in
@@ -209,7 +208,7 @@ final class PlaylistNavigationController: UINavigationController {
                                    })
         item.style = isSelected ? .plain : .prominent
         item.tintColor = isSelected ? nil : UIColor(Accent.action)
-        item.isEnabled = !isSelected && playlist.availableCount > 0
+        item.isEnabled = !isSelected
         if #available(iOS 27.1, *) { item.axisBehavior = .verticalPreferred }
         return item
     }

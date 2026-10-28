@@ -38,6 +38,11 @@ enum BackendError: Error, LocalizedError, Sendable {
         return false
     }
 
+    var isPlaylistEmpty: Bool {
+        if case let .api(_, code, _) = self { return code == "playlist_empty" }
+        return false
+    }
+
     var isNotSignedIn: Bool {
         if case .notSignedIn = self { return true }
         return false

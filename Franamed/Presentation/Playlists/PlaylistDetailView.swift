@@ -30,12 +30,6 @@ struct PlaylistDetailView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         header(playlist)
                         grid(playlist)
-                        if playlist.availableCount == 0 {
-                            Text("Фильмы появятся, когда для них наберутся кадры")
-                                .font(.footnote)
-                                .foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity)
-                        }
                     }
                     .padding(.horizontal, PlaylistStyle.pageInset(forWidth: contentWidth))
                     .padding(.bottom, 24)

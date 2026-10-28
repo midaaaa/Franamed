@@ -25,8 +25,8 @@ extension PlaylistDetail {
 
     var playableItems: [PlaylistEntry] { items.filter(\.isPlayable) }
     var availableCount: Int { playableItems.count }
-    var answeredCount: Int { items.filter { $0.state == .completed }.count }
-    var correctCount: Int { items.filter { $0.wasCorrect == true }.count }
+    var answeredCount: Int { playableItems.filter { $0.state == .completed }.count }
+    var correctCount: Int { playableItems.filter { $0.wasCorrect == true }.count }
 
     var isFinished: Bool {
         answeredCount > 0 && !playableItems.contains { $0.state != .completed }

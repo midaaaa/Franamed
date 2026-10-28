@@ -25,11 +25,6 @@ struct PlaylistCoverCell: View {
                 .font(PlaylistStyle.shelfTitle)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            if playlist.availableCount == 0 {
-                Text("скоро")
-                    .font(PlaylistStyle.meta)
-                    .foregroundStyle(.secondary)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .top)
     }

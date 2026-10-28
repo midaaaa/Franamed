@@ -190,7 +190,7 @@ final class PlaylistsViewModel: ObservableObject {
         }
         do {
             let contents = try await store.refresh()
-            show(contents, index: try? await catalogIndex.current())
+            show(contents, index: try await catalogIndex.current())
         } catch {
             loadState = playlists.isEmpty ? .failed : .loaded
         }
@@ -198,11 +198,16 @@ final class PlaylistsViewModel: ObservableObject {
 
     func reloadProgress() async {
         let contents = await store.cached()
-        guard contents.snapshot != nil else { return }
-        show(contents, index: await catalogIndex.cached())
+        guard contents.snapshot != nil, let index = await catalogIndex.cached() else { return }
+        show(contents, index: index)
     }
 
-    private func show(_ contents: PlaylistsStore.Contents, index: CatalogIndex?) {
+    func reloadPlayable() async {
+        _ = try? await catalogIndex.refresh()
+        await load()
+    }
+
+    private func show(_ contents: PlaylistsStore.Contents, index: CatalogIndex) {
         uid = contents.uid
         apply(PlaylistAssembly.details(from: contents, index: index, imageBaseURL: imageBaseURL))
         if loadState != .loaded { loadState = .loaded }

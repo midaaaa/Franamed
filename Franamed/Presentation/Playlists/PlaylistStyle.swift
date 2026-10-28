@@ -24,7 +24,6 @@ enum PlaylistStyle {
     }
     static let shelfTitle = Font.system(.headline, design: .serif)
     static let description = Font.system(.body, design: .serif)
-    static let meta = Font.system(.caption, design: .monospaced)
     static let kicker = Font.system(.caption2, design: .monospaced).weight(.semibold)
 
     static let shelfMaxColumns = 4

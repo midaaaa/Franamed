@@ -78,7 +78,13 @@ struct TicketView: View {
                             playlists: playlists,
                             playlistID: viewModel.mode == .collection ? playlists.selectedID(for: mediaType) : nil,
                             ticketSeed: tearSeed,
-                            isDismissLocked: $isRoundDismissLocked
+                            isDismissLocked: $isRoundDismissLocked,
+                            onPlaylistEmpty: {
+                                Task {
+                                    await playlists.reloadPlayable()
+                                    coordinator.dismissRound()
+                                }
+                            }
                         )
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
