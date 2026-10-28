@@ -23,13 +23,12 @@ enum PlaylistEntryDisplay: Equatable {
 extension PlaylistDetail {
     static let frameCount = 6
 
-    var playableItems: [PlaylistEntry] { items.filter(\.isPlayable) }
-    var availableCount: Int { playableItems.count }
-    var answeredCount: Int { playableItems.filter { $0.state == .completed }.count }
-    var correctCount: Int { playableItems.filter { $0.wasCorrect == true }.count }
+    var availableCount: Int { items.count }
+    var answeredCount: Int { items.filter { $0.state == .completed }.count }
+    var correctCount: Int { items.filter { $0.wasCorrect == true }.count }
 
     var isFinished: Bool {
-        answeredCount > 0 && !playableItems.contains { $0.state != .completed }
+        answeredCount > 0 && !items.contains { $0.state != .completed }
     }
 
     var completion: PlaylistCompletion {
@@ -41,7 +40,7 @@ extension PlaylistDetail {
         if entry.state == .completed {
             return entry.wasCorrect == true ? .guessed(frame: entry.attemptsUsed) : .missed
         }
-        let next = playableItems.first { $0.state != .completed }
+        let next = items.first { $0.state != .completed }
         return entry.key == next?.key ? .next : .upcoming
     }
 
@@ -62,10 +61,6 @@ extension PlaylistDetail {
 }
 
 extension PlaylistEntry {
-    var isPlayable: Bool {
-        playable != false && approvedImages >= PlaylistDetail.frameCount
-    }
-
     var posterImageURL: URL? { posterURL.flatMap(URL.init(string:)) }
     var largePosterImageURL: URL? { posterURL.flatMap(TMDBImageSize.large) }
 }

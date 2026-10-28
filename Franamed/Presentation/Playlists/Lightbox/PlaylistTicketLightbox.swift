@@ -75,7 +75,7 @@ struct PlaylistTicketLightbox: View {
 
     private var dragFade: CGFloat { 1 - min(abs(drag) / Self.dragFadeDistance, 1) * 0.6 }
 
-    private var focusedEntry: PlaylistEntry? { playlist.playableItems.first { $0.key == focusKey } }
+    private var focusedEntry: PlaylistEntry? { playlist.items.first { $0.key == focusKey } }
 
     private var isPresenting: Bool { isShareLifted || webSearch != nil }
 
@@ -137,7 +137,7 @@ struct PlaylistTicketLightbox: View {
 
     private var pages: some View {
         GeometryReader { proxy in
-            let entries = playlist.playableItems
+            let entries = playlist.items
             let focusIndex = entries.firstIndex { $0.key == focusKey } ?? 0
             let live = proxy.frame(in: .global)
             let target = closingFrame ?? live
@@ -339,7 +339,7 @@ struct PlaylistTicketLightbox: View {
     }
 
     private func prefetch() {
-        let entries = playlist.playableItems
+        let entries = playlist.items
         guard let index = entries.firstIndex(where: { $0.key == focusKey }) else { return }
         let near = entries[max(0, index - Self.prefetchRadius)...min(entries.count - 1, index + Self.prefetchRadius)]
             .filter { $0.state == .completed }

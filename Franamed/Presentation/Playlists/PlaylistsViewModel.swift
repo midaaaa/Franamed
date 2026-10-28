@@ -255,7 +255,7 @@ final class PlaylistsViewModel: ObservableObject {
         var result: [String: Set<String>] = [:]
         for playlist in playlists where playlist.answeredCount > 0 {
             let since = seen[playlist.id] ?? .infinity
-            let keys = playlist.playableItems
+            let keys = playlist.items
                 .filter { $0.state != .completed && ($0.addedAt ?? 0) > since }
                 .map(\.key)
             if !keys.isEmpty { result[playlist.id] = Set(keys) }

@@ -13,11 +13,7 @@ struct PlaylistDetail: Codable, Sendable, Identifiable, Equatable {
     let description: String?
     let coverImageURL: String?
     let mediaType: MediaType
-    let source: PlaylistSource
-    let allowUncurated: Bool
-    let published: Bool
     let createdAt: Double
-    let progress: PlaylistProgress
     let items: [PlaylistEntry]
     var folderPosters: [String]? = nil
     var orderByCurator: Bool? = nil

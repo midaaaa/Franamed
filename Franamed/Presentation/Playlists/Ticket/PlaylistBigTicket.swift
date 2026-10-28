@@ -116,7 +116,7 @@ struct PlaylistBigTicket: View {
 #Preview("Раскрытый билет") {
     PlaylistsPreview { playlists in
         if let playlist = playlists.playlists.first,
-           let entry = playlist.playableItems.first(where: { $0.state == .completed }) {
+           let entry = playlist.items.first(where: { $0.state == .completed }) {
             PlaylistBigTicket(entry: entry, display: playlist.display(of: entry), number: 1,
                               playlist: playlists.ticket(id: playlist.id), details: nil, width: 293)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

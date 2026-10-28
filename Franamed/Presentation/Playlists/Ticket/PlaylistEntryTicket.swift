@@ -103,7 +103,7 @@ struct PlaylistTicketNumber: View {
                 LazyVGrid(columns: Array(repeating: GridItem(spacing: PlaylistStyle.gridSpacing),
                                          count: PlaylistStyle.gridColumns),
                           spacing: PlaylistStyle.gridSpacing) {
-                    ForEach(Array(playlist.playableItems.enumerated()), id: \.element.key) { index, entry in
+                    ForEach(Array(playlist.items.enumerated()), id: \.element.key) { index, entry in
                         PlaylistEntryTicket(entry: entry, display: playlist.display(of: entry), number: index + 1)
                     }
                 }

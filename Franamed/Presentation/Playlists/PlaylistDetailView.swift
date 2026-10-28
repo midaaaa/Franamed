@@ -120,7 +120,7 @@ struct PlaylistDetailView: View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: PlaylistStyle.gridSpacing),
                             count: PlaylistStyle.gridColumns(width: contentWidth))
         return LazyVGrid(columns: columns, spacing: PlaylistStyle.gridSpacing) {
-            ForEach(Array(playlist.playableItems.enumerated()), id: \.element.key) { index, entry in
+            ForEach(Array(playlist.items.enumerated()), id: \.element.key) { index, entry in
                 cell(playlist, entry: entry, number: index + 1)
             }
         }

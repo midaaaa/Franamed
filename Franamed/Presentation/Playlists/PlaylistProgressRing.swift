@@ -80,7 +80,7 @@ struct PlaylistProgressRing: View {
 
 extension PlaylistProgressRing {
     init(playlist: PlaylistDetail, zoom: CGFloat = 1) {
-        let items = playlist.playableItems
+        let items = playlist.items
         self.init(total: playlist.availableCount,
                   correct: items.filter { $0.wasCorrect == true }.count,
                   missed: items.filter { $0.state == .completed && $0.wasCorrect == false }.count,
