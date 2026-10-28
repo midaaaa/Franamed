@@ -272,14 +272,21 @@ export async function handlePlaylists(request, env, segments, url) {
         // print on it. Publishing is refused unless the playlist has its own
         // cover or at least one member with a poster.
         if (body.published === true) {
-            const hasArt = await env.DB.prepare(
-                `SELECT 1 AS ok FROM playlist_items pi
+            const members = await env.DB.prepare(
+                `SELECT MAX(m.poster_url IS NOT NULL) AS hasPoster, MAX(m.published = 1) AS hasPlayable
+                 FROM playlist_items pi
                  JOIN media_items m ON m.key = pi.media_key
-                 WHERE pi.playlist_id = ? AND m.poster_url IS NOT NULL LIMIT 1`
+                 WHERE pi.playlist_id = ?`
             ).bind(playlistId).first();
 
-            if (!hasArt && !(body.coverImageURL || playlist.cover_image_url)) {
+            if (!members?.hasPoster && !(body.coverImageURL || playlist.cover_image_url)) {
                 throw badRequest("Publishing needs a cover image or at least one title with a poster");
+            }
+
+            // Only when it goes live: a published list that loses its last
+            // playable title stays published, and the phone hides it on its own.
+            if (playlist.published !== 1 && !members?.hasPlayable) {
+                throw badRequest("Publishing needs at least one playable title");
             }
         }
 

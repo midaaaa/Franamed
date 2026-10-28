@@ -5,7 +5,7 @@
 // the count of what is left is exact — no retry loop, no probabilistic "you
 // have probably seen everything" hedging.
 
-import { badRequest, json, notFound, parseInteger, readJSON } from "../lib/http.js";
+import { APIError, badRequest, json, notFound, parseInteger, readJSON } from "../lib/http.js";
 import { authenticate } from "../lib/auth.js";
 import { buildCatalogQuery, loadGenreIds, parseFilters, serializeImage, serializeMediaItem } from "../lib/media.js";
 import { ROUND_LAYOUT_SIZE, selectRoundFrames, selectSpareFrames } from "../lib/frames.js";
@@ -217,7 +217,9 @@ export async function handleRound(request, env, segments, url) {
             }
         }
 
-        if (!row) throw notFound("Nothing left to play in this playlist");
+        // Its own code so the phone can tell a playlist that emptied under it
+        // from a missing one: it refreshes the index and goes back to the ticket.
+        if (!row) throw new APIError(404, "playlist_empty", "Nothing left to play in this playlist");
 
         // Counted over what can be dealt, so a title that left the game does
         // not leave "17 of 100" forever one short.

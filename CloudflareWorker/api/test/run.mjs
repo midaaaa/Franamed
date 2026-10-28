@@ -954,6 +954,30 @@ console.log("playlist replay");
     check("a finished playlist shuffles among the longest rested half", [...picks].every((key) => rested.has(key)), JSON.stringify([...picks]));
 }
 
+console.log("empty playlists");
+{
+    const pl = await call("mod", "POST", "/v1/playlists", { title: "Пусто", mediaType: "movie" });
+    const id = pl.body.id;
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: ["movie_103"] });
+    res = await call("mod", "GET", `/v1/round/next?playlistId=${id}`);
+    check("an empty ladder is playlist_empty", res.status === 404 && res.body.error === "playlist_empty", JSON.stringify(res.body));
+    res = await call("mod", "GET", `/v1/round/next?playlistId=${id}&mediaKey=movie_103`);
+    check("an unplayable mediaKey is still not_found", res.status === 404 && res.body.error === "not_found", JSON.stringify(res.body));
+
+    res = await call("mod", "PATCH", `/v1/playlists/${id}`, { published: true, coverImageURL: "https://img.test/c.jpg" });
+    check("publishing without a playable title is 400", res.status === 400
+        && db.db.prepare("SELECT published FROM playlists WHERE id = ?").get(id).published === 0, JSON.stringify(res.body));
+    await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: ["movie_103", playable[0]] });
+    res = await call("mod", "PATCH", `/v1/playlists/${id}`, { published: true });
+    check("one playable title is enough to publish", res.status === 200 && res.body.published === true, JSON.stringify(res.body));
+    res = await call("mod", "PUT", `/v1/playlists/${id}/items`, { mediaKeys: ["movie_103"] });
+    check("removing the last playable from a published one is allowed", res.status === 200
+        && db.db.prepare("SELECT published FROM playlists WHERE id = ?").get(id).published === 1, JSON.stringify(res.body));
+    res = await call("mod", "PATCH", `/v1/playlists/${id}`, { published: true, title: "Всё ещё пусто", coverImageURL: "https://img.test/c.jpg" });
+    check("an emptied published one can still be edited", res.status === 200, JSON.stringify(res.body));
+    await call("me", "DELETE", `/v1/playlists/${id}`);
+}
+
 console.log("admin deletes users");
 check("a moderator cannot delete accounts", (await call("mod", "DELETE", "/v1/admin/users/cur")).status === 403);
 check("an admin cannot delete themselves here", (await call("me", "DELETE", "/v1/admin/users/me")).status === 400);
