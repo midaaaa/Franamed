@@ -30,6 +30,8 @@ enum TicketStubMetrics {
         return (height / 2).rounded(.up) * 2
     }
 
+    static let codeZoneTop = TicketStyle.stubPadding + TicketStyle.stubBodyHeight - TicketStyle.codeHeight
+
     private static func layoutHeight(edgeStyle: TicketEdgeStyle) -> CGFloat {
         TicketStyle.stubPadding + contentHeight + bottomPadding(width: TicketStyle.referenceWidth, edgeStyle: edgeStyle)
     }

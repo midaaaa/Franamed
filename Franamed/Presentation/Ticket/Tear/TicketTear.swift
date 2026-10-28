@@ -32,6 +32,7 @@ struct TicketTear<Content: View>: View {
     private let returnToken: Int
     private let onReturnChange: ((Bool) -> Void)?
     private let onStubAwayChange: ((Bool) -> Void)?
+    private let onResumableChange: ((Bool) -> Void)?
 
     @State private var box = TicketTearEngineBox()
     @State private var size: CGSize = .zero
@@ -60,6 +61,7 @@ struct TicketTear<Content: View>: View {
          onComplete: (() -> Void)? = nil,
          onReturnChange: ((Bool) -> Void)? = nil,
          onStubAwayChange: ((Bool) -> Void)? = nil,
+         onResumableChange: ((Bool) -> Void)? = nil,
          @ViewBuilder content: () -> Content) {
         self.config = config
         self.stubShape = stubShape
@@ -73,6 +75,7 @@ struct TicketTear<Content: View>: View {
         self.returnToken = returnToken
         self.onReturnChange = onReturnChange
         self.onStubAwayChange = onStubAwayChange
+        self.onResumableChange = onResumableChange
     }
 
     private var engine: TicketTearEngine { box.engine }
@@ -151,7 +154,10 @@ struct TicketTear<Content: View>: View {
                 Task { @MainActor in finished?() }
             }
             .onAppear {
-                engine.onResumableChange = { canResumeTear = $0 }
+                engine.onResumableChange = {
+                    canResumeTear = $0
+                    onResumableChange?($0)
+                }
                 engine.onTabBreak = { Haptics.shared.play(.tabBreak) }
                 engine.onTabHeal = { Haptics.shared.play(.tabHeal) }
                 engine.onReturnComplete = { onReturnChange?(false) }

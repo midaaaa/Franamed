@@ -11,14 +11,43 @@ struct TicketStubView: View {
     let card: TicketCard
     let setup: RoundSetup
     let genreNames: [String]
+    let width: CGFloat
+    let edgeStyle: TicketEdgeStyle
     let isInteractive: Bool
     let onOpenFilters: () -> Void
     let onStart: () -> Void
 
     var body: some View {
-        TicketStubBody(card: card, setup: setup, genreNames: genreNames,
-                       onOpenFilters: onOpenFilters, onStart: onStart)
-            .allowsHitTesting(isInteractive)
+        TicketStubBody(card: card, setup: setup, genreNames: genreNames)
+            .modifier(TicketStubFrame(width: width, edgeStyle: edgeStyle))
+            .overlay(alignment: .top) { tapZones.allowsHitTesting(isInteractive) }
+    }
+
+    private var hasPlayCode: Bool {
+        card.mode != .collection || card.playlist != nil
+    }
+
+    private var tapZones: some View {
+        VStack(spacing: 0) {
+            Button(action: onOpenFilters) { tapZone }
+                .frame(height: hasPlayCode ? TicketStubMetrics.codeZoneTop * TicketStyle.zoom(forWidth: width) : nil)
+            if hasPlayCode {
+                Button(action: onStart) { tapZone }
+            }
+        }
+        .buttonStyle(TicketStubTapStyle())
+    }
+
+    private var tapZone: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+    }
+}
+
+private struct TicketStubTapStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
 
@@ -26,13 +55,10 @@ struct TicketStubBody: View {
     let card: TicketCard
     let setup: RoundSetup
     let genreNames: [String]
-    var onOpenFilters: () -> Void = {}
-    var onStart: () -> Void = {}
 
     var body: some View {
         if card.mode == .collection {
-            PlaylistStubBody(mediaType: card.mediaType, mode: card.mode, playlist: card.playlist,
-                             onOpenPicker: onOpenFilters, onStart: onStart)
+            PlaylistStubBody(mediaType: card.mediaType, mode: card.mode, playlist: card.playlist)
         } else {
             regularBody
         }
@@ -46,18 +72,11 @@ struct TicketStubBody: View {
                         .font(.system(size: 11, weight: .semibold))
                 }
             }
-            Button(action: onOpenFilters) {
-                TicketFilterSummaryView(summary: TicketFilterSummary(setup: setup, genreNames: genreNames))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .contentShape(Rectangle())
-            }
-            Button(action: onStart) {
-                TicketPlayCode(caption: "ИГРАТЬ", serial: serial)
-                    .contentShape(Rectangle())
-            }
-            .padding(.top, TicketStyle.codeGap)
+            TicketFilterSummaryView(summary: TicketFilterSummary(setup: setup, genreNames: genreNames))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            TicketPlayCode(caption: "ИГРАТЬ", serial: serial)
+                .padding(.top, TicketStyle.codeGap)
         }
-        .buttonStyle(.plain)
         .modifier(TicketStubLayout(serial: serial))
     }
 
@@ -77,11 +96,12 @@ struct TicketStubBody: View {
             frameCount: 3
         ),
         genreNames: ["Комедия", "Ужасы", "Триллер", "Драма"],
+        width: 293,
+        edgeStyle: .straight,
         isInteractive: true,
         onOpenFilters: {},
         onStart: {}
     )
-    .modifier(TicketStubFrame(width: 293, edgeStyle: .straight))
     .background(TicketStyle.paper)
 }
 
@@ -90,10 +110,11 @@ struct TicketStubBody: View {
         card: TicketCard(mediaType: .movie, posterPath: nil, mode: .curated),
         setup: RoundSetup(),
         genreNames: [],
+        width: 293,
+        edgeStyle: .scalloped,
         isInteractive: true,
         onOpenFilters: {},
         onStart: {}
     )
-    .modifier(TicketStubFrame(width: 293, edgeStyle: .scalloped))
     .background(TicketStyle.paper)
 }

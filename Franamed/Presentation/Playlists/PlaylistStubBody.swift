@@ -11,8 +11,6 @@ struct PlaylistStubBody: View {
     let mediaType: MediaType
     let mode: TicketGameMode
     let playlist: PlaylistTicket?
-    var onOpenPicker: () -> Void = {}
-    var onStart: () -> Void = {}
 
     private static let ringSide: CGFloat = 64
     private static let stampScale: CGFloat = 1
@@ -24,16 +22,10 @@ struct PlaylistStubBody: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TicketStubHeader(title: mode.displayName, media: mediaType.displayName)
-            Button(action: onOpenPicker) {
-                content.contentShape(Rectangle())
-            }
-            Button(action: onStart) {
-                TicketPlayCode(caption: caption, serial: serial)
-                    .contentShape(Rectangle())
-            }
-            .padding(.top, TicketStyle.codeGap)
+            content
+            TicketPlayCode(caption: caption, serial: serial)
+                .padding(.top, TicketStyle.codeGap)
         }
-        .buttonStyle(.plain)
         .modifier(TicketStubLayout(serial: serial))
     }
 
@@ -49,7 +41,6 @@ struct PlaylistStubBody: View {
                     .frame(width: Self.ringSide)
                     .padding(.trailing, Self.stampOverhang)
                     .environment(\.colorScheme, .light)
-                    .allowsHitTesting(false)
             }
         }
         .padding(.top, TicketStyle.codeGap)

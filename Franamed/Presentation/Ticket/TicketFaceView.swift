@@ -43,6 +43,7 @@ struct TicketFaceView: View, Equatable {
     let onOpenPoster: () -> Void
     var onReturnChange: ((Bool) -> Void)?
     var onStubAwayChange: ((Bool) -> Void)?
+    var onResumableChange: ((Bool) -> Void)?
 
     @State private var posterImage: UIImage?
     @Environment(\.displayScale) private var displayScale
@@ -78,7 +79,8 @@ struct TicketFaceView: View, Equatable {
                    isContentComplete: !hidesStub,
                    rasterizesContent: isRasterized, returnToken: returnToken,
                    onComplete: onStart, onReturnChange: onReturnChange,
-                   onStubAwayChange: onStubAwayChange) {
+                   onStubAwayChange: onStubAwayChange,
+                   onResumableChange: onResumableChange) {
             ticket
         }
         .task(id: posterSource) { await loadPoster() }
@@ -97,11 +99,12 @@ struct TicketFaceView: View, Equatable {
                 card: card,
                 setup: setup,
                 genreNames: genreNames,
+                width: width,
+                edgeStyle: edgeStyle,
                 isInteractive: isStubGrabEnabled,
                 onOpenFilters: onOpenFilters,
                 onStart: onStart
             )
-            .modifier(TicketStubFrame(width: width, edgeStyle: edgeStyle))
             .background(paper)
             .modifier(StubVisibility(isHidden: hidesStub))
             .matchedTransitionSource(id: card.mediaType, in: filtersZoom)

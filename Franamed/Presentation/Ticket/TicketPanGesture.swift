@@ -9,8 +9,8 @@ import SwiftUI
 import UIKit
 
 struct TicketPanGesture: UIGestureRecognizerRepresentable {
-    let posterHeight: CGFloat
     let isEnabled: Bool
+    let canStart: (CGPoint) -> Bool
     let onChange: (CGSize) -> Void
     let onEnd: (_ translation: CGSize, _ velocity: CGSize) -> Void
 
@@ -29,8 +29,9 @@ struct TicketPanGesture: UIGestureRecognizerRepresentable {
         let coordinator = context.coordinator
         switch recognizer.state {
         case .began:
-            let start = context.converter.localLocation.y - translation.height
-            coordinator.isTracking = isEnabled && start < posterHeight
+            let location = context.converter.localLocation
+            let start = CGPoint(x: location.x - translation.width, y: location.y - translation.height)
+            coordinator.isTracking = isEnabled && canStart(start)
             if coordinator.isTracking { onChange(translation) }
         case .changed:
             if coordinator.isTracking { onChange(translation) }

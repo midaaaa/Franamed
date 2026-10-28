@@ -37,6 +37,7 @@ struct TicketView: View {
     @State private var isTransitioning = false
     @State private var isRasterized = false
     @State private var isDraggingCard = false
+    @State private var isStubResumable = false
     @State private var hasVerticalToolbar = false
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
@@ -186,7 +187,8 @@ struct TicketView: View {
             onStart: { present { startOrOpenPlaylist() } },
             onOpenPoster: openPlaylistFromPoster,
             onReturnChange: { setReturning($0) },
-            onStubAwayChange: { setStubAway($0) }
+            onStubAwayChange: { setStubAway($0) },
+            onResumableChange: { isStubResumable = $0 }
         )
         .equatable()
         .allowsHitTesting(isInteractive)
@@ -194,9 +196,19 @@ struct TicketView: View {
         .offset(cardOffset)
         .rotationEffect(.degrees(cardTilt), anchor: .bottom)
         .scaleEffect(cardScale)
-        .gesture(TicketPanGesture(posterHeight: posterHeight, isEnabled: isInteractive,
+        .gesture(TicketPanGesture(isEnabled: isInteractive,
+                                  canStart: { canStartCardDrag(at: $0, width: width, posterHeight: posterHeight) },
                                   onChange: { dragChanged($0) },
                                   onEnd: { dragEnded(translation: $0, velocity: $1) }))
+    }
+
+    private func canStartCardDrag(at point: CGPoint, width: CGFloat, posterHeight: CGFloat) -> Bool {
+        guard point.y >= posterHeight, currentCard.canTear else { return true }
+        guard !isStubResumable else { return false }
+        let grabDepth = TicketTearConfig().grabDepth
+        let cardHeight = posterHeight + TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
+        let isInGrabCorner = point.y > cardHeight - grabDepth && (point.x < grabDepth || point.x > width - grabDepth)
+        return !isInGrabCorner
     }
 
     // MARK: Content
