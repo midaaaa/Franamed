@@ -155,7 +155,15 @@ struct PlaylistStubScar: View {
     private static let liftWidth: CGFloat = 1.4
     private static let liftOffset: CGFloat = 1.3
     private static let liftInk = Color.white.opacity(0.5)
+    private static let printCreaseInk = Color.black.opacity(0.45)
     private static let fadeLength: CGFloat = 10
+
+    @Environment(\.ticketInk) private var ink
+
+    private var lift: Color {
+        guard ink.isPrint else { return Self.liftInk }
+        return Color(red: Double(ink.core.x), green: Double(ink.core.y), blue: Double(ink.core.z))
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -164,9 +172,9 @@ struct PlaylistStubScar: View {
             let end = CGFloat(reach)
             let fade = min(Self.fadeLength * k / max(proxy.size.height, 1), end)
             ZStack {
-                shape.stroke(Self.liftInk, style: StrokeStyle(lineWidth: Self.liftWidth * k, lineJoin: .round))
+                shape.stroke(lift, style: StrokeStyle(lineWidth: Self.liftWidth * k, lineJoin: .round))
                     .offset(x: Self.liftOffset * k)
-                shape.stroke(Self.creaseInk, style: StrokeStyle(lineWidth: Self.creaseWidth * k, lineJoin: .round))
+                shape.stroke(ink.isPrint ? Self.printCreaseInk : Self.creaseInk, style: StrokeStyle(lineWidth: Self.creaseWidth * k, lineJoin: .round))
             }
             .mask {
                 LinearGradient(stops: [.init(color: .black, location: 0),

@@ -46,6 +46,8 @@ struct ResultStubProgress: Hashable {
 struct ResultStubDots: View {
     let progress: ResultStubProgress
 
+    @Environment(\.ticketInk) private var ink
+
     private static let dotSize: CGFloat = 6
     private static let ringSize: CGFloat = 11
     private static let spacing: CGFloat = 3
@@ -61,7 +63,7 @@ struct ResultStubDots: View {
                     .overlay {
                         if index == progress.currentFrame {
                             Circle()
-                                .stroke(.black.opacity(0.7), lineWidth: 1)
+                                .stroke(ink.ink.opacity(0.7), lineWidth: 1)
                                 .frame(width: Self.ringSize, height: Self.ringSize)
                         }
                     }
@@ -71,8 +73,8 @@ struct ResultStubDots: View {
 
     private func color(for mark: ResultStubMark) -> Color {
         switch mark {
-        case .unseen: .black.opacity(0.18)
-        case .open: .black.opacity(0.7)
+        case .unseen: ink.ink.opacity(0.18)
+        case .open: ink.ink.opacity(0.7)
         case .wrong: .red
         case .correct: .green
         }

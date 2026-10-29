@@ -55,6 +55,7 @@ struct TicketFaceView: View, Equatable {
         config.stubExtent = TicketStubMetrics.height(width: width, edgeStyle: edgeStyle)
         config.canvasPadding = max(config.canvasPadding, tearOverscan)
         config.edge = tearEdge
+        config.backColor = ink.paper
         return config
     }
 
@@ -65,11 +66,12 @@ struct TicketFaceView: View, Equatable {
         let setup: RoundSetup
         let genreNames: [String]
         let playlist: PlaylistTicket?
+        let ink: TicketInk
     }
 
     private var contentID: ContentID {
         ContentID(mediaType: card.mediaType, mode: card.mode, posterPath: card.posterPath,
-                  setup: setup, genreNames: genreNames, playlist: card.playlist)
+                  setup: setup, genreNames: genreNames, playlist: card.playlist, ink: ink)
     }
 
     var body: some View {
@@ -105,7 +107,8 @@ struct TicketFaceView: View, Equatable {
                 onOpenFilters: onOpenFilters,
                 onStart: onStart
             )
-            .background(paper)
+            .environment(\.ticketInk, ink)
+            .background(ink.paper)
             .modifier(StubVisibility(isHidden: hidesStub))
             .matchedTransitionSource(id: card.mediaType, in: filtersZoom)
         }
@@ -116,7 +119,7 @@ struct TicketFaceView: View, Equatable {
                                      designSize: CGSize(width: width, height: posterHeight + tearConfig.stubExtent)))
     }
 
-    private var paper: Color { TicketStyle.paper }
+    private var ink: TicketInk { .stub(for: card.mediaType) }
 
     @ViewBuilder
     private var poster: some View {

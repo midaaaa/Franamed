@@ -66,7 +66,7 @@ struct TicketStubBody: View {
 
     private var regularBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TicketStubHeader(title: card.mode.displayName, media: card.mediaType.displayName) {
+            TicketStubHeader(title: card.mode.displayName, mediaType: card.mediaType) {
                 if card.mode.roundSource == .curated {
                     ShuffleIcon(mode: setup.shuffle)
                         .font(.system(size: 11, weight: .semibold))

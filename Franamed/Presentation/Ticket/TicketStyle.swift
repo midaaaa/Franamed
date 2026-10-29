@@ -9,7 +9,6 @@ import SwiftUI
 
 enum TicketStyle {
     static let name = Font.system(size: 26, weight: .heavy)
-    static let media = Font.system(size: 10, weight: .regular)
     static let fieldLabel = Font.system(size: 7.5, weight: .heavy)
     static let valueSize: CGFloat = 15
     static let valueUIFont = UIFont.systemFont(ofSize: valueSize, weight: .medium)
@@ -20,10 +19,8 @@ enum TicketStyle {
         .system(size: valueSize, weight: isSet ? .semibold : .medium).monospacedDigit()
     }
 
-    static let placeholderInk = Color.black.opacity(0.32)
     static let paper = Color(white: 0.9)
 
-    static let mediaTracking: CGFloat = 0.6
     static let fieldLabelTracking: CGFloat = 1
     static let codeCaptionTracking: CGFloat = 2.4
     static let serialTracking: CGFloat = 1.6

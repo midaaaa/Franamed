@@ -19,9 +19,11 @@ struct PlaylistStubBody: View {
     private static let nameLines = 4
     private static let nameMinimumScale: CGFloat = 0.6
 
+    @Environment(\.ticketInk) private var ink
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TicketStubHeader(title: mode.displayName, media: mediaType.displayName)
+            TicketStubHeader(title: mode.displayName, mediaType: mediaType)
             content
             TicketPlayCode(caption: caption, serial: serial)
                 .padding(.top, TicketStyle.codeGap)
@@ -40,7 +42,7 @@ struct PlaylistStubBody: View {
                 PlaylistProgressRing(ticket: playlist, stampScale: Self.stampScale)
                     .frame(width: Self.ringSide)
                     .padding(.trailing, Self.stampOverhang)
-                    .environment(\.colorScheme, .light)
+                    .environment(\.colorScheme, ink.isPrint ? .dark : .light)
             }
         }
         .padding(.top, TicketStyle.codeGap)

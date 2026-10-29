@@ -39,11 +39,13 @@ struct FlipUniforms {
     float4 tearState;
     float4 tearHeal;
     float4 faceBlend;
+    float4 paperCore;
 };
 
 constant float3 toScreen = float3(0.0, -0.866, -0.5);
 constant float screenReach = 0.9;
 constant float screenWrap = 2.0;
+constant float edgeGloss = 0.3;
 
 struct FlipVertex {
     float4 position [[position]];
@@ -123,6 +125,10 @@ static bool tearKeeps(constant FlipUniforms &u, float2 p) {
     return side < 0.0 ? p.x < line + fuzz : p.x >= line - fuzz;
 }
 
+static half3 coreScale(constant FlipUniforms &u) {
+    return half3(u.paperCore.rgb / 0.9);
+}
+
 static half3 tearBand(constant FlipUniforms &u, float2 p, bool isBack, half3 base) {
     float tip = tearTipY(u);
     if (!isTorn(u) || p.y >= tip) return base;
@@ -134,7 +140,7 @@ static half3 tearBand(constant FlipUniforms &u, float2 p, bool isBack, half3 bas
     float width = (wide ? 1.9 : 0.45) * k * (0.7 + 0.3 * tearNoise(p.y / (2.4 * k), u.tearShape.z + 21.0)) * grown;
     float band = 1.0 - smoothstep(width * 0.55, width + 0.35 * k, inward);
     float streak = 0.9 + 0.1 * tearNoise(p.y / (0.3 * k), u.tearShape.z + 5.0);
-    return mix(base, half3(0.97h, 0.96h, 0.93h) * half(streak), half(band));
+    return mix(base, half3(0.97h, 0.96h, 0.93h) * coreScale(u) * half(streak), half(band));
 }
 
 static half3 tearScar(constant FlipUniforms &u, float2 p, half3 base) {
@@ -149,7 +155,7 @@ static half3 tearScar(constant FlipUniforms &u, float2 p, half3 base) {
     float crease = exp(-across * across / 0.5) * along * broken;
     float lift = exp(-(across - 0.9) * (across - 0.9) / 0.4) * along * broken;
     half3 scarred = mix(base, base * 0.7h, half(crease * 0.75));
-    return mix(scarred, half3(0.98h, 0.97h, 0.94h), half(lift * 0.5));
+    return mix(scarred, half3(0.98h, 0.97h, 0.94h) * coreScale(u), half(lift * 0.5));
 }
 
 static half3 tearHealGlow(constant FlipUniforms &u, float2 p, half3 lit) {
@@ -269,13 +275,13 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
     bool isEdge = u.face < 0.5;
     bool isBack = u.face > 1.5;
 
-    half3 base = half3(0.9h * 0.88h);
+    half3 base = half3(u.paperCore.rgb) * 0.88h;
     half alpha = 1.0h;
 
     if (isEdge && in.uv.x < -0.5) {
         float2 paperUV = in.paper / float2(u.width, u.height) + 0.5;
         if (frontTexture.sample(textureSampler, paperUV).a < 0.5h) { discard_fragment(); }
-        base = half3(0.95h, 0.94h, 0.9h) * half(0.92 + 0.08 * tearNoise(in.paper.y / (0.4 * tearZoom(u)), u.tearShape.z + 9.0));
+        base = half3(0.95h, 0.94h, 0.9h) * coreScale(u) * half(0.92 + 0.08 * tearNoise(in.paper.y / (0.4 * tearZoom(u)), u.tearShape.z + 9.0));
     } else if (!tearKeeps(u, in.paper)) {
         discard_fragment();
     }
@@ -308,7 +314,7 @@ fragment half4 ticketFlipFragment(FlipVertex in [[stage_in]],
     float lambert = (0.58 + 0.42 * clamp(dot(N, L), 0.0, 1.0)) / max(lambertFlat, 0.001);
 
     float specFlat = pow(clamp(H.z, 0.0, 1.0), u.gloss) * u.sheen;
-    float spec = max(pow(clamp(dot(N, H), 0.0, 1.0), u.gloss) * u.sheen - specFlat, 0.0);
+    float spec = max(pow(clamp(dot(N, H), 0.0, 1.0), u.gloss) * u.sheen - specFlat, 0.0) * (isEdge ? edgeGloss : 1.0);
 
     float3 tint = u.hallTint.rgb;
     float amount = u.hallTint.w;

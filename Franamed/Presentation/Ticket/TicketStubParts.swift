@@ -12,6 +12,7 @@ struct TicketStubLayout: ViewModifier {
     var serial: String?
 
     @Environment(\.ticketEdgeStyle) private var edgeStyle
+    @Environment(\.ticketInk) private var ink
 
     func body(content: Content) -> some View {
         content
@@ -29,7 +30,7 @@ struct TicketStubLayout: ViewModifier {
                         .offset(y: TicketStubMetrics.serialOffset(edgeStyle: edgeStyle))
                 }
             }
-            .foregroundStyle(Color.black)
+            .foregroundStyle(ink.ink)
     }
 }
 
@@ -41,7 +42,7 @@ struct TicketRule: View {
 
 struct TicketStubHeader<Accessory: View>: View {
     let title: String
-    let media: String
+    let mediaType: MediaType
     @ViewBuilder var accessory: Accessory
 
     var body: some View {
@@ -53,10 +54,7 @@ struct TicketStubHeader<Accessory: View>: View {
                     .minimumScaleFactor(TicketStyle.minimumScale)
                 Spacer(minLength: TicketStyle.headerSpacing)
                 HStack(spacing: TicketStyle.headerSpacing) {
-                    Text(media.uppercased())
-                        .font(TicketStyle.media)
-                        .tracking(TicketStyle.mediaTracking)
-                        .lineLimit(1)
+                    TicketMediaLabel(mediaType: mediaType)
                     accessory
                 }
             }
@@ -66,8 +64,8 @@ struct TicketStubHeader<Accessory: View>: View {
 }
 
 extension TicketStubHeader where Accessory == EmptyView {
-    init(title: String, media: String) {
-        self.init(title: title, media: media) { EmptyView() }
+    init(title: String, mediaType: MediaType) {
+        self.init(title: title, mediaType: mediaType) { EmptyView() }
     }
 }
 
@@ -121,6 +119,7 @@ struct TicketPlayCode: View {
     let serial: String
 
     @Environment(\.ticketStubIsUsed) private var isUsed
+    @Environment(\.ticketInk) private var ink
 
     var body: some View {
         ZStack {
@@ -139,7 +138,7 @@ struct TicketPlayCode: View {
             .lineLimit(1)
             .frame(height: 12)
             .padding(.horizontal, 9)
-            .background(TicketStyle.paper)
+            .background(ink.paper)
     }
 }
 

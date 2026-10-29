@@ -17,6 +17,7 @@ struct ResultStubPaper<Content: View>: View {
     var mirrored = false
     var clipsShape = true
     var edge = TearEdge.plain
+    var ink = TicketInk.light
     @ViewBuilder let content: Content
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
@@ -27,7 +28,7 @@ struct ResultStubPaper<Content: View>: View {
 
         content
             .modifier(TicketStubFrame(width: stubWidth, edgeStyle: edgeStyle))
-            .background(TicketStyle.paper)
+            .background(ink.paper)
             .clipShape(clipsShape ? AnyShape(ResultStubShape(edgeStyle: edgeStyle, mirrored: mirrored, edge: edge)) : AnyShape(Rectangle()))
             .environment(\.colorScheme, .light)
     }

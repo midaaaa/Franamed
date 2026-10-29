@@ -86,6 +86,7 @@ struct PlaylistBigTicket: View {
                                 genreNames: [], edge: content.tearEdge)
         }
         .environment(\.resultStubWidth, width)
+        .environment(\.flipPaperCore, TicketInk.stub(for: entry.mediaType).core)
         .environment(\.flipTear, FlipTear.round(seed: entry.stubTearSeed, attemptsMade: entry.attemptsUsed,
                                                 frameCount: PlaylistDetail.frameCount, outcome: display.outcome,
                                                 hasLanded: true))
@@ -95,7 +96,8 @@ struct PlaylistBigTicket: View {
     // MARK: Pending stub
 
     private var pendingStub: some View {
-        PlaylistStubPiece(width: width, edgeStyle: edgeStyle, cut: .attached) {
+        let ink = TicketInk.stub(for: entry.mediaType)
+        return PlaylistStubPiece(width: width, edgeStyle: edgeStyle, cut: .attached) {
             let zoom = TicketStyle.zoom(forWidth: width)
             VStack(alignment: .leading, spacing: TicketStyle.stubSpacing) {
                 PlaylistTicketNumber(number: number, display: display)
@@ -103,11 +105,12 @@ struct PlaylistBigTicket: View {
                 Text(display == .next ? "СЛЕДУЮЩИЙ" : "ВПЕРЕДИ")
                     .font(.system(size: Self.labelSize * zoom, weight: .heavy))
                     .tracking(Self.labelTracking * zoom)
-                    .foregroundStyle(TicketStyle.placeholderInk)
+                    .foregroundStyle(ink.placeholder)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .modifier(TicketStubFrame(width: width, edgeStyle: edgeStyle))
-            .background(TicketStyle.paper)
+            .background(ink.paper)
+            .environment(\.ticketInk, ink)
         }
         .environment(\.colorScheme, .light)
     }

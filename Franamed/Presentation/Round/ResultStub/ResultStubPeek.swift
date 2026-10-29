@@ -132,6 +132,7 @@ struct ResultStubPeek: View {
                                        recordingMean: recordingLight,
                                        sheenScale: hasLanded ? 1 : Self.flightSheen))
         .environment(\.flipTear, tear)
+        .environment(\.flipPaperCore, TicketInk.stub(for: mediaType).core)
         .modifier(ResultStubShake(progress: shake))
         .modifier(ResultStubShake(progress: lastLifeShake, strength: lastLifeStrength))
         .rotation3DEffect(.degrees(tilt), axis: (x: 1, y: 0, z: 0), anchor: .top,

@@ -40,6 +40,7 @@ struct FlipUniforms {
     var tearState: SIMD4<Float>
     var tearHeal: SIMD4<Float>
     var faceBlend: SIMD4<Float>
+    var paperCore: SIMD4<Float>
 }
 
 struct FlipFlight {
@@ -85,6 +86,7 @@ extension EnvironmentValues {
     @Entry var flipRecordingLighting: FlipLighting?
     @Entry var flipTear = FlipTear.none
     @Entry var flipTearSnaps = false
+    @Entry var flipPaperCore = TicketInk.light.core
 }
 
 struct FlipRenderer: UIViewRepresentable {
@@ -100,6 +102,7 @@ struct FlipRenderer: UIViewRepresentable {
     let isProtected: Bool
     var tear = FlipTear.none
     var snapsTear = false
+    var paperCore = TicketInk.light.core
     let providesSnapshot: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(engine: engine) }
@@ -163,7 +166,9 @@ struct FlipRenderer: UIViewRepresentable {
         coordinator.stubSize = stubSize
         coordinator.setOutline(size: stubSize, edgeStyle: edgeStyle, edge: tear.edge)
         let lightChanged = coordinator.lighting != lighting || coordinator.tilt != tilt
+            || coordinator.paperCore != paperCore
         coordinator.lighting = lighting
+        coordinator.paperCore = paperCore
         coordinator.tilt = tilt
         let tearChanged = coordinator.setTear(tear)
         if tearChanged, snapsTear { coordinator.snapTear() }
@@ -180,6 +185,7 @@ struct FlipRenderer: UIViewRepresentable {
         var stubSize: CGSize = .zero
         var lighting = FlipLighting.neutral
         var tilt: Double = 0
+        var paperCore = TicketInk.light.core
         weak var view: MTKView?
         private(set) var outlineChanged = false
         var angleOverride: Double?
@@ -351,6 +357,7 @@ struct FlipRenderer: UIViewRepresentable {
             flight.stubSize = stubSize
             flight.lighting = lighting
             flight.tilt = tilt
+            flight.paperCore = paperCore
             flight.tear = tear
             let view = FlipRenderer.makeMetalView(coordinator: flight, sharing: self)
             view.isPaused = true
@@ -504,7 +511,8 @@ struct FlipRenderer: UIViewRepresentable {
                 tearShape: tear.shape,
                 tearState: tear.state,
                 tearHeal: tear.heal,
-                faceBlend: SIMD4(faceBlend, 0, 0, 0)
+                faceBlend: SIMD4(faceBlend, 0, 0, 0),
+                paperCore: SIMD4(paperCore, 0)
             )
         }
 

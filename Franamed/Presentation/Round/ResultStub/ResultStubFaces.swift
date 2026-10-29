@@ -18,12 +18,14 @@ struct ResultStubFront: View {
     private static let shareLink = "franamed.app/s/xk3p"
 
     var body: some View {
-        ResultStubPaper(mirrored: true, clipsShape: clipsShape, edge: content.tearEdge) {
+        let ink = TicketInk.stub(for: content.mediaType)
+        ResultStubPaper(mirrored: true, clipsShape: clipsShape, edge: content.tearEdge, ink: ink) {
             VStack(alignment: .leading, spacing: 0) {
                 serviceLine
                 details.opacity(hidesDetails ? 0 : 1)
             }
             .modifier(TicketStubLayout())
+            .environment(\.ticketInk, ink)
         }
     }
 
@@ -136,9 +138,11 @@ struct ResultStubSetupBack: View {
     var edge = TearEdge.plain
 
     var body: some View {
-        ResultStubPaper(edge: edge) {
+        let ink = TicketInk.stub(for: card.mediaType)
+        ResultStubPaper(edge: edge, ink: ink) {
             TicketStubBody(card: card, setup: setup, genreNames: genreNames)
                 .environment(\.ticketStubIsUsed, true)
+                .environment(\.ticketInk, ink)
                 .allowsHitTesting(false)
         }
     }

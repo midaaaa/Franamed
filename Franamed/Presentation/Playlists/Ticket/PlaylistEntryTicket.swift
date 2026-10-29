@@ -24,6 +24,7 @@ struct PlaylistEntryTicket: View {
     }
 
     private var edgeStyle: TicketEdgeStyle { TicketEdgeStyle(hasScallops: hasScallops) }
+    private var ink: TicketInk { .stub(for: entry.mediaType) }
 
     var body: some View {
         Color.clear
@@ -51,8 +52,10 @@ struct PlaylistEntryTicket: View {
             PlaylistStubPiece(width: width, edgeStyle: edgeStyle, cut: entry.stubCut(display)) {
                 stub
                     .modifier(TicketStubFrame(width: width, edgeStyle: edgeStyle))
-                    .background(TicketStyle.paper)
+                    .background(ink.paper)
             }
+            .environment(\.ticketInk, ink)
+            .environment(\.flipPaperCore, ink.core)
             .offset(y: display.isPlayed ? PlaylistTicketGeometry.gap(width: width) : 0)
         }
         .frame(width: width, height: PlaylistTicketGeometry.frameHeight(width: width, edgeStyle: edgeStyle),
@@ -89,10 +92,12 @@ struct PlaylistTicketNumber: View {
     private static let size: CGFloat = 64
     private static let longSize: CGFloat = 48
 
+    @Environment(\.ticketInk) private var ink
+
     var body: some View {
         Text(number, format: .number.precision(.integerLength(2)))
             .font(.system(size: number < 100 ? Self.size : Self.longSize, weight: .semibold, design: .monospaced))
-            .foregroundStyle(display == .upcoming ? TicketStyle.placeholderInk : Color.black)
+            .foregroundStyle(display == .upcoming ? ink.placeholder : ink.ink)
     }
 }
 
