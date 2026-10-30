@@ -34,6 +34,8 @@ enum TicketGameMode: Int, CaseIterable {
         return parts.compactMap { $0 }.joined(separator: " ")
     }
 
+    var hasOwnPoster: Bool { self == .random || self == .curated }
+
     var roundSource: RoundSource {
         switch self {
         case .curated: .curated

@@ -123,7 +123,9 @@ struct TicketFaceView: View, Equatable {
 
     @ViewBuilder
     private var poster: some View {
-        if let posterImage {
+        if card.mode.hasOwnPoster {
+            ModePosterView(mode: card.mode)
+        } else if let posterImage {
             Image(uiImage: posterImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -167,6 +169,7 @@ struct TicketFaceView: View, Equatable {
     }
 
     private var posterURL: URL? {
+        if card.mode.hasOwnPoster { return nil }
         if card.mode == .collection { return card.playlist?.coverURL }
         return card.posterPath.flatMap { URL(string: "https://image.tmdb.org/t/p/w780/\($0)") }
     }

@@ -53,6 +53,7 @@ struct TicketView: View {
     var body: some View {
         NavigationStack(path: $coordinator.gamePath) {
             cardLayer
+                .environment(\.posterTiltIsCovered, isTicketCovered)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -135,6 +136,10 @@ struct TicketView: View {
         }
     }
 
+    private var isTicketCovered: Bool {
+        coordinator.presentedRound != nil || playlistSheet != nil || isShowingProfile || filtersSheetMediaType != nil
+    }
+
     private func refreshPlayedPlaylist() {
         guard viewModel.mode == .collection else { return }
         Task { await playlists.reloadProgress() }
@@ -195,6 +200,7 @@ struct TicketView: View {
         .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
         .offset(cardOffset)
         .rotationEffect(.degrees(cardTilt), anchor: .bottom)
+        .posterSwipeTurn(degrees: cardTilt)
         .scaleEffect(cardScale)
         .gesture(TicketPanGesture(isEnabled: isInteractive,
                                   canStart: { canStartCardDrag(at: $0, width: width, posterHeight: posterHeight) },
