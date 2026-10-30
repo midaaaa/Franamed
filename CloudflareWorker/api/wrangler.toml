@@ -21,6 +21,16 @@ binding = "DB"
 database_name = "franamed"
 database_id = "6e10c858-857c-4f2e-9025-f6a474e9f029"
 
+# One object per PvP room code: the match runs inside it. SQLite-backed, the
+# only kind the free plan allows. See src/pvp/room.js and docs/pvp.md.
+[[durable_objects.bindings]]
+name = "PVP_ROOM"
+class_name = "PvpRoom"
+
+[[migrations]]
+tag = "pvp-v1"
+new_sqlite_classes = ["PvpRoom"]
+
 # Bursts only: counters are per Cloudflare location and the window is capped at
 # 60s, so these stop hammering, not patient abuse. See src/lib/limits.js.
 [[ratelimits]]

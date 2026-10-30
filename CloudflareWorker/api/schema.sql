@@ -269,6 +269,20 @@ CREATE TABLE IF NOT EXISTS daily_results (
 );
 CREATE INDEX IF NOT EXISTS idx_daily_results_date ON daily_results(date, was_correct, attempts_used);
 
+-- ---------------------------------------------------------------- pvp
+
+-- How a player looks in PvP rooms. No row until they change something: the
+-- name, icon and colour are otherwise derived from the uid (lib/pvpNames.js).
+-- Rooms, matches and results live in the rooms' Durable Objects, not here.
+CREATE TABLE IF NOT EXISTS pvp_profiles (
+    uid        TEXT PRIMARY KEY REFERENCES users(uid) ON DELETE CASCADE,
+    name       TEXT,                                             -- NULL: the generated one
+    name_seed  INTEGER NOT NULL DEFAULT 0,                       -- bumped by "another name"
+    icon       TEXT,
+    color      TEXT,
+    updated_at INTEGER NOT NULL
+);
+
 -- ---------------------------------------------------------------- misc
 
 CREATE TABLE IF NOT EXISTS watched_media (

@@ -94,7 +94,20 @@ const graphqlCalls = [];
 globalThis.fetch = async (url, init) => {
     const target = new URL(url);
     if (target.hostname === "api.cloudflare.com") {
-        graphqlCalls.push(JSON.parse(init.body));
+        const asked = JSON.parse(init.body);
+        graphqlCalls.push(asked);
+        // Durable Object numbers, one field per query; rowsWritten plays the
+        // field Cloudflare does not know.
+        if (asked.query.includes("durableObjects")) {
+            if (asked.query.includes("rowsWritten")) {
+                return new Response(JSON.stringify({ errors: [{ message: "unknown field \"rowsWritten\"" }] }), { status: 200 });
+            }
+            const field = asked.query.includes("activeTime") ? "activeTime" : "requests";
+            const values = field === "activeTime" ? [240_000_000, 160_000_000] : [700, 50];
+            return new Response(JSON.stringify({
+                data: { viewer: { accounts: [{ groups: values.map((value) => ({ sum: { [field]: value } })) }] } }
+            }), { status: 200 });
+        }
         return new Response(JSON.stringify({
             data: { viewer: { accounts: [{
                 workers: [{ sum: { requests: 1200, errors: 3, subrequests: 40 } }, { sum: { requests: 300, errors: 0, subrequests: 0 } }],
@@ -356,9 +369,14 @@ check("a moderator cannot see usage", res.status === 403);
 res = await call("me", "GET", "/v1/admin/usage");
 check("usage sums every group", res.status === 200 && res.body.workers.requests === 1500 && res.body.d1.rowsWritten === 4000 && res.body.limits.rowsRead === 5000000, JSON.stringify(res.body));
 check("usage resets at the next UTC midnight", res.body.resetsAt % 86400000 === 0 && res.body.resetsAt > Date.now());
-check("usage asks for this account", graphqlCalls[0]?.variables.account === "account" && graphqlCalls[0].variables.date === new Date().toISOString().slice(0, 10));
+check("usage asks for this account", graphqlCalls.every((asked) => asked.variables.account === "account" && asked.variables.date === new Date().toISOString().slice(0, 10)));
+check("usage reads Durable Object requests and duration", res.body.durableObjects.requests === 750
+    && res.body.durableObjects.gbSeconds === 50 && res.body.limits.durableObjects.gbSeconds === 13000, JSON.stringify(res.body.durableObjects));
+check("a field Cloudflare refuses blanks only itself", res.body.durableObjects.rowsWritten === null
+    && /rowsWritten/.test(res.body.durableObjects.unavailable.rowsWritten) && res.body.workers.requests === 1500);
+const asked = graphqlCalls.length;
 await call("me", "GET", "/v1/admin/usage");
-check("usage is cached for a minute", graphqlCalls.length === 1);
+check("usage is cached for a minute", graphqlCalls.length === asked && asked === 4);
 
 console.log("silencing a reporter");
 const silencedFrame = db.db.prepare("SELECT id FROM media_images WHERE media_key = 'movie_103' LIMIT 1").get().id;
@@ -1220,6 +1238,9 @@ for (const [name, [sql, values]] of Object.entries(hot)) {
     const fullItems = /SCAN m\b(?! USING)/.test(text) || /SCAN media_items\b(?! USING)/.test(text);
     check(`${name}: no frame scan, no sort, no bare table scan`, !scansFrames && !sorts && !fullItems && !scansPlayers, `\n      ${text}`);
 }
+
+const { runPvpTests } = await import("./pvp.mjs");
+await runPvpTests(check);
 
 console.log(failures ? `\n${failures} FAILED` : "\nall passed");
 process.exit(failures ? 1 : 0);

@@ -18,7 +18,30 @@ const DEFAULTS = {
     // instead of plain counts: two players make every share 50 or 100%.
     statsMinPlayers: 10,
     // The cron fills an empty tomorrow with a random unused film.
-    autoDaily: false
+    autoDaily: false,
+
+    // PvP. Read when a room is created and frozen into it, so a change here
+    // reaches the next room and never a match in progress. See docs/pvp.md.
+    pvpEnabled: true,
+    pvpMediaTypes: "movie",
+    pvpRoomFilms: 10,
+    pvpFrames: 6,
+    pvpTimeLimitSec: 45,
+    pvpFrameBase: "900,750,600,450,300,150",
+    pvpTimeBonusMax: 100,
+    pvpAfterFirstCorrectSec: 15,
+    pvpCountdownSec: 3,
+    pvpRevealSec: 8,
+    pvpReadyTimeoutSec: 30,
+    pvpDuelHP: 3000,
+    pvpDuelMultiplierFrom: 4,
+    pvpDuelMultiplierStep: 0.5,
+    pvpDuelMaxFilms: 20,
+    pvpDuelForfeitSec: 60,
+    pvpHostGraceSec: 30,
+    pvpPauseMaxSec: 300,
+    pvpRoomMaxPlayers: 8,
+    pvpIdleCleanupSec: 600
 };
 
 function coerce(key, raw) {

@@ -12,9 +12,12 @@ import { handleCuration } from "./routes/curation.js";
 import { handlePlaylists } from "./routes/playlists.js";
 import { handleProfile } from "./routes/profile.js";
 import { handleAdmin } from "./routes/admin.js";
+import { handlePvp } from "./routes/pvp.js";
 import { CATALOG_VERSION_HEADER, currentIndexVersion } from "./lib/catalogIndex.js";
 import { PLAYLISTS_VERSION_HEADER, currentPlaylistsVersion } from "./lib/playlistsSnapshot.js";
 import { runScheduled } from "./lib/scheduled.js";
+
+export { PvpRoom } from "./pvp/room.js";
 
 const HANDLERS = {
     auth: handleAuth,
@@ -23,7 +26,8 @@ const HANDLERS = {
     curation: handleCuration,
     playlists: handlePlaylists,
     profile: handleProfile,
-    admin: handleAdmin
+    admin: handleAdmin,
+    pvp: handlePvp
 };
 
 export default {
@@ -49,6 +53,9 @@ export default {
         try {
             const response = await handler(request, env, segments.slice(2), url, ctx);
             if (!response) return json({ error: "not_found", message: "No route matches this method and path" }, 404);
+            // A socket upgrade cannot take headers, and a poll every two
+            // seconds should not cost two config reads each.
+            if (segments[1] === "pvp") return response;
             return withVersions(env, response);
         } catch (error) {
             if (error instanceof APIError) {
