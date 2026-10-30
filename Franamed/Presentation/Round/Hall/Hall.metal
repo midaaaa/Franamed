@@ -65,6 +65,8 @@ struct Hall {
     float screenHeight;
     float screenBottom;
     float3 mean;
+    float shadow;
+    float ambient;
     device const float *grid;
 };
 
@@ -87,6 +89,8 @@ Hall makeHall(HallArgs args, device const float *grid) {
     h.screenHeight = args.screen.y;
     h.screenBottom = args.screen.z;
     h.mean = args.mean.xyz;
+    h.shadow = 1;
+    h.ambient = 1;
     h.grid = grid;
     return h;
 }
@@ -157,8 +161,8 @@ float3 light(thread const Hall &h, float3 p, float3 n, float3 d, float albedo, f
     float wrap = saturate((dot(n, toScreen) + 0.3) / 1.3);
     float facing = saturate(dot(n, -d));
 
-    float diffuse = wrap * reach * 3.6;
-    float bounce = 0.4 * (0.5 + 0.5 * n.y) * lower * reach;
+    float diffuse = wrap * reach * 3.6 * h.shadow;
+    float bounce = 0.4 * (0.5 + 0.5 * n.y) * lower * reach * h.ambient;
     float3 color = h.mean * albedo * (diffuse + bounce);
 
     float3 r = reflect(d, n);
@@ -169,7 +173,7 @@ float3 light(thread const Hall &h, float3 p, float3 n, float3 d, float albedo, f
         float f0 = gloss > 1.5 ? 0.7 : 0.04;
         float peak = gloss > 1.5 ? 1.0 : 0.5;
         float fresnel = f0 + (peak - f0) * pow(1.0 - facing, 5.0);
-        color += screenAt(h.grid, uv) * fresnel * 10.0 * min(gloss, 1.0);
+        color += screenAt(h.grid, uv) * fresnel * 10.0 * min(gloss, 1.0) * h.shadow;
     }
     return color;
 }
@@ -229,6 +233,7 @@ float seat(thread const Hall &h, float lx, float ly, float zl, thread float &cre
 }
 
 constant float leatherAlbedo = 0.09;
+constant float panelHalf = 0.2;
 constant float grainSize = 0.0025;
 constant float mottleSize = 0.006;
 
@@ -348,7 +353,7 @@ ArmFrame rowArm(thread const Hall &h, float ax, float ly, float zf) {
     return f;
 }
 
-float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n, float3 d, float crease) {
+float3 shadeSeat(thread const Hall &h, thread const Row &row, float center, float3 p, float3 n, float3 d, float crease) {
     float ly = p.y - row.floorY;
     float2 surface = abs(n.z) > abs(n.x) ? float2(p.x, ly) : float2(p.z, ly);
     float3 t1 = abs(n.z) > abs(n.x) ? float3(1, 0, 0) : float3(0, 0, 1);
@@ -358,12 +363,27 @@ float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n
     float albedo = leatherAlbedo;
     float gloss = 0.6;
     float firstSeam = h.seatTop - 0.2;
-    if (n.z > 0.4 && ly < firstSeam && ly > 0.3) {
+    float lx = p.x - center;
+    float panelEdge = abs(abs(lx) - panelHalf);
+    bool inPanel = abs(lx) < panelHalf;
+    float panelPixel = fwidth(lx);
+    float panelSharp = 1.0 - smoothstep(0.004, 0.012, panelPixel);
+    if (n.z > 0.4 && ly < firstSeam + 0.02 && ly > 0.2) {
+        float seamSide = lx < 0 ? -1.0 : 1.0;
+        float roll = exp(-panelEdge / 0.03) * (inPanel ? -1.0 : 1.0);
+        n = normalize(n + float3(seamSide * 0.5 * roll, 0, 0));
+        float groove = exp(-pow(panelEdge / max(0.007, panelPixel), 2.0));
+        float tuck = inPanel ? exp(-panelEdge / 0.025) : 0.0;
+        albedo *= 1.0 - (0.55 * groove + 0.35 * tuck) * mix(0.5, 1.0, panelSharp);
+        gloss *= 1.0 - 0.8 * groove;
+        if (!inPanel) albedo *= 1.12;
+    }
+    if (n.z > 0.4 && ly < firstSeam && ly > 0.3 && inPanel) {
         float u = fract((firstSeam - ly) / 0.17);
         float edge = min(u, 1.0 - u) * 0.17;
-        float groove = exp(-pow(edge / 0.004, 2.0));
+        float groove = exp(-pow(edge / max(0.006, fwidth(ly)), 2.0));
         float side = u < 0.5 ? 1.0 : -1.0;
-        n = normalize(n + float3(0, 0.1 * cos(u * M_PI_F) + side * 0.35 * exp(-edge / 0.012), 0));
+        n = normalize(n + float3(0, 0.2 * cos(u * M_PI_F) + side * 0.35 * exp(-edge / 0.016), 0));
         albedo *= 1.0 - 0.6 * groove;
         gloss *= 1.0 - 0.9 * groove;
     }
@@ -383,8 +403,8 @@ float3 shadeSeat(thread const Hall &h, thread const Row &row, float3 p, float3 n
     albedo *= 1.0 - 0.55 * crease;
     gloss *= 1.0 - 0.8 * crease;
 
-    float lower = pow(saturate((ly - 0.3) / (h.seatTop - 0.3)), 1.6);
-    return light(h, p, n, d, albedo, gloss, lower) * smoothstep(0.25, 0.7, ly);
+    float lower = pow(saturate((ly - 0.2) / (h.seatTop - 0.2)), 1.1);
+    return light(h, p, n, d, albedo, gloss, lower) * smoothstep(0.15, 0.6, ly);
 }
 
 // MARK: Own seat
@@ -475,6 +495,56 @@ float3 meshGradient(thread const Hall &h, int shape, float3 q, float e) {
     float3 k1 = float3(1, -1, -1), k2 = float3(-1, -1, 1), k3 = float3(-1, 1, -1), k4 = float3(1, 1, 1);
     return (k1 * meshField(h, shape, q + k1 * e) + k2 * meshField(h, shape, q + k2 * e)
           + k3 * meshField(h, shape, q + k3 * e) + k4 * meshField(h, shape, q + k4 * e)) / (4.0 * e);
+}
+
+float occluder(thread const Hall &h, int shape, float3 q, bool withSelf) {
+    int part;
+    float s = h.seatPitch * 0.5;
+    float crease;
+    switch (shape) {
+    case meshSeat: {
+        float zf = q.z - (h.seatTop - q.y) * h.recline;
+        float d = min(seat(h, q.x - 2.0 * s, q.y, q.z, crease), seat(h, q.x + 2.0 * s, q.y, q.z, crease));
+        if (withSelf) d = min(d, seat(h, q.x, q.y, q.z, crease));
+        d = min(d, armShape(h, rowArm(h, q.x - s, q.y, zf), part));
+        return min(d, armShape(h, rowArm(h, q.x + s, q.y, zf), part));
+    }
+    case meshRowArm:
+    case meshRowRing: {
+        float zl = q.z + (h.seatTop - q.y) * h.recline;
+        float d = min(seat(h, q.x - s, q.y, zl, crease), seat(h, q.x + s, q.y, zl, crease));
+        return withSelf ? min(d, armShape(h, rowArm(h, q.x, q.y, q.z), part)) : d;
+    }
+    case meshOwnArm:
+    case meshOwnRing:
+        return withSelf ? armShape(h, ownArm(h, ownPoint(h, ownWorld(h, q))), part) : 10.0;
+    default:
+        return 10.0;
+    }
+}
+
+float occlusion(thread const Hall &h, int shape, float3 q, float3 n) {
+    float occ = 0, total = 0, w = 1;
+    for (int i = 1; i <= 6; i++) {
+        float dist = 0.008 * float(i * i);
+        occ += w * saturate((dist - occluder(h, shape, q + n * dist, true)) / dist);
+        total += w;
+        w *= 0.8;
+    }
+    return pow(saturate(1.0 - 1.6 * occ / total), 1.5);
+}
+
+float screenVisibility(thread const Hall &h, int shape, float3 q, float3 n) {
+    float3 toScreen = normalize(float3(0, 0.15, -1));
+    float3 start = q + n * 0.004;
+    float visible = 1, t = 0.015;
+    for (int i = 0; i < 20 && t < 0.9; i++) {
+        float d = occluder(h, shape, start + toScreen * t, false);
+        visible = min(visible, 5.0 * d / t);
+        if (visible < 0.01) break;
+        t += clamp(d, 0.01, 0.08);
+    }
+    return smoothstep(0.0, 1.0, saturate(visible));
 }
 
 uint pointIndex(uint3 p, uint3 n) {
@@ -577,8 +647,9 @@ ArmFrame rowArmAt(thread const Hall &h, thread const Row &row, float center, flo
         cells[cell] = noVertex;
         return;
     }
-    vertices[index * 2] = float4(p, 1);
-    vertices[index * 2 + 1] = float4(normalize(meshGradient(h, shape, p, 0.0005)), 0);
+    float3 normal = normalize(meshGradient(h, shape, p, 0.0005));
+    vertices[index * 2] = float4(p, occlusion(h, shape, p, normal));
+    vertices[index * 2 + 1] = float4(normal, screenVisibility(h, shape, p, normal));
     cells[cell] = index;
 }
 
@@ -626,6 +697,8 @@ struct HallMeshOut {
     float4 position [[ position ]];
     float3 world;
     float3 normal;
+    float ambient;
+    float shadow;
     float center [[ flat ]];
 };
 
@@ -668,16 +741,20 @@ constant float meshMinFacing = 0.05;
                           w);
     out.world = p;
     out.normal = n;
+    out.ambient = vertices[vid * 2].w;
+    out.shadow = vertices[vid * 2 + 1].w;
     out.center = center;
     return out;
 }
 
 constant int meshGroup [[ function_constant(0) ]];
 
-static float4 shadeMesh(float3 p, float3 normal, float center, constant hall::HallArgs &args,
+static float4 shadeMesh(float3 p, float3 normal, float ambient, float shadow, float center, constant hall::HallArgs &args,
                         device const float *grid, constant hall::MeshDraw &draw) {
     using namespace hall;
     Hall h = makeHall(args, grid);
+    h.shadow = shadow;
+    h.ambient = ambient;
     float3 toPoint = p - h.eye;
     float t = length(toPoint);
     float3 d = toPoint / t;
@@ -690,7 +767,7 @@ static float4 shadeMesh(float3 p, float3 normal, float center, constant hall::Ha
         Row row = meshRow(draw.row);
         float crease;
         seatAt(h, row, center, p, crease);
-        color = shadeSeat(h, row, p, n, d, crease);
+        color = shadeSeat(h, row, center, p, n, d, crease);
     } else {
         ArmFrame frame = meshGroup == 2 ? ownArm(h, ownPoint(h, p)) : rowArmAt(h, meshRow(draw.row), center, p);
         int part;
@@ -704,13 +781,15 @@ static float4 shadeMesh(float3 p, float3 normal, float center, constant hall::Ha
                                        constant hall::HallArgs &args [[ buffer(0) ]],
                                        device const float *grid [[ buffer(1) ]],
                                        constant hall::MeshDraw &draw [[ buffer(2) ]]) {
-    return shadeMesh(in.world, in.normal, in.center, args, grid, draw);
+    return shadeMesh(in.world, in.normal, in.ambient, in.shadow, in.center, args, grid, draw);
 }
 
 struct HallMeshSampleIn {
     float4 position [[ position ]];
     float3 world [[ sample_perspective ]];
     float3 normal [[ sample_perspective ]];
+    float ambient [[ sample_perspective ]];
+    float shadow [[ sample_perspective ]];
     float center [[ flat ]];
 };
 
@@ -719,7 +798,7 @@ struct HallMeshSampleIn {
                                              constant hall::HallArgs &args [[ buffer(0) ]],
                                              device const float *grid [[ buffer(1) ]],
                                              constant hall::MeshDraw &draw [[ buffer(2) ]]) {
-    return shadeMesh(in.world, in.normal, in.center, args, grid, draw);
+    return shadeMesh(in.world, in.normal, in.ambient, in.shadow, in.center, args, grid, draw);
 }
 
 struct HallPictureOut {
