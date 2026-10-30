@@ -46,6 +46,7 @@ struct TicketFaceView: View, Equatable {
     var onResumableChange: ((Bool) -> Void)?
 
     @State private var posterImage: UIImage?
+    @State private var posterImageURL: URL?
     @Environment(\.displayScale) private var displayScale
 
     private static let posterWidthStep: CGFloat = 256
@@ -125,6 +126,8 @@ struct TicketFaceView: View, Equatable {
     private var poster: some View {
         if card.mode.hasOwnPoster {
             ModePosterView(mode: card.mode)
+        } else if let posterImage, let posterURL, posterImageURL == posterURL {
+            PlaylistPosterFoil(image: posterImage, url: posterURL)
         } else if let posterImage {
             Image(uiImage: posterImage)
                 .resizable()
@@ -135,22 +138,27 @@ struct TicketFaceView: View, Equatable {
     }
 
     private func loadPoster() async {
+        let url = posterURL
         guard let source = posterSource else {
             posterImage = nil
+            posterImageURL = nil
             return
         }
         let cached = ImageCache.shared.image(for: source.url)
         if let cached, cached.size.width * cached.scale >= source.pixelWidth {
             posterImage = cached
+            posterImageURL = url
             return
         }
         posterImage = cached
-            ?? posterURL.flatMap(ImageCache.shared.image(for:))
-            ?? posterURL.flatMap(TMDBImageSize.small(of:)).flatMap(ImageCache.shared.image(for:))
+            ?? url.flatMap(ImageCache.shared.image(for:))
+            ?? url.flatMap(TMDBImageSize.small(of:)).flatMap(ImageCache.shared.image(for:))
+        posterImageURL = posterImage == nil ? nil : url
         let fitting = source.pixelWidth > 0 ? source.pixelWidth : nil
         guard let image = await FrameDownloads.shared.image(for: source.url, fittingPixelWidth: fitting) else { return }
         ImageCache.shared.store(image, for: source.url)
         posterImage = image
+        posterImageURL = url
     }
 
     private struct PosterSource: Hashable {

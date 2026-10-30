@@ -189,10 +189,15 @@ final class PlaylistsViewModel: ObservableObject {
     }
 
     private func prefetchCover(_ url: URL?) {
-        guard let url, ImageCache.shared.image(for: url) == nil else { return }
+        guard let url else { return }
+        if let image = ImageCache.shared.image(for: url) {
+            Task.detached(priority: .utility) { await PlaylistPosterFoil.prepare(url: url, image: image) }
+            return
+        }
         Task {
             guard let image = await FrameDownloads.shared.image(for: url) else { return }
             ImageCache.shared.store(image, for: url)
+            Task.detached(priority: .utility) { await PlaylistPosterFoil.prepare(url: url, image: image) }
         }
     }
 
