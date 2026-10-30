@@ -10,9 +10,11 @@ import SwiftUI
 struct Rasterize: ViewModifier {
     let isActive: Bool
 
+    private let bleed: CGFloat = 2
+
     func body(content: Content) -> some View {
         if isActive {
-            content.drawingGroup()
+            content.padding(bleed).drawingGroup().padding(-bleed)
         } else {
             content
         }
