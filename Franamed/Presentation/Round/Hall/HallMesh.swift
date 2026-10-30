@@ -20,6 +20,8 @@ enum HallMeshShape: Float {
         case .ownArm, .ownRing: 2
         }
     }
+
+    var isRing: Bool { self == .rowRing || self == .ownRing }
 }
 
 struct HallMesh: @unchecked Sendable {

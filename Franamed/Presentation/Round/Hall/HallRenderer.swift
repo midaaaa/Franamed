@@ -34,10 +34,12 @@ final class HallRenderer: @unchecked Sendable {
     private static let sampleCount = 4
     private static let phonePerimeterSegments = 160
     private static let buttonSegments = 24
+    private static let sampledRowsFrom = 1
 
     let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let meshPipelines: [MTLRenderPipelineState]
+    private let samplePipelines: [MTLRenderPipelineState]
     private let picturePipeline: MTLRenderPipelineState
     private let phonePipeline: MTLRenderPipelineState
     private let phoneSidePipeline: MTLRenderPipelineState
@@ -67,13 +69,15 @@ final class HallRenderer: @unchecked Sendable {
               let depthState = device.makeDepthStencilState(descriptor: depth) else { return nil }
 
         descriptor.vertexFunction = library.makeFunction(name: "hallMeshVertex")
-        let meshPipelines = (0..<3).compactMap { group -> MTLRenderPipelineState? in
+        func meshPipeline(_ fragment: String, group: Int) -> MTLRenderPipelineState? {
             let constants = MTLFunctionConstantValues()
             var value = Int32(group)
             constants.setConstantValue(&value, type: .int, index: 0)
-            descriptor.fragmentFunction = try? library.makeFunction(name: "hallMeshFragment", constantValues: constants)
+            descriptor.fragmentFunction = try? library.makeFunction(name: fragment, constantValues: constants)
             return try? device.makeRenderPipelineState(descriptor: descriptor)
         }
+        let meshPipelines = (0..<3).compactMap { meshPipeline("hallMeshFragment", group: $0) }
+        let samplePipelines = (0..<3).compactMap { meshPipeline("hallMeshSampleFragment", group: $0) }
         descriptor.vertexFunction = library.makeFunction(name: "hallPictureVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "hallPictureFragment")
         let picturePipeline = try? device.makeRenderPipelineState(descriptor: descriptor)
@@ -116,7 +120,7 @@ final class HallRenderer: @unchecked Sendable {
 
         let blank = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 1, height: 1,
                                                              mipmapped: false)
-        guard meshPipelines.count == 3, let picturePipeline, let phonePipeline, let phoneSidePipeline, phoneButtonPipelines.count == 2,
+        guard meshPipelines.count == 3, samplePipelines.count == 3, let picturePipeline, let phonePipeline, let phoneSidePipeline, phoneButtonPipelines.count == 2,
               let phoneGlowPipeline, let screenGlowPipeline, let veilPipeline, let screenGlowDepth,
               let blankPicture = device.makeTexture(descriptor: blank),
               let clearPicture = device.makeTexture(descriptor: blank) else { return nil }
@@ -126,6 +130,7 @@ final class HallRenderer: @unchecked Sendable {
         self.device = device
         self.commandQueue = commandQueue
         self.meshPipelines = meshPipelines
+        self.samplePipelines = samplePipelines
         self.picturePipeline = picturePipeline
         self.phonePipeline = phonePipeline
         self.phoneSidePipeline = phoneSidePipeline
@@ -291,15 +296,16 @@ final class HallRenderer: @unchecked Sendable {
                 let first = ((-reach - center) / scene.seatPitch).rounded(.down)
                 let last = ((reach - center) / scene.seatPitch).rounded(.up)
                 draw(mesh, row: SIMD4(center, floorY, distance, distance + HallScene.rowArc), firstSeat: first,
-                     seats: Int(last - first) + 1, encoder: encoder)
+                     seats: Int(last - first) + 1, sampled: index >= Self.sampledRowsFrom, encoder: encoder)
             }
         }
         return encoder
     }
 
-    private func draw(_ mesh: HallMesh, row: SIMD4<Float>, firstSeat: Float, seats: Int,
+    private func draw(_ mesh: HallMesh, row: SIMD4<Float>, firstSeat: Float, seats: Int, sampled: Bool = false,
                       encoder: MTLRenderCommandEncoder) {
-        encoder.setRenderPipelineState(meshPipelines[mesh.shape.group])
+        let pipelines = sampled || mesh.shape.isRing ? samplePipelines : meshPipelines
+        encoder.setRenderPipelineState(pipelines[mesh.shape.group])
         var draw = MeshDraw(row: row, instance: SIMD4(mesh.shape.rawValue, firstSeat, 0, 0))
         encoder.setVertexBuffer(mesh.vertices, offset: 0, index: 0)
         encoder.setVertexBytes(&draw, length: MemoryLayout<MeshDraw>.stride, index: 2)
