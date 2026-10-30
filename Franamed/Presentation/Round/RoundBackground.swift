@@ -21,12 +21,12 @@ struct RoundBackground: View {
     @Environment(\.displayScale) private var displayScale
     @AppStorage(DebugSettings.phoneAimKey) private var phoneAim = Double(HallPhone.Settings().aim)
     @AppStorage(DebugSettings.phoneWidthKey) private var phoneWidth = Double(HallPhone.Settings().width)
-    @AppStorage(DebugSettings.phonePortraitKey) private var isPhonePortrait = false
-    @AppStorage(DebugSettings.phoneSlowFinderKey) private var slowFinder = true
-    @AppStorage(DebugSettings.phoneBloomKey) private var phoneBloom = 0.0
-    @AppStorage(DebugSettings.screenBloomKey) private var screenBloom = 0.0
-    @AppStorage(DebugSettings.phoneGridKey) private var showsGrid = false
-    @AppStorage(DebugSettings.phoneWideKey) private var isWide = false
+    @AppStorage(DebugSettings.phonePortraitKey) private var isPhonePortrait = HallPhone.Settings().isPortrait
+    @AppStorage(DebugSettings.phoneSlowFinderKey) private var slowFinder = HallPhone.Settings().slowFinder
+    @AppStorage(DebugSettings.phoneBloomKey) private var phoneBloom = Double(HallPhone.Settings().bloom)
+    @AppStorage(DebugSettings.screenBloomKey) private var screenBloom = Double(HallPhone.Settings().screenBloom)
+    @AppStorage(DebugSettings.phoneGridKey) private var showsGrid = HallPhone.Settings().showsGrid
+    @AppStorage(DebugSettings.phoneWideKey) private var isWide = HallPhone.Settings().isWide
     @AppStorage(DebugSettings.phoneColorKey) private var color = HallPhoneColor.custom
     @State private var backdrop: (key: BackdropKey, image: UIImage)?
 

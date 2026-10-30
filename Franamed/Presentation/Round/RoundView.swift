@@ -13,15 +13,16 @@ struct RoundView: View {
     @StateObject private var frames = RoundFrames()
     @State private var phone = HallPhone()
     @State private var isPhoneHeld = false
-    @AppStorage(DebugSettings.phonePortraitKey) private var isPhonePortrait = false
-    @AppStorage(DebugSettings.phoneSlowFinderKey) private var phoneSlowFinder = true
-    @AppStorage(DebugSettings.phoneBloomKey) private var phoneBloom = 0.0
-    @AppStorage(DebugSettings.screenBloomKey) private var screenBloom = 0.0
-    @AppStorage(DebugSettings.phoneGridKey) private var showsPhoneGrid = false
-    @AppStorage(DebugSettings.phoneWideKey) private var isPhoneWide = false
+    @AppStorage(DebugSettings.phonePortraitKey) private var isPhonePortrait = HallPhone.Settings().isPortrait
+    @AppStorage(DebugSettings.phoneSlowFinderKey) private var phoneSlowFinder = HallPhone.Settings().slowFinder
+    @AppStorage(DebugSettings.phoneBloomKey) private var phoneBloom = Double(HallPhone.Settings().bloom)
+    @AppStorage(DebugSettings.screenBloomKey) private var screenBloom = Double(HallPhone.Settings().screenBloom)
+    @AppStorage(DebugSettings.phoneGridKey) private var showsPhoneGrid = HallPhone.Settings().showsGrid
+    @AppStorage(DebugSettings.phoneWideKey) private var isPhoneWide = HallPhone.Settings().isWide
     @AppStorage(DebugSettings.phoneColorKey) private var phoneColor = HallPhoneColor.custom
     @AppStorage(DebugSettings.phoneCustomColorKey) private var phoneCustomColor = HallPhoneColor.custom
-    @AppStorage(DebugSettings.phoneNewGesturesKey) private var isNewPhoneGestures = true
+    @AppStorage(DebugSettings.phoneAimKey) private var phoneAim = Double(HallPhone.Settings().aim)
+    @AppStorage(DebugSettings.phoneWidthKey) private var phoneWidth = Double(HallPhone.Settings().width)
     @AppStorage(DebugSettings.statsMocksKey) private var isStatsMocked = false
     @State private var mockStats: RoundStats?
     @State private var isPickingPhoneColor = false
@@ -166,7 +167,6 @@ struct RoundView: View {
                 .readsHorizontalFold($fold)
                 .overlay {
                     HallPhoneSurface(phone: phone, frameHeight: frameHeight, frameMidX: frameMidX,
-                                     isNewGestures: isNewPhoneGestures,
                                      onToggleOrientation: { isPhonePortrait.toggle() },
                                      onTapPrevious: { viewModel.showPreviousFrame() },
                                      onTapNext: { viewModel.showNextFrame() })
@@ -186,14 +186,10 @@ struct RoundView: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu("Телефон", systemImage: isPhonePortrait ? "iphone" : "iphone.landscape") {
-                            Picker(selection: $isNewPhoneGestures) {
-                                Text("Старые").tag(false)
-                                Text("Новые").tag(true)
-                            } label: {
-                                Text("Жесты")
-                                Text(phoneGesturesNote)
-                            }
-                            .pickerStyle(.menu)
+                            percentPicker("Поворот к краям", "Насколько телефон смотрит в угол", $phoneAim,
+                                          HallPhone.Settings.aimStops)
+                            percentPicker("Размер в руке", "Доля ширины экрана", $phoneWidth,
+                                          HallPhone.Settings.widthStops)
                             Toggle(isOn: $showsPhoneGrid) {
                                 Text("Сетка")
                                 Text("Линии 3×3")
@@ -221,6 +217,10 @@ struct RoundView: View {
                                 Text("Цвет корпуса")
                             }
                             .controlGroupStyle(.palette)
+                            Toggle(isOn: $isStatsMocked) {
+                                Text("Моки статистики")
+                                Text("Случайная стата после ответа")
+                            }
                         }
                     }
                 }
@@ -337,16 +337,24 @@ struct RoundView: View {
         }
     }
 
-    private var phoneGesturesNote: String {
-        isNewPhoneGestures ? "Тап без задержки, поворот или зум" : "Двойной тап, всё сразу"
-    }
-
     private func colorButton(_ hex: Int) -> some View {
         Button {
             phoneColor = hex
         } label: {
             Image(uiImage: HallPhoneColor.swatch(hex, isSelected: phoneColor == hex))
         }
+    }
+
+    private func percentPicker(_ title: String, _ detail: String, _ value: Binding<Double>,
+                               _ stops: [Double]) -> some View {
+        let rounded = Binding(get: { (value.wrappedValue * 100).rounded() / 100 }, set: { value.wrappedValue = $0 })
+        return Picker(selection: rounded) {
+            ForEach(stops, id: \.self) { Text($0.formatted(.percent.precision(.fractionLength(0)))).tag($0) }
+        } label: {
+            Text(title)
+            Text(detail)
+        }
+        .pickerStyle(.menu)
     }
 
     private func levelPicker(_ title: String, _ detail: String, _ level: Binding<Double>) -> some View {

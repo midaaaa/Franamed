@@ -12,19 +12,21 @@ import UIKit
 
 final class HallPhone: @unchecked Sendable {
     struct Settings: Equatable, Sendable {
-        var aim: Float = 0.6
-        var width: Float = 0.75
-        var isPortrait = false
+        var aim: Float = 0.5
+        var width: Float = 0.85
+        var isPortrait = true
         var showsGrid = false
         var isWide = false
         var color = SIMD3<Float>(0.62, 0.6, 0.56)
-        var slowFinder = true
-        var bloom: Float = 0
+        var slowFinder = false
+        var bloom: Float = 1
         var screenBloom: Float = 0
 
         static let aspect: Float = 146.6 / 70.6
         static let bezel: Float = 0.039
         static let zoomStops: [Float] = [1, 2, 3]
+        static let aimStops: [Double] = [0.4, 0.5, 0.6, 0.8, 1]
+        static let widthStops: [Double] = [0.6, 0.7, 0.8, 0.85, 0.9]
         static let startZoom: Float = 2
         static let maxViewWidth: Float = 520
 

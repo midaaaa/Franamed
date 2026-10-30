@@ -20,6 +20,5 @@ enum DebugSettings {
     static let phoneWideKey = "debugPhoneWide"
     static let phoneColorKey = "debugPhoneColor"
     static let phoneCustomColorKey = "debugPhoneCustomColor"
-    static let phoneNewGesturesKey = "debugPhoneNewGestures"
     static let statsMocksKey = "debugStatsMocks"
 }
