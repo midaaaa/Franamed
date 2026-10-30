@@ -67,12 +67,14 @@ struct TicketFaceView: View, Equatable {
         let setup: RoundSetup
         let genreNames: [String]
         let playlist: PlaylistTicket?
+        let emptyPosters: [URL]
         let ink: TicketInk
     }
 
     private var contentID: ContentID {
         ContentID(mediaType: card.mediaType, mode: card.mode, posterPath: card.posterPath,
-                  setup: setup, genreNames: genreNames, playlist: card.playlist, ink: ink)
+                  setup: setup, genreNames: genreNames, playlist: card.playlist,
+                  emptyPosters: card.emptyPosters, ink: ink)
     }
 
     var body: some View {
@@ -126,6 +128,8 @@ struct TicketFaceView: View, Equatable {
     private var poster: some View {
         if card.mode.hasOwnPoster {
             ModePosterView(mode: card.mode)
+        } else if card.mode == .collection, card.playlist == nil {
+            PlaylistEmptyPoster(posters: card.emptyPosters, mediaType: card.mediaType)
         } else if let posterImage, let posterURL, posterImageURL == posterURL {
             PlaylistPosterFoil(image: posterImage, url: posterURL)
         } else if let posterImage {

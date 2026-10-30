@@ -56,24 +56,33 @@ final class PlaylistsViewModel: ObservableObject {
     @Published private(set) var newKeys: [String: Set<String>] = [:]
     @Published private(set) var loadState = LoadState.idle
     @Published private(set) var resumes: [String: PlaylistRoundResume]
+    @Published private(set) var emptyPosters: [MediaType: [URL]] = [:]
 
     private var openedIDs: Set<String> = []
     private var uid: String?
+    private var hasRefreshedEmptyPosters = false
     private let store: PlaylistsStore
     private let catalogIndex: CatalogIndexStore
+    private let catalog: BackendCatalogServiceProtocol
     private let imageBaseURL: String
     private let defaults: UserDefaults
     private let resumeStore: PlaylistRoundResumes
 
     private static let lastSeenKey = "playlists.lastSeen"
+    private static let emptyPosterCount = 3
 
     init(backend: Backend = AppFactory.makeBackend(), defaults: UserDefaults = .standard) {
         store = backend.playlistsStore
         catalogIndex = backend.catalogIndex
+        catalog = backend.catalog
         imageBaseURL = backend.configuration.imageBaseURL
         self.defaults = defaults
         resumeStore = PlaylistRoundResumes(defaults: defaults)
         resumes = resumeStore.load()
+        for mediaType in MediaType.allCases {
+            let stored = defaults.stringArray(forKey: Self.emptyPostersKey(mediaType)) ?? []
+            emptyPosters[mediaType] = stored.compactMap(URL.init(string:))
+        }
     }
 
     // MARK: Queries
@@ -215,6 +224,7 @@ final class PlaylistsViewModel: ObservableObject {
         } catch {
             loadState = playlists.isEmpty ? .failed : .loaded
         }
+        await refreshEmptyPosters()
     }
 
     func reloadProgress() async {
@@ -226,6 +236,21 @@ final class PlaylistsViewModel: ObservableObject {
     func reloadPlayable() async {
         _ = try? await catalogIndex.refresh()
         await load()
+    }
+
+    private func refreshEmptyPosters() async {
+        guard !hasRefreshedEmptyPosters else { return }
+        hasRefreshedEmptyPosters = true
+        for mediaType in MediaType.allCases {
+            guard let items = try? await catalog.items(mediaType: mediaType, filters: MediaFilters(), query: "",
+                                                       includeUnapproved: false, limit: Self.emptyPosterCount,
+                                                       offset: 0) else { continue }
+            let links = items.compactMap { PlaylistAssembly.image($0.posterURL, base: imageBaseURL) }
+            guard !links.isEmpty else { continue }
+            defaults.set(links, forKey: Self.emptyPostersKey(mediaType))
+            let urls = links.compactMap(URL.init(string:))
+            if emptyPosters[mediaType] != urls { emptyPosters[mediaType] = urls }
+        }
     }
 
     private func show(_ contents: PlaylistsStore.Contents, index: CatalogIndex) {
@@ -275,6 +300,10 @@ final class PlaylistsViewModel: ObservableObject {
 
     private static func selectionKey(_ mediaType: MediaType) -> String {
         "playlists.selected.\(mediaType.rawValue)"
+    }
+
+    private static func emptyPostersKey(_ mediaType: MediaType) -> String {
+        "playlists.emptyPosters.\(mediaType.rawValue)"
     }
 
     private static func newKeys(in playlists: [PlaylistDetail], seen: [String: Double]) -> [String: Set<String>] {

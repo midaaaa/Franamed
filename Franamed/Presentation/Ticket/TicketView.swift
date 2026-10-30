@@ -229,6 +229,7 @@ struct TicketView: View {
         var card = viewModel.card
         if card.mode == .collection {
             card.playlist = playlists.ticket(for: card.mediaType)
+            card.emptyPosters = playlists.emptyPosters[card.mediaType] ?? []
         }
         return card
     }
@@ -253,7 +254,7 @@ struct TicketView: View {
     private func openPlaylistFromPoster() {
         guard viewModel.mode == .collection else { return }
         let mediaType = viewModel.mediaType
-        guard let selectedID = playlists.selectedID(for: mediaType) else { return }
+        let selectedID = playlists.selectedID(for: mediaType)
         present {
             playlistSheet = PlaylistSheetRoute(mediaType: mediaType, fromPoster: true, openedID: selectedID)
         }

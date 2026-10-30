@@ -12,6 +12,7 @@ struct TicketCard {
     let posterPath: String?
     var mode: TicketGameMode = .random
     var playlist: PlaylistTicket?
+    var emptyPosters: [URL] = []
 
     var canTear: Bool { mode != .collection || (playlist?.total ?? 0) > 0 }
 }

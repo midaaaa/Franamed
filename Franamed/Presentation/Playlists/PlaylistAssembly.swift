@@ -52,7 +52,7 @@ enum PlaylistAssembly {
                       playedAt: answer?.updatedAt, tearSeed: tearSeed)
     }
 
-    private static func image(_ path: String?, base: String) -> String? {
+    static func image(_ path: String?, base: String) -> String? {
         guard let path else { return nil }
         if path.hasPrefix("http") { return path }
         return "\(base)\(TMDBImageSize.smallPath)\(path)"

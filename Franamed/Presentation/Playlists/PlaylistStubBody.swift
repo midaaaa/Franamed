@@ -18,17 +18,47 @@ struct PlaylistStubBody: View {
     private static let nameSize: CGFloat = 20
     private static let nameLines = 4
     private static let nameMinimumScale: CGFloat = 0.6
+    private static let pickerGap: CGFloat = 10
+    private static let pickerRadius: CGFloat = 8
+    private static let pickerStroke = StrokeStyle(lineWidth: 1.4, dash: [5, 4])
+    private static let pickerSpacing: CGFloat = 8
+    private static let pickerPlusSize: CGFloat = 22
+    private static let pickerLabelSize: CGFloat = 11
+    private static let pickerTracking: CGFloat = 2.4
 
     @Environment(\.ticketInk) private var ink
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TicketStubHeader(title: mode.displayName, mediaType: mediaType)
-            content
-            TicketPlayCode(caption: caption, serial: serial)
-                .padding(.top, TicketStyle.codeGap)
+            if playlist == nil {
+                picker
+            } else {
+                content
+                TicketPlayCode(caption: caption, serial: serial)
+                    .padding(.top, TicketStyle.codeGap)
+            }
         }
-        .modifier(TicketStubLayout(serial: serial))
+        .modifier(TicketStubLayout(serial: playlist == nil ? nil : serial))
+    }
+
+    private var picker: some View {
+        VStack(spacing: Self.pickerSpacing) {
+            Image(systemName: "plus")
+                .font(.system(size: Self.pickerPlusSize, weight: .medium))
+            HStack(spacing: 6) {
+                Text("ВЫБРАТЬ")
+                    .tracking(Self.pickerTracking)
+                Image(systemName: "chevron.right")
+            }
+            .font(.system(size: Self.pickerLabelSize, weight: .heavy))
+            .padding(.leading, Self.pickerTracking)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: Self.pickerRadius).strokeBorder(style: Self.pickerStroke)
+        }
+        .padding(.top, Self.pickerGap)
     }
 
     private var content: some View {
@@ -50,8 +80,7 @@ struct PlaylistStubBody: View {
     }
 
     private var caption: String {
-        guard let playlist else { return "ВЫБРАТЬ ПОДБОРКУ" }
-        return playlist.isResumable ? "ПРОДОЛЖИТЬ" : "ИГРАТЬ"
+        playlist?.isResumable == true ? "ПРОДОЛЖИТЬ" : "ИГРАТЬ"
     }
 
     private var serial: String {
