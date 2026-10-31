@@ -24,7 +24,11 @@ struct TicketStubView: View {
     }
 
     private var hasPlayCode: Bool {
-        card.mode != .collection || card.playlist != nil
+        switch card.mode {
+        case .collection: card.playlist != nil
+        case .pvp: false
+        default: true
+        }
     }
 
     private var tapZones: some View {
@@ -57,9 +61,16 @@ struct TicketStubBody: View {
     let genreNames: [String]
 
     var body: some View {
-        if card.mode == .collection {
+        switch card.mode {
+        case .collection:
             PlaylistStubBody(mediaType: card.mediaType, mode: card.mode, playlist: card.playlist)
-        } else {
+        case .pvp:
+            VStack(alignment: .leading, spacing: 0) {
+                TicketStubHeader(title: card.mode.displayName, mediaType: card.mediaType)
+                TicketStubPicker(symbol: "person.2", label: "ИГРАТЬ")
+            }
+            .modifier(TicketStubLayout(serial: nil))
+        default:
             regularBody
         }
     }

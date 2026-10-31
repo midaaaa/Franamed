@@ -218,6 +218,11 @@ export async function runPvpTests(check) {
         check("room: the first right answer cuts everyone to 15 s", table.state.match.film.deadline === T0 + 29 * SEC && table.lastSent("deadline").endsInMs === 15000);
         table.send("c", { t: "guess", film: 1, frame: 1, tmdbId: 1, mediaType: "tv" });
         check("room: same id as a show is not the film", table.state.match.film.participants.c.frame === 2);
+        table.send("c", { t: "guess", film: 1, frame: 2, mediaType: "movie", text: "Not a film" });
+        check("room: typed text that names nothing is a miss", table.state.match.film.participants.c.frame === 3
+            && table.lastSent("guessResult", "c").correct === false);
+        table.send("c", { t: "guess", film: 1, frame: 3, mediaType: "movie", text: "  secret TITLE 1 " });
+        check("room: typed title counts in any case", table.state.match.film.participants.c.status === "solved");
 
         table.at(20).send("b", { t: "skip", film: 1, frame: 2 });
         check("room: a skip opens the next frame too", table.state.match.film.participants.b.frame === 3);
@@ -227,7 +232,7 @@ export async function runPvpTests(check) {
         const reveal = table.lastSent("reveal");
         check("room: the deadline ends the film with the reveal", reveal.film === 1 && reveal.answer.title === "Secret Title 1" && table.state.phase === "reveal");
         check("room: points only for the right answer", reveal.results.find((r) => r.uid === "a").points === a.points
-            && reveal.results.filter((r) => r.uid !== "a").every((r) => r.points === 0));
+            && reveal.results.find((r) => r.uid === "c").points > 0 && reveal.results.find((r) => r.uid === "b").points === 0);
         check("room: the next film is prepared during the reveal", table.lastSent("prepare").film === 2);
 
         // Film 2: two ready during the reveal, c never loads.

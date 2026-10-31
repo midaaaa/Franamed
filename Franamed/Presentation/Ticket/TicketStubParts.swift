@@ -34,6 +34,38 @@ struct TicketStubLayout: ViewModifier {
     }
 }
 
+struct TicketStubPicker: View {
+    let symbol: String
+    let label: String
+
+    private static let gap: CGFloat = 10
+    private static let radius: CGFloat = 8
+    private static let stroke = StrokeStyle(lineWidth: 1.4, dash: [5, 4])
+    private static let spacing: CGFloat = 8
+    private static let symbolSize: CGFloat = 22
+    private static let labelSize: CGFloat = 11
+    private static let tracking: CGFloat = 2.4
+
+    var body: some View {
+        VStack(spacing: Self.spacing) {
+            Image(systemName: symbol)
+                .font(.system(size: Self.symbolSize, weight: .medium))
+            HStack(spacing: 6) {
+                Text(label)
+                    .tracking(Self.tracking)
+                Image(systemName: "chevron.right")
+            }
+            .font(.system(size: Self.labelSize, weight: .heavy))
+            .padding(.leading, Self.tracking)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: Self.radius).strokeBorder(style: Self.stroke)
+        }
+        .padding(.top, Self.gap)
+    }
+}
+
 struct TicketRule: View {
     var body: some View {
         Rectangle().frame(height: TicketStyle.ruleWidth)

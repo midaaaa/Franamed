@@ -23,6 +23,10 @@ struct RootView: View {
             .providesWindowGeometry()
             .background(WindowSizeRestrictions(minimumSize: Self.minimumWindowSize))
             .task { await session.start() }
+            .onOpenURL { url in
+                guard let link = PvPRoomLink(url: url) else { return }
+                coordinator.openPvP(code: link.code)
+            }
     }
 
     private static let minimumWindowSize = CGSize(width: 390, height: 640)

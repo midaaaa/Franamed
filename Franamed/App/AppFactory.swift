@@ -25,4 +25,15 @@ enum AppFactory {
     static func makeMediaFacade() -> MediaFacadeProtocol {
         MediaFacade(tmdbClient: makeTMDBClient(), backend: makeBackend())
     }
+
+    private static let pvpResults = PvPJSONResultStore.standard()
+
+    static func makePvPService() -> any PvPServiceProtocol {
+        BackendPvPService(client: makeBackend().client)
+    }
+
+    static func makePvPSession(room: PvPRoomTicket, code: String) -> any PvPSessionProtocol {
+        PvPMatchSession(room: room, code: code, reducer: PvPMatchMachine(), preloader: PvPFrameDownloadsPreloader(),
+                        resultStore: pvpResults, makeTransport: { PvPSocketTransport() })
+    }
 }

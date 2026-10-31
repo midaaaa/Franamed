@@ -14,6 +14,12 @@ struct TicketCard {
     var playlist: PlaylistTicket?
     var emptyPosters: [URL] = []
 
-    var canTear: Bool { mode != .collection || (playlist?.total ?? 0) > 0 }
+    var canTear: Bool {
+        switch mode {
+        case .collection: (playlist?.total ?? 0) > 0
+        case .pvp: false
+        default: true
+        }
+    }
 }
 

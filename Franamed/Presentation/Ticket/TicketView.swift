@@ -104,6 +104,17 @@ struct TicketView: View {
                     .environment(\.resultStubWidth, ticketWidth)
                     .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
                 }
+                .onChange(of: coordinator.presentedPvP) { _, entry in
+                    guard entry == nil, tornTicket != nil else { return }
+                    scheduleStubReturn()
+                }
+                .fullScreenCover(item: $coordinator.presentedPvP) { mediaType in
+                    PvPEntryView(service: AppFactory.makePvPService(), mediaFacade: viewModel.mediaFacade, mediaType: mediaType,
+                                 pendingCode: $coordinator.pendingPvPCode, makeSession: AppFactory.makePvPSession) {
+                        coordinator.dismissPvP()
+                    }
+                    .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
+                }
                 .sheet(isPresented: $isShowingProfile) {
                     ProfileSheet(mediaFacade: viewModel.mediaFacade)
                 }
@@ -137,7 +148,7 @@ struct TicketView: View {
     }
 
     private var isTicketCovered: Bool {
-        coordinator.presentedRound != nil || playlistSheet != nil || isShowingProfile || filtersSheetMediaType != nil
+        coordinator.presentedRound != nil || coordinator.presentedPvP != nil || playlistSheet != nil || isShowingProfile || filtersSheetMediaType != nil
     }
 
     private func refreshPlayedPlaylist() {
@@ -235,6 +246,10 @@ struct TicketView: View {
     }
 
     private func openStubSheet() {
+        if viewModel.mode == .pvp {
+            coordinator.showPvP(mediaType: viewModel.mediaType)
+            return
+        }
         guard viewModel.mode == .collection else {
             filtersSheetMediaType = viewModel.mediaType
             return
@@ -243,6 +258,10 @@ struct TicketView: View {
     }
 
     private func startOrOpenPlaylist() {
+        if viewModel.mode == .pvp {
+            coordinator.showPvP(mediaType: viewModel.mediaType)
+            return
+        }
         guard !currentCard.canTear else {
             startRound(mediaType: viewModel.mediaType)
             return
@@ -271,7 +290,11 @@ struct TicketView: View {
         isCardLocked = true
         tornTicket = (viewModel.mode, mediaType)
         withAnimation(TicketMotion.roundCoverIn) { hidesStub = true }
-        coordinator.showRound(mediaType: mediaType)
+        if viewModel.mode == .pvp {
+            coordinator.showPvP(mediaType: mediaType)
+        } else {
+            coordinator.showRound(mediaType: mediaType)
+        }
         withAnimation(.easeOut(duration: TicketMotion.returnShrinkDuration)) {
             cardScale = 1 - TicketMotion.returnShrink
         }

@@ -671,6 +671,13 @@ function startCountdown(ctx) {
     });
 }
 
+// Typed text counts like the round on the phone: the same title, any letter case.
+function namesTitle(text, title) {
+    if (typeof text !== "string") return false;
+    const typed = text.trim().toLocaleLowerCase();
+    return typed.length > 0 && [title.title, title.originalTitle].some((name) => (name || "").trim().toLocaleLowerCase() === typed);
+}
+
 function answer(ctx, uid, msg, isGuess) {
     const { state, now } = ctx;
     if (state.pause) return fail(ctx, uid, "paused", "The room is paused");
@@ -686,7 +693,8 @@ function answer(ctx, uid, msg, isGuess) {
     }
 
     const title = state.match.films[film.index];
-    const correct = isGuess && Number(msg.tmdbId) === title.tmdbId && msg.mediaType === title.mediaType;
+    const correct = isGuess && ((Number(msg.tmdbId) === title.tmdbId && msg.mediaType === title.mediaType)
+        || namesTitle(msg.text, title));
 
     if (isGuess) tell(ctx, uid, { t: "guessResult", film: film.index + 1, frame: entry.frame, correct });
 

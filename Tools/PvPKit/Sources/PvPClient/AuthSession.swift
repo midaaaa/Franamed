@@ -1,0 +1,1 @@
+../../../../Franamed/Backend/Models/AuthSession.swift

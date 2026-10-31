@@ -9,6 +9,7 @@ import Foundation
 
 struct Backend: Sendable {
     let configuration: BackendConfiguration
+    let client: BackendAPIClient
     let auth: BackendAuthServiceProtocol
     let catalog: BackendCatalogServiceProtocol
     let round: BackendRoundServiceProtocol
@@ -24,6 +25,7 @@ struct Backend: Sendable {
         let client = BackendAPIClient(configuration: configuration, session: session)
 
         self.configuration = configuration
+        self.client = client
         self.auth = BackendAuthService(client: client)
         self.catalog = BackendCatalogService(client: client)
         self.round = BackendRoundService(client: client)

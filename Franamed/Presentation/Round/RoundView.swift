@@ -69,23 +69,18 @@ struct RoundView: View {
     private static let formCollapseDuration = 0.32
     private static let formFadeDuration = 0.12
 
-    private static let focusedBarInset: CGFloat = 6
-    private static let restingBarInset: CGFloat = 24
+    private static let focusedBarInset = AnswerBarLayout.focusedInset
+    private static let restingBarInset = AnswerBarLayout.restingInset
     private static let foldGap: CGFloat = 12
     private static let stubBarGap: CGFloat = 32
 
     private var barInset: CGFloat { isAnswerFieldFocused ? Self.focusedBarInset : Self.restingBarInset }
 
-    private static let suggestionsTopMargin: CGFloat = 8
     private static let frameMaxHeightShare: CGFloat = 0.45
     private static let formMaxWidth: CGFloat = 640
 
     private var suggestionsRestRows: Int {
-        switch window.size.height {
-        case ..<1000: minVisibleSuggestions
-        case ..<1250: minVisibleSuggestions + 1
-        default: minVisibleSuggestions + 2
-        }
+        AnswerBarLayout.suggestionsRestRows(windowHeight: window.size.height)
     }
 
     private var frameMaxWidth: CGFloat {
@@ -99,10 +94,8 @@ struct RoundView: View {
     }
 
     private var suggestionsMaxHeight: CGFloat {
-        let measured = highestBarBottom > 0 ? highestBarBottom : barBottom
-        let barBottom = measured > 0 ? measured : fullHeight - (Self.restingBarInset - homeIndicatorInset)
-        let available = barBottom - suggestionRowHeight - Self.suggestionsTopMargin
-        return max(suggestionsContentHeight(rows: minVisibleSuggestions), available.rounded(.down))
+        AnswerBarLayout.suggestionsMaxHeight(measuredBarBottom: highestBarBottom > 0 ? highestBarBottom : barBottom,
+                                             fullHeight: fullHeight, homeIndicatorInset: homeIndicatorInset)
     }
 
     private var barBottomInset: CGFloat {
@@ -593,20 +586,15 @@ struct RoundView: View {
     }
 
     private static func keyboardLift(forHeight height: CGFloat) -> CGFloat {
-        height > 0 ? max(0, height + focusedBarInset - restingBarInset) : 0
+        AnswerBarLayout.keyboardLift(forHeight: height)
     }
 
     private func dockedKeyboardHeight(screenFrame: CGRect) -> CGFloat {
-        guard let window = windowReference.window, let screen = window.windowScene?.screen,
-              screenFrame.width >= screen.bounds.width - 1 else { return 0 }
-        let frame = window.convert(screenFrame, from: screen.coordinateSpace)
-        guard frame.maxY >= window.bounds.maxY - 1 else { return 0 }
-        return max(0, window.bounds.maxY - frame.minY)
+        AnswerBarLayout.dockedKeyboardHeight(screenFrame: screenFrame, in: windowReference.window)
     }
 
     private func resignKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                        to: nil, from: nil, for: nil)
+        AnswerBarLayout.resignKeyboard()
     }
 
     private var isFrameProtected: Bool {
