@@ -36,6 +36,9 @@ struct ResultStubPeek: View {
     var onBackShown: () -> Void = {}
     var isLifted = false
     var onShare: ((ResultStubContent, ShareLaunch) -> Void)?
+    var header: ResultStubHeader?
+    /// PvP: your own result while the answer is still closed for the others.
+    var settled: RoundOutcome?
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
     @Environment(\.resultStubWidth) private var stubWidth
@@ -105,8 +108,8 @@ struct ResultStubPeek: View {
         ResultStubContent(item: item, mediaType: mediaType, details: details, playedAt: playedAt,
                           progress: ResultStubProgress(frameCount: frameCount, attemptsMade: attemptsMade,
                                                        revealedCount: revealedCount, outcome: outcome,
-                                                       currentFrame: currentFrame),
-                          tearEdge: TearEdge(seed: tearSeed))
+                                                       currentFrame: currentFrame, settled: settled),
+                          tearEdge: TearEdge(seed: tearSeed), header: header)
     }
 
     var body: some View {

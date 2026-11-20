@@ -90,6 +90,9 @@ final class PosterTilt: ObservableObject {
     }
 
     private func start() {
+        #if targetEnvironment(simulator)
+        startSimulatedMotion()
+        #endif
         guard !isRunning, manager.isDeviceMotionAvailable else { return }
         isRunning = true
         manager.deviceMotionUpdateInterval = 1 / Self.rate
@@ -97,6 +100,10 @@ final class PosterTilt: ObservableObject {
     }
 
     private func stop() {
+        #if targetEnvironment(simulator)
+        simulatedMotion?.cancel()
+        simulatedMotion = nil
+        #endif
         isRunning = false
         manager.stopDeviceMotionUpdates()
         mailbox.clear()
@@ -106,6 +113,24 @@ final class PosterTilt: ObservableObject {
         turned = smoothed
         UserDefaults.standard.set([turned.x, turned.y], forKey: Self.phaseKey)
     }
+
+    #if targetEnvironment(simulator)
+    private var simulatedMotion: Task<Void, Never>?
+
+    /// The simulator has no gyro: sway the phone along a slow figure-eight so foils and patterns move.
+    private func startSimulatedMotion() {
+        guard simulatedMotion == nil else { return }
+        let start = Date.now
+        simulatedMotion = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                let t = Date.now.timeIntervalSince(start)
+                let sway = SIMD2(sin(t * 0.55) * 0.45, sin(t * 1.1) * 0.25)
+                self?.publish(Self.laps(sway))
+                try? await Task.sleep(for: .milliseconds(33))
+            }
+        }
+    }
+    #endif
 
     private nonisolated static func handler(for mailbox: Mailbox) -> CMDeviceMotionHandler {
         { motion, _ in

@@ -18,13 +18,15 @@ struct ResultStubContent: Hashable {
     let searchQuery: String
     private(set) var progress: ResultStubProgress
     let tearEdge: TearEdge
+    var header: ResultStubHeader?
 
     init(item: MediaItem,
          mediaType: MediaType,
          details: MediaDetails?,
          playedAt: Date = .now,
          progress: ResultStubProgress,
-         tearEdge: TearEdge = .plain) {
+         tearEdge: TearEdge = .plain,
+         header: ResultStubHeader? = nil) {
         self.mediaType = mediaType
         title = item.originalTitle
         credits = Self.credits(mediaType: mediaType, authors: details?.authors ?? [])
@@ -35,6 +37,7 @@ struct ResultStubContent: Hashable {
         searchQuery = year.isEmpty ? title : "\(title) \(year)"
         self.progress = progress
         self.tearEdge = tearEdge
+        self.header = header
     }
 
     private static func session(_ date: Date) -> String {
@@ -100,6 +103,20 @@ struct ResultStubContent: Hashable {
         default: return "\(count) сезонов"
         }
     }
+}
+
+/// Live match info for the service line: the timer takes the date's place,
+/// and the badge sits between it and the frame dots.
+struct ResultStubHeader: Hashable {
+    enum Badge: Hashable {
+        case score(String)
+        case health(hp: Int, maxHP: Int)
+    }
+
+    let timer: String
+    var isUrgent = false
+    var isFrozen = false
+    var badge: Badge?
 }
 
 extension ResultStubContent {

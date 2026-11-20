@@ -36,7 +36,13 @@ struct PvPPreviewService: PvPServiceProtocol {
 
 enum PvPPreview {
     static func session(_ ticket: PvPRoomTicket, code: String) -> any PvPSessionProtocol {
-        code == PvPMatchFixtures.duelCode ? PvPPreviewSession.duel() : PvPPreviewSession.room()
+        let isDuel = code == PvPMatchFixtures.duelCode || ProcessInfo.processInfo.environment["PVP_PREVIEW_DUEL"] == "1"
+        let steps = isDuel ? PvPMatchFixtures.duelScenario : PvPMatchFixtures.roomScenario
+        // `PVP_PREVIEW_STEP=n` plays the scripted match up to step n and holds it there.
+        if let step = ProcessInfo.processInfo.environment["PVP_PREVIEW_STEP"].flatMap(Int.init) {
+            return PvPPreviewSession(steps: Array(steps.prefix(step + 1)), loops: false)
+        }
+        return PvPPreviewSession(steps: steps)
     }
 
     static func screen(_ state: PvPMatchState, options: PvPScreenOptions = PvPScreenOptions()) -> PvPScreen {

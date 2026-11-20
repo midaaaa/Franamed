@@ -42,16 +42,104 @@ struct ResultStubFront: View {
         }
     }
 
+    @ViewBuilder
     private var serviceLine: some View {
-        HStack(spacing: 8) {
-            Text(content.session)
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Spacer(minLength: 4)
-            ResultStubDots(progress: content.progress)
+        if let header = content.header {
+            HStack(spacing: 8) {
+                ResultStubDots(progress: content.progress)
+                Spacer(minLength: 4)
+                if let badge = header.badge {
+                    ResultStubBadge(badge: badge)
+                    Spacer(minLength: 4)
+                }
+                ResultStubTimer(header: header)
+            }
+            .frame(height: Self.stripHeight)
+        } else {
+            HStack(spacing: 8) {
+                Text(content.session)
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                ResultStubDots(progress: content.progress)
+            }
+            .frame(height: Self.stripHeight)
         }
-        .frame(height: Self.stripHeight)
+    }
+}
+
+private struct ResultStubTimer: View {
+    let header: ResultStubHeader
+
+    @Environment(\.ticketInk) private var ink
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if header.isFrozen {
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 8, weight: .heavy))
+            }
+            Text(header.timer)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .lineLimit(1)
+        }
+        .foregroundStyle(header.isUrgent ? Color.red : ink.ink)
+        .opacity(header.isFrozen ? 0.5 : 1)
+    }
+}
+
+/// Room: your total score. Duel: a coloured health bar with the HP number above it.
+struct ResultStubBadge: View {
+    let badge: ResultStubHeader.Badge
+
+    @Environment(\.ticketInk) private var ink
+
+    private static let barWidth: CGFloat = 54
+    private static let barHeight: CGFloat = 3.5
+
+    var body: some View {
+        switch badge {
+        case let .score(text):
+            HStack(spacing: 3) {
+                Text(text)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                Text("очк")
+                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    .opacity(0.6)
+            }
+            .lineLimit(1)
+            .foregroundStyle(ink.ink)
+        case let .health(hp, maxHP):
+            let fraction = maxHP > 0 ? min(1, max(0, CGFloat(hp) / CGFloat(maxHP))) : 0
+            VStack(spacing: 1.5) {
+                Text("\(max(0, hp)) HP")
+                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                    .foregroundStyle(PvPHealth.color(fraction))
+                    .lineLimit(1)
+                Capsule()
+                    .fill(ink.ink.opacity(0.14))
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(PvPHealth.color(fraction)).frame(width: Self.barWidth * fraction)
+                    }
+                    .frame(width: Self.barWidth, height: Self.barHeight)
+            }
+        }
+    }
+}
+
+/// Health colours shared by the stub bar, the avatar ring and the hall screen.
+enum PvPHealth {
+    static let green = Color(red: 0.19, green: 0.82, blue: 0.35)
+    static let orange = Color(red: 1, green: 0.62, blue: 0.04)
+    static let red = Color(red: 1, green: 0.27, blue: 0.23)
+
+    static func color(_ fraction: CGFloat) -> Color {
+        switch fraction {
+        case ..<0.25: red
+        case ..<0.5: orange
+        default: green
+        }
     }
 }
 
@@ -261,4 +349,35 @@ private struct ResultStubGallery: View {
 
 #Preview("Корешок — все сценарии") {
     ResultStubGallery()
+}
+
+#Preview("Корешок PvP — шапка") {
+    let item = MediaItem(id: 1, mediaType: .movie, title: "Матрица", originalTitle: "The Matrix", releaseDate: "1999-03-31", overview: nil)
+    func content(_ header: ResultStubHeader, attempts: Int, outcome: RoundOutcome?, settled: RoundOutcome? = nil) -> ResultStubContent {
+        ResultStubContent(item: item, mediaType: .movie, details: nil,
+                          progress: ResultStubProgress(frameCount: 6, attemptsMade: attempts, revealedCount: attempts + 1,
+                                                       outcome: outcome, currentFrame: attempts, settled: settled),
+                          header: header)
+    }
+    return ScrollView {
+        VStack(spacing: 16) {
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:24", badge: .score("1 650")), attempts: 1, outcome: nil),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:04", isUrgent: true, badge: .score("1 650")), attempts: 3, outcome: nil),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:30", isFrozen: true, badge: .score("0")), attempts: 0, outcome: nil),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:12", badge: .score("2 300")), attempts: 2, outcome: nil, settled: .correct),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:18", badge: .health(hp: 2400, maxHP: 3000)), attempts: 1, outcome: nil),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:18", badge: .health(hp: 1200, maxHP: 3000)), attempts: 1, outcome: nil),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:18", badge: .health(hp: 400, maxHP: 3000)), attempts: 4, outcome: nil),
+                            hidesDetails: true)
+            ResultStubFront(content: content(ResultStubHeader(timer: "0:05", badge: .score("2 560")), attempts: 3, outcome: .correct))
+        }
+        .padding()
+    }
+    .background(.black)
 }

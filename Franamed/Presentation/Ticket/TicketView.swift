@@ -10,6 +10,7 @@ import SwiftUI
 struct TicketView: View {
     @StateObject private var viewModel: TicketViewModel
     @StateObject private var playlists = PlaylistsViewModel()
+    @StateObject private var pvp = PvPTicketModel.forApp()
     @ObservedObject var coordinator: AppCoordinator
 
     @Environment(\.displayScale) private var displayScale
@@ -39,6 +40,7 @@ struct TicketView: View {
     @State private var isDraggingCard = false
     @State private var isStubResumable = false
     @State private var hasVerticalToolbar = false
+    @State private var keyboardTop: CGFloat?
 
     @AppStorage(TicketEdgeStyle.storageKey) private var hasScallops = false
 
@@ -104,16 +106,19 @@ struct TicketView: View {
                     .environment(\.resultStubWidth, ticketWidth)
                     .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
                 }
-                .onChange(of: coordinator.presentedPvP) { _, entry in
-                    guard entry == nil, tornTicket != nil else { return }
-                    scheduleStubReturn()
+                .onChange(of: coordinator.pendingPvPCode, initial: true) { _, code in
+                    guard let code else { return }
+                    coordinator.pendingPvPCode = nil
+                    if viewModel.mode != .pvp { viewModel.select(mode: .pvp) }
+                    Task { await pvp.join(code: code) }
                 }
-                .fullScreenCover(item: $coordinator.presentedPvP) { mediaType in
-                    PvPEntryView(service: AppFactory.makePvPService(), mediaFacade: viewModel.mediaFacade, mediaType: mediaType,
-                                 pendingCode: $coordinator.pendingPvPCode, makeSession: AppFactory.makePvPSession) {
-                        coordinator.dismissPvP()
+                .fullScreenCover(isPresented: isPvPMatchPresented) {
+                    if let room = pvp.room {
+                        PvPRoomView(viewModel: room, mediaFacade: viewModel.mediaFacade) {
+                            pvp.close()
+                        }
+                        .environment(\.resultStubWidth, ticketWidth)
                     }
-                    .navigationTransition(.zoom(sourceID: mediaType, in: posterZoom))
                 }
                 .sheet(isPresented: $isShowingProfile) {
                     ProfileSheet(mediaFacade: viewModel.mediaFacade)
@@ -148,7 +153,14 @@ struct TicketView: View {
     }
 
     private var isTicketCovered: Bool {
-        coordinator.presentedRound != nil || coordinator.presentedPvP != nil || playlistSheet != nil || isShowingProfile || filtersSheetMediaType != nil
+        coordinator.presentedRound != nil || pvp.isInMatch || playlistSheet != nil || isShowingProfile || filtersSheetMediaType != nil
+    }
+
+    /// The lobby lives on the ticket; only the match is presented over it.
+    private var isPvPMatchPresented: Binding<Bool> {
+        Binding { pvp.isInMatch && pvp.room != nil } set: { presented in
+            if !presented, pvp.isInMatch { pvp.close() }
+        }
     }
 
     private func refreshPlayedPlaylist() {
@@ -176,15 +188,44 @@ struct TicketView: View {
         }
         .ignoresSafeArea(.keyboard)
         .readsVerticalToolbar($hasVerticalToolbar)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            keyboardTop = frame.minY < window.size.height ? frame.minY : nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardTop = nil
+        }
         .task { await viewModel.loadGenreNames() }
+        .task { await PvPTicketStyle.prepareShaders() }
         .task { await playlists.load() }
     }
 
     private func cardView(width: CGFloat, posterHeight: CGFloat, tearOverscan: CGFloat) -> some View {
         let isInteractive = !isTransitioning && !isCardLocked && !isStubAway
-        let card = currentCard
 
-        return TicketFaceView(
+        return cardFace(width: width, posterHeight: posterHeight, tearOverscan: tearOverscan)
+        .allowsHitTesting(isInteractive)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
+        .offset(cardOffset)
+        .offset(y: keyboardLift)
+        .animation(.smooth(duration: 0.3), value: keyboardLift)
+        .rotationEffect(.degrees(cardTilt), anchor: .bottom)
+        .posterSwipeTurn(degrees: cardTilt)
+        .scaleEffect(cardScale)
+        .gesture(TicketPanGesture(isEnabled: isInteractive,
+                                  canStart: { canStartCardDrag(at: $0, width: width, posterHeight: posterHeight) },
+                                  onChange: { dragChanged($0) },
+                                  onEnd: { dragEnded(translation: $0, velocity: $1) }))
+    }
+
+    @ViewBuilder
+    private func cardFace(width: CGFloat, posterHeight: CGFloat, tearOverscan: CGFloat) -> some View {
+        let card = currentCard
+        if card.mode == .pvp {
+            PvPTicketView(model: pvp, mediaType: viewModel.mediaType, width: width, posterHeight: posterHeight,
+                          edgeStyle: edgeStyle)
+        } else {
+            TicketFaceView(
             card: card,
             setup: viewModel.setup(for: viewModel.mediaType),
             genreNames: viewModel.genreNames(for: viewModel.mediaType),
@@ -205,21 +246,14 @@ struct TicketView: View {
             onReturnChange: { setReturning($0) },
             onStubAwayChange: { setStubAway($0) },
             onResumableChange: { isStubResumable = $0 }
-        )
-        .equatable()
-        .allowsHitTesting(isInteractive)
-        .onGeometryChange(for: CGSize.self) { $0.size } action: { cardSize = $0 }
-        .offset(cardOffset)
-        .rotationEffect(.degrees(cardTilt), anchor: .bottom)
-        .posterSwipeTurn(degrees: cardTilt)
-        .scaleEffect(cardScale)
-        .gesture(TicketPanGesture(isEnabled: isInteractive,
-                                  canStart: { canStartCardDrag(at: $0, width: width, posterHeight: posterHeight) },
-                                  onChange: { dragChanged($0) },
-                                  onEnd: { dragEnded(translation: $0, velocity: $1) }))
+            )
+            .equatable()
+        }
     }
 
     private func canStartCardDrag(at point: CGPoint, width: CGFloat, posterHeight: CGFloat) -> Bool {
+        // In a PvP room the stub is torn off to get ready, so it can't also swipe the card.
+        if currentCard.mode == .pvp { return pvp.room == nil || point.y < posterHeight }
         guard point.y >= posterHeight, currentCard.canTear else { return true }
         guard !isStubResumable else { return false }
         let grabDepth = TicketTearConfig().grabDepth
@@ -246,10 +280,7 @@ struct TicketView: View {
     }
 
     private func openStubSheet() {
-        if viewModel.mode == .pvp {
-            coordinator.showPvP(mediaType: viewModel.mediaType)
-            return
-        }
+        guard viewModel.mode != .pvp else { return }
         guard viewModel.mode == .collection else {
             filtersSheetMediaType = viewModel.mediaType
             return
@@ -258,10 +289,7 @@ struct TicketView: View {
     }
 
     private func startOrOpenPlaylist() {
-        if viewModel.mode == .pvp {
-            coordinator.showPvP(mediaType: viewModel.mediaType)
-            return
-        }
+        guard viewModel.mode != .pvp else { return }
         guard !currentCard.canTear else {
             startRound(mediaType: viewModel.mediaType)
             return
@@ -290,11 +318,7 @@ struct TicketView: View {
         isCardLocked = true
         tornTicket = (viewModel.mode, mediaType)
         withAnimation(TicketMotion.roundCoverIn) { hidesStub = true }
-        if viewModel.mode == .pvp {
-            coordinator.showPvP(mediaType: mediaType)
-        } else {
-            coordinator.showRound(mediaType: mediaType)
-        }
+        coordinator.showRound(mediaType: mediaType)
         withAnimation(.easeOut(duration: TicketMotion.returnShrinkDuration)) {
             cardScale = 1 - TicketMotion.returnShrink
         }
@@ -387,6 +411,15 @@ struct TicketView: View {
     }
 
     private var edgeStyle: TicketEdgeStyle { TicketEdgeStyle(hasScallops: hasScallops) }
+
+    /// Typing a PvP room code: raise the ticket so the code on the stub stays above the keyboard.
+    private var keyboardLift: CGFloat {
+        guard currentCard.mode == .pvp, pvp.isEnteringCode, let keyboardTop, cardSize.height > 0 else { return 0 }
+        let stubHeight = TicketStubMetrics.height(width: cardSize.width, edgeStyle: edgeStyle)
+        // Keep the code row (about half way down the stub) a little above the keyboard.
+        let codeBottom = restingCardFrame.maxY - stubHeight * 0.35
+        return min(0, keyboardTop - 16 - codeBottom)
+    }
 
     private var ticketWidth: CGFloat {
         let width = TicketStyle.cardWidth(in: containerFrame.size, edgeStyle: edgeStyle)

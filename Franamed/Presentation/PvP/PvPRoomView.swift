@@ -8,25 +8,20 @@
 import SwiftUI
 
 struct PvPRoomView: View {
-    @StateObject private var viewModel: PvPMatchViewModel
+    @ObservedObject var viewModel: PvPMatchViewModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var isConfirmingLeave = false
-    private let mediaFacade: MediaFacadeProtocol
-    private let onClose: () -> Void
+    @State private var extraBots = 0
+    let mediaFacade: MediaFacadeProtocol
+    let onClose: () -> Void
 
     private static let tick: TimeInterval = 0.5
-
-    init(session: any PvPSessionProtocol, code: String, mediaFacade: MediaFacadeProtocol, onClose: @escaping () -> Void) {
-        _viewModel = StateObject(wrappedValue: PvPMatchViewModel(session: session, code: code))
-        self.mediaFacade = mediaFacade
-        self.onClose = onClose
-    }
 
     var body: some View {
         NavigationStack {
             TimelineView(.periodic(from: .now, by: Self.tick)) { context in
                 let screen = viewModel.screen(at: context.date)
-                content(screen.content)
+                stage(screen.content)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .overlay(alignment: .top) { PvPBannerStack(banners: screen.chrome.banners) }
                     .overlay {
@@ -44,7 +39,6 @@ struct PvPRoomView: View {
             }
         }
         .providesWindowGeometry()
-        .task { await viewModel.run() }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background: viewModel.setAway(true)
@@ -54,23 +48,32 @@ struct PvPRoomView: View {
         }
     }
 
+    /// Match, reveal and the final result share one hall, so the room never cuts away.
     @ViewBuilder
-    private func content(_ content: PvPScreen.Content) -> some View {
+    private func stage(_ content: PvPScreen.Content) -> some View {
+        let mediaType = viewModel.state.settings?.mediaType ?? .movie
+        if let hall = Self.hall(content) {
+            PvPHallView(match: hall.match, reveal: hall.reveal, final: hall.final, isDuel: viewModel.state.kind == .duel,
+                        mediaType: mediaType, mediaFacade: mediaFacade,
+                        onGuess: { viewModel.guess($0, text: $1, mediaType: mediaType) }, onSkip: { viewModel.skip() },
+                        onAction: { viewModel.perform($0) }, extraBots: extraBots)
+        } else {
+            switch content {
+            case let .closed(closed):
+                PvPClosedView(screen: closed, onAction: { viewModel.perform($0) }, onClose: onClose)
+            case .connecting, .lobby, .match, .reveal, .final:
+                PvPConnectingView(screen: PvPConnectingScreen(title: "Подключаемся", detail: "Код \(viewModel.state.code)"))
+            }
+        }
+    }
+
+    private static func hall(_ content: PvPScreen.Content)
+        -> (match: PvPMatchScreen?, reveal: PvPRevealScreen?, final: PvPFinalScreen?)? {
         switch content {
-        case let .connecting(connecting):
-            PvPConnectingView(screen: connecting)
-        case let .closed(closed):
-            PvPClosedView(screen: closed, onAction: { viewModel.perform($0) }, onClose: onClose)
-        case let .lobby(lobby):
-            PvPLobbyView(screen: lobby, onAction: { viewModel.perform($0) }, onChange: { viewModel.change($0, to: $1) },
-                         onPlayer: player)
-        case let .match(match):
-            PvPMatchView(screen: match, mediaType: viewModel.state.settings?.mediaType ?? .movie, mediaFacade: mediaFacade,
-                         onGuess: { viewModel.guess($0, text: $1, mediaType: viewModel.state.settings?.mediaType ?? .movie) }, onSkip: { viewModel.skip() })
-        case let .reveal(reveal):
-            PvPRevealView(screen: reveal)
-        case let .final(final):
-            PvPFinalView(screen: final) { viewModel.perform($0) }
+        case let .match(match): (match, nil, nil)
+        case let .reveal(reveal): (nil, reveal, nil)
+        case let .final(final): (nil, nil, final)
+        default: nil
         }
     }
 
@@ -92,20 +95,25 @@ struct PvPRoomView: View {
             }
             .keyboardShortcut(.cancelAction)
         }
+        #if DEBUG
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu("Отладка", systemImage: "ladybug") {
+                Picker(selection: $extraBots) {
+                    ForEach(0...7, id: \.self) { Text($0 == 0 ? "Без ботов" : "\($0)").tag($0) }
+                } label: {
+                    Text("Боты в зале")
+                    Text("Фальшивые игроки на местах")
+                }
+                .pickerStyle(.menu)
+            }
+        }
+        #endif
         ToolbarItem(placement: .topBarTrailing) {
             if chrome.canResume {
                 Button("Продолжить", systemImage: "play.fill") { viewModel.resume() }
             } else if chrome.canPause {
                 Button("Пауза", systemImage: "pause.fill") { viewModel.pause() }
             }
-        }
-    }
-
-    private func player(_ action: PvPPlayerAction, _ uid: String) {
-        switch action {
-        case .kick: viewModel.kick(uid)
-        case .hideName: viewModel.hideName(uid)
-        case .toggleHidden: viewModel.toggleHiddenName(uid)
         }
     }
 
@@ -317,12 +325,8 @@ struct PvPPauseView: View {
 }
 
 #Preview("Комната целиком") {
-    PvPRoomView(session: PvPPreviewSession.room(), code: PvPMatchFixtures.roomCode, mediaFacade: PreviewMediaFacade()) {}
-        .preferredColorScheme(.dark)
-}
-
-#Preview("Дуэль целиком") {
-    PvPRoomView(session: PvPPreviewSession.duel(), code: PvPMatchFixtures.duelCode, mediaFacade: PreviewMediaFacade()) {}
+    PvPRoomView(viewModel: PvPMatchViewModel(session: PvPPreviewSession.room(), code: PvPMatchFixtures.roomCode),
+                mediaFacade: PreviewMediaFacade()) {}
         .preferredColorScheme(.dark)
 }
 #endif

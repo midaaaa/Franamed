@@ -34,6 +34,11 @@ struct PvPMatchScreen: Sendable, Equatable {
     let duel: PvPDuelBars?
     let resumeIn: Int?
     let isProtected: Bool
+    /// Room total from the standings, shown on the stub between the timer and the dots.
+    let yourScore: Int?
+    let filmNumber: Int
+    let filmTotal: Int?
+    let playerCount: Int
 }
 
 struct PvPFrameSlot: Sendable, Equatable, Identifiable {
@@ -80,6 +85,8 @@ struct PvPRivalRow: Sendable, Equatable, Identifiable {
     let status: String
     let tone: Tone
     let isAway: Bool
+    var isGone = false
+    var health: Double?
 
     var id: String { uid }
 }
@@ -115,7 +122,11 @@ extension PvPScreenBuilder {
             rivals: rivalRows(frameCount: frameCount),
             duel: duelBars(damage: nil),
             resumeIn: state.pause == nil ? resumeIn : nil,
-            isProtected: isPlaying
+            isProtected: isPlaying,
+            yourScore: state.kind == .room ? state.standings.first { $0.uid == state.you }?.total ?? 0 : nil,
+            filmNumber: film?.number ?? state.preparation?.film ?? nextFilmNumber,
+            filmTotal: film?.total ?? state.preparation?.total ?? (state.kind == .room ? state.settings?.films : nil),
+            playerCount: state.players.filter { !$0.left }.count
         )
     }
 
@@ -216,9 +227,18 @@ extension PvPScreenBuilder {
     }
 
     private func rivalRows(frameCount: Int) -> [PvPRivalRow] {
-        guard let film = state.film else { return [] }
-        return state.opponents.filter { !$0.left }.map { player in
-            let progress = film.progress(of: player.uid)
+        let film = state.film
+        let duel = state.duel
+        return state.opponents.map { player in
+            let health = duel.map { duel in
+                Double(duel.hp[player.uid] ?? duel.maxHP) / Double(max(duel.maxHP, 1))
+            }
+            if player.left {
+                return PvPRivalRow(uid: player.uid, name: displayName(player), avatar: PvPAvatar(icon: player.icon, color: player.color),
+                                   frame: 0, frameCount: frameCount, status: "Вышел", tone: .out, isAway: false,
+                                   isGone: true, health: health)
+            }
+            let progress = film?.progress(of: player.uid)
             let frame = progress?.frame ?? 0
             let tone: PvPRivalRow.Tone
             let status: String
@@ -237,8 +257,8 @@ extension PvPScreenBuilder {
                 status = "Ждёт следующего фильма"
             }
             return PvPRivalRow(uid: player.uid, name: displayName(player), avatar: PvPAvatar(icon: player.icon, color: player.color),
-                               frame: frame, frameCount: frameCount, status: status, tone: tone,
-                               isAway: player.connection != .online)
+                               frame: frame, frameCount: frameCount, status: status, tone: film == nil ? .thinking : tone,
+                               isAway: player.connection != .online, health: health)
         }
     }
 

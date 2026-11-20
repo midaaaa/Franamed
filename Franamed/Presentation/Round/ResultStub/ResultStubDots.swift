@@ -17,6 +17,8 @@ struct ResultStubProgress: Hashable {
     let revealedCount: Int
     let outcome: RoundOutcome?
     let currentFrame: Int?
+    /// PvP: your result is known but the answer stays closed until everyone finishes.
+    var settled: RoundOutcome?
 
     static func finished(frameCount: Int, attemptsMade: Int, outcome: RoundOutcome) -> ResultStubProgress {
         ResultStubProgress(frameCount: frameCount, attemptsMade: attemptsMade, revealedCount: frameCount,
@@ -33,11 +35,12 @@ struct ResultStubProgress: Hashable {
     }
 
     var marks: [ResultStubMark] {
-        let misses = outcome == .correct ? attemptsMade - 1 : attemptsMade
+        let result = outcome ?? settled
+        let misses = result == .correct ? attemptsMade - 1 : attemptsMade
         return (0..<frameCount).map { index in
             if index < misses { return .wrong }
-            if outcome == .correct, index == misses { return .correct }
-            if outcome == nil, index == revealedCount - 1 { return .open }
+            if result == .correct, index == misses { return .correct }
+            if result == nil, index == revealedCount - 1 { return .open }
             return .unseen
         }
     }
